@@ -26,6 +26,7 @@ ExportedObj/
 *.csproj
 *.unityproj
 *.sln
+*.slnx
 *.suo
 *.tmp
 *.user
@@ -62,3 +63,6 @@ sysinfo.txt
 # 비밀 값 (서버 주소·테스트 계정 등을 파일로 둘 경우)
 .env
 .env.*
+
+# 게임 규칙 점검 도구 빌드 결과물
+/Tools/RulesCheck/bin/

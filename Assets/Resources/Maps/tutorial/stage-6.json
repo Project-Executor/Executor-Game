@@ -1,0 +1,109 @@
+{
+  "stageNo": 6,
+  "stageType": "TUTORIAL",
+  "title": "시뮬레이션 6: 종합",
+  "parMoves": 29,
+  "rewardCoin": 50,
+  "mapData": {
+    "version": 1,
+    "theme": "hologram",
+    "width": 13,
+    "height": 8,
+    "tiles": [
+      "#############",
+      "#.....#######",
+      "####.########",
+      "####........#",
+      "###########.#",
+      "#...........#",
+      "#####.......#",
+      "#############"
+    ],
+    "player": {
+      "x": 1,
+      "y": 1
+    },
+    "objects": [
+      {
+        "id": "crate1",
+        "type": "crate",
+        "x": 4,
+        "y": 1
+      },
+      {
+        "id": "block1",
+        "type": "breakable",
+        "x": 9,
+        "y": 3,
+        "hp": 2
+      },
+      {
+        "id": "exit1",
+        "type": "exit",
+        "x": 1,
+        "y": 5
+      },
+      {
+        "id": "door1",
+        "type": "door",
+        "x": 3,
+        "y": 5,
+        "keyId": "lab"
+      },
+      {
+        "id": "npc1",
+        "type": "npc",
+        "x": 9,
+        "y": 5,
+        "name": "감독관",
+        "dialogueId": "supervisor"
+      }
+    ],
+    "dialogues": {
+      "supervisor": {
+        "start": "n1",
+        "nodes": {
+          "n1": {
+            "speaker": "감독관",
+            "text": "{characterName} 집행자님, 훈련은 여기까지입니다.",
+            "next": "n2"
+          },
+          "n2": {
+            "speaker": "감독관",
+            "text": "이 열쇠로 문을 열고 시뮬레이션을 종료하십시오.",
+            "next": "n3",
+            "effects": [
+              {
+                "type": "giveKey",
+                "keyId": "lab"
+              }
+            ]
+          },
+          "n3": {
+            "speaker": "감독관",
+            "text": "실전에서도 모든 프로세스가 정상 종료되기를."
+          }
+        }
+      }
+    },
+    "guides": [
+      {
+        "on": "start",
+        "text": "지금까지 배운 이동, 장애물, 열쇠, 대화를 모두 사용해 홀로그램 시뮬레이션을 탈출하십시오."
+      }
+    ],
+    "story": {
+      "outro": [
+        {
+          "type": "narration",
+          "text": "홀로그램 시뮬레이션이 종료되었습니다."
+        },
+        {
+          "type": "narration",
+          "text": "{characterName} 집행자, 첫 발령지로 이동합니다."
+        }
+      ]
+    },
+    "hints": []
+  }
+}

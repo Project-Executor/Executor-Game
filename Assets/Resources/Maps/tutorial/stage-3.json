@@ -1,0 +1,58 @@
+{
+  "stageNo": 3,
+  "stageType": "TUTORIAL",
+  "title": "시뮬레이션 3: 열쇠",
+  "parMoves": 16,
+  "rewardCoin": 10,
+  "mapData": {
+    "version": 1,
+    "theme": "hologram",
+    "width": 9,
+    "height": 5,
+    "tiles": [
+      "#########",
+      "#.......#",
+      "#.#######",
+      "#....####",
+      "#########"
+    ],
+    "player": {
+      "x": 1,
+      "y": 1
+    },
+    "objects": [
+      {
+        "id": "door1",
+        "type": "door",
+        "x": 4,
+        "y": 1,
+        "keyId": "lab"
+      },
+      {
+        "id": "exit1",
+        "type": "exit",
+        "x": 7,
+        "y": 1
+      },
+      {
+        "id": "key1",
+        "type": "key",
+        "x": 4,
+        "y": 3,
+        "keyId": "lab"
+      }
+    ],
+    "guides": [
+      {
+        "on": "start",
+        "text": "잠긴 문은 열쇠가 있어야 열 수 있습니다."
+      },
+      {
+        "on": "pickup",
+        "target": "key1",
+        "text": "열쇠를 얻었습니다. 문으로 가면 열쇠를 써서 문을 엽니다."
+      }
+    ],
+    "hints": []
+  }
+}

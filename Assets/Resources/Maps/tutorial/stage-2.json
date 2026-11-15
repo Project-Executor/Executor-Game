@@ -1,0 +1,63 @@
+{
+  "stageNo": 2,
+  "stageType": "TUTORIAL",
+  "title": "시뮬레이션 2: 장애물",
+  "parMoves": 12,
+  "rewardCoin": 10,
+  "mapData": {
+    "version": 1,
+    "theme": "hologram",
+    "width": 9,
+    "height": 6,
+    "tiles": [
+      "#########",
+      "#.#######",
+      "#.#######",
+      "#.......#",
+      "#.#######",
+      "#########"
+    ],
+    "player": {
+      "x": 1,
+      "y": 1
+    },
+    "objects": [
+      {
+        "id": "crate1",
+        "type": "crate",
+        "x": 1,
+        "y": 2
+      },
+      {
+        "id": "block1",
+        "type": "breakable",
+        "x": 5,
+        "y": 3,
+        "hp": 2
+      },
+      {
+        "id": "exit1",
+        "type": "exit",
+        "x": 7,
+        "y": 3
+      }
+    ],
+    "guides": [
+      {
+        "on": "start",
+        "text": "앞에 장애물이 있을 때 그 방향으로 이동하면, 턴을 소모해서 장애물을 밀거나 부술 수 있습니다."
+      },
+      {
+        "on": "near",
+        "target": "crate1",
+        "text": "상자는 밀 수 있습니다. 상자를 아래쪽 빈칸까지 밀어 길을 여십시오."
+      },
+      {
+        "on": "near",
+        "target": "block1",
+        "text": "금이 간 블록은 부술 수 있습니다. 여러 번 부딪혀야 하는 블록도 있습니다."
+      }
+    ],
+    "hints": []
+  }
+}

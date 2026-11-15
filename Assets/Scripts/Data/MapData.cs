@@ -67,6 +67,11 @@ namespace Executor.Data
     public class DialogueNode
     {
         public string Speaker { get; set; }
+        /// <summary>
+        /// 스탠딩 일러스트 "인물ID/표정" 또는 "인물ID" (예: "cassia/smile"). 선택 사항.
+        /// 없으면 Speaker 이름으로 인물을 찾고 표정은 default (Resources/Portraits/{인물ID}/{표정}.png)
+        /// </summary>
+        public string Portrait { get; set; }
         /// <summary>{characterName}은 집행자 이름으로 바꿔 보여 준다</summary>
         public string Text { get; set; }
         /// <summary>선택지가 없을 때 다음 노드. null이면 대화 끝</summary>

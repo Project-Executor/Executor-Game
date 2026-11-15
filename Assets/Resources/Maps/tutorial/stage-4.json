@@ -1,0 +1,100 @@
+{
+  "stageNo": 4,
+  "stageType": "TUTORIAL",
+  "title": "시뮬레이션 4: 인물",
+  "parMoves": 8,
+  "rewardCoin": 10,
+  "mapData": {
+    "version": 1,
+    "theme": "hologram",
+    "width": 11,
+    "height": 5,
+    "tiles": [
+      "###########",
+      "#.....#...#",
+      "#.........#",
+      "#.....#...#",
+      "###########"
+    ],
+    "player": {
+      "x": 1,
+      "y": 1
+    },
+    "objects": [
+      {
+        "id": "door1",
+        "type": "door",
+        "x": 6,
+        "y": 2,
+        "keyId": "lab"
+      },
+      {
+        "id": "exit1",
+        "type": "exit",
+        "x": 8,
+        "y": 2
+      },
+      {
+        "id": "npc1",
+        "type": "npc",
+        "x": 3,
+        "y": 3,
+        "name": "연구원",
+        "dialogueId": "researcher"
+      }
+    ],
+    "dialogues": {
+      "researcher": {
+        "start": "n1",
+        "nodes": {
+          "n1": {
+            "speaker": "연구원",
+            "text": "아, 깨어났군요. {characterName} 집행자님, 맞으시죠?",
+            "next": "n2"
+          },
+          "n2": {
+            "speaker": "연구원",
+            "text": "이곳은 집행자 훈련용 홀로그램 시뮬레이션입니다. 무엇이 궁금하신가요?",
+            "choices": [
+              {
+                "text": "여기서 나가려면 어떻게 해야 하죠?",
+                "next": "n3"
+              },
+              {
+                "text": "집행자가 뭐죠?",
+                "next": "n4"
+              }
+            ]
+          },
+          "n3": {
+            "speaker": "연구원",
+            "text": "저 문 너머가 출구예요. 이 열쇠를 가져가세요.",
+            "effects": [
+              {
+                "type": "giveKey",
+                "keyId": "lab"
+              }
+            ]
+          },
+          "n4": {
+            "speaker": "연구원",
+            "text": "세계의 법칙을 뒤틀어 오류를 처단하는 사람이죠. 일단은 이 열쇠로 문부터 열어 보세요.",
+            "effects": [
+              {
+                "type": "giveKey",
+                "keyId": "lab"
+              }
+            ]
+          }
+        }
+      }
+    },
+    "guides": [
+      {
+        "on": "start",
+        "text": "인물 주변 3x3 칸 안에 들어가면 E 키로 대화를 걸 수 있습니다. 대화는 턴을 소모하지 않습니다."
+      }
+    ],
+    "hints": []
+  }
+}

@@ -1,6 +1,7 @@
 using System;
 using UnityEngine;
 using UnityEngine.EventSystems;
+using UnityEngine.InputSystem;
 using UnityEngine.InputSystem.UI;
 using UnityEngine.UI;
 using Object = UnityEngine.Object;
@@ -101,6 +102,16 @@ namespace Executor.Play
         }
 
         public static void SetButtonText(Button button, string text) => button.GetComponentInChildren<Text>().text = text;
+
+        /// <summary>입력칸에서 Enter로 입력을 마쳤을 때 action (다른 곳을 눌러 포커스가 빠진 경우는 제외)</summary>
+        public static void OnEnter(InputField field, Action action)
+        {
+            field.onEndEdit.AddListener(_ =>
+            {
+                Keyboard k = Keyboard.current;
+                if (k != null && (k.enterKey.wasPressedThisFrame || k.numpadEnterKey.wasPressedThisFrame)) action();
+            });
+        }
 
         public static InputField Input(Transform parent, string placeholder, bool password = false, int limit = 0, int size = 30)
         {

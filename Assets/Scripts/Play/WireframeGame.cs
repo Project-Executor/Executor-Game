@@ -573,10 +573,12 @@ namespace Executor.Play
                 _mode = Mode.Result;
                 Block();
                 bool hasNext = _chapter.Stages.Any(s => s.No > _stage.No);
-                var buttons = new List<(string, System.Action)>();
+                var buttons = new List<(string, System.Action)>
+                {
+                    ("다시 (R)", () => StartStage(_stage, false)),
+                    ("스테이지 선택 (Esc)", ShowStageSelect),
+                };
                 if (hasNext) buttons.Add(("다음 (Enter)", NextStage));
-                buttons.Add(("다시 (R)", () => StartStage(_stage, false)));
-                buttons.Add(("스테이지 선택 (Esc)", ShowStageSelect));
                 _game.ShowResult($"클리어!\n\n{_stage.Title}\n남은 턴 {_board.RemainingTurns} · {_board.Turns}턴 사용" +
                                  (newBest ? "\n최고 기록" : $"\n최고 {best}턴 사용"), true, buttons);
             }

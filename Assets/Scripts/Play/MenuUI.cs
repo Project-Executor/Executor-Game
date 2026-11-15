@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using UnityEngine;
@@ -466,8 +467,9 @@ namespace Executor.Play
                 confirm.gameObject.SetActive(signupMode);
                 error.text = "";
             });
-            submit.onClick.AddListener(async () =>
+            async void Submit()
             {
+                if (submit == null || !submit.interactable) return;
                 error.text = "";
                 submit.interactable = false;
                 try
@@ -490,8 +492,25 @@ namespace Executor.Play
                 {
                     if (submit != null) submit.interactable = true;
                 }
-            });
-            email.Select();
+            }
+            submit.onClick.AddListener(Submit);
+
+            // Enter: 이메일 → 비밀번호 → (회원가입이면 재입력 →) 제출
+            OnEnter(email, () => FocusLater(password));
+            OnEnter(password, () => { if (signupMode) FocusLater(confirm); else Submit(); });
+            OnEnter(confirm, Submit);
+            FocusLater(email);
+        }
+
+        /// <summary>한 프레임 뒤에 입력칸을 선택한다 (Enter로 입력을 마친 같은 프레임에는 선택이 무시될 수 있음)</summary>
+        private void FocusLater(InputField field) => StartCoroutine(FocusRoutine(field));
+
+        private static IEnumerator FocusRoutine(InputField field)
+        {
+            yield return null;
+            if (field == null || !field.gameObject.activeInHierarchy) yield break;
+            field.Select();
+            field.ActivateInputField();
         }
 
         private static Slider MakeSlider(Transform parent, float value)

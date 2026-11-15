@@ -435,7 +435,7 @@ namespace Executor.Play
         }
 
         /// <summary>로그인 / 회원가입 팝업. 성공하면 닫고 onSuccess. 실패하면 서버 오류 메시지를 보여 준다</summary>
-        public void ShowLogin(Func<string, string, Task> login, Func<string, string, string, Task> signup, Action onSuccess)
+        public void ShowLogin(Func<string, string, Task> login, Func<string, string, Task> signup, Action onSuccess)
         {
             bool signupMode = false;
             GameObject popup = Popup(_popupRoot, "로그인", new Vector2(820, 600), out RectTransform body);
@@ -445,9 +445,9 @@ namespace Executor.Play
             Place(email, new Vector2(0, 1), Vector2.zero, new Vector2(740, 72), new Vector2(0, 1));
             var password = Input(body, "비밀번호 (8~64자)", password: true, limit: 64);
             Place(password, new Vector2(0, 1), new Vector2(0, -90), new Vector2(740, 72), new Vector2(0, 1));
-            var nickname = Input(body, "닉네임 (2~20자)", limit: 20);
-            Place(nickname, new Vector2(0, 1), new Vector2(0, -180), new Vector2(740, 72), new Vector2(0, 1));
-            nickname.gameObject.SetActive(false);
+            var confirm = Input(body, "비밀번호 재입력", password: true, limit: 64);
+            Place(confirm, new Vector2(0, 1), new Vector2(0, -180), new Vector2(740, 72), new Vector2(0, 1));
+            confirm.gameObject.SetActive(false);
 
             var error = Label(body, "", 24, TextAnchor.MiddleLeft, Bad);
             Place(error, new Vector2(0, 1), new Vector2(0, -270), new Vector2(740, 40), new Vector2(0, 1));
@@ -463,7 +463,7 @@ namespace Executor.Play
                 header.text = signupMode ? "회원가입" : "로그인";
                 SetButtonText(submit, signupMode ? "가입하기" : "로그인");
                 SetButtonText(toggle, signupMode ? "로그인으로" : "회원가입으로");
-                nickname.gameObject.SetActive(signupMode);
+                confirm.gameObject.SetActive(signupMode);
                 error.text = "";
             });
             submit.onClick.AddListener(async () =>
@@ -472,7 +472,12 @@ namespace Executor.Play
                 submit.interactable = false;
                 try
                 {
-                    if (signupMode) await signup(email.text.Trim(), password.text, nickname.text.Trim());
+                    if (signupMode)
+                    {
+                        if (password.text.Length < 8 || password.text.Length > 64) { error.text = "비밀번호는 8~64자여야 합니다."; return; }
+                        if (password.text != confirm.text) { error.text = "비밀번호가 서로 다릅니다."; return; }
+                        await signup(email.text.Trim(), password.text);
+                    }
                     else await login(email.text.Trim(), password.text);
                     Object.Destroy(popup);
                     onSuccess?.Invoke();

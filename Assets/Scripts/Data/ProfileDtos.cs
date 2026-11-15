@@ -5,9 +5,8 @@ namespace Executor.Data
     {
         public long UserId { get; set; }
         public string Email { get; set; }
+        /// <summary>가입 직후(튜토리얼에서 정하기 전)에는 null. 대사의 {nickname}에도 쓰인다</summary>
         public string Nickname { get; set; }
-        /// <summary>튜토리얼에서 입력한 집행자 이름. 아직 안 정했으면 null</summary>
-        public string CharacterName { get; set; }
         public string Comment { get; set; }
         public int Coin { get; set; }
         /// <summary>null이면 기본 스킨</summary>

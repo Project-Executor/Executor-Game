@@ -149,7 +149,7 @@ public static class Program
             Start = "a",
             Nodes = new Dictionary<string, DialogueNode>
             {
-                ["a"] = new DialogueNode { Text = "{characterName}님", Choices = new List<DialogueChoice>
+                ["a"] = new DialogueNode { Text = "{nickname}님", Choices = new List<DialogueChoice>
                     { new DialogueChoice { Text = "1", Next = "b" }, new DialogueChoice { Text = "2", Next = "c" } } },
                 ["b"] = new DialogueNode { Text = "열쇠", Effects = new List<DialogueEffect> { new DialogueEffect { Type = "giveKey", KeyId = "lab" } } },
                 ["c"] = new DialogueNode { Text = "끝" },
@@ -179,7 +179,7 @@ public static class Program
         {
             new GuideData { On = "start", Text = "시작" },
             new GuideData { On = "near", Target = "k", Text = "근처" },
-            new GuideData { On = "pickup", Target = "k", Text = "{characterName} 획득" },
+            new GuideData { On = "pickup", Target = "k", Text = "{nickname} 획득" },
         };
         b = new Board(map);
         var g = new GuideTracker(b, "오집행");

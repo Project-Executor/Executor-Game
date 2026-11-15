@@ -12,7 +12,7 @@ namespace Executor.Game
     {
         private readonly Board _board;
         private readonly DialogueData _dialogue;
-        private readonly string _characterName;
+        private readonly string _nickname;
         private readonly List<string> _givenKeys = new List<string>();
 
         public BoardObject Npc { get; }
@@ -22,8 +22,8 @@ namespace Executor.Game
         /// <summary>현재 말하는 사람 (노드에 없으면 인물 이름)</summary>
         public string Speaker => Current == null ? null : Current.Speaker ?? Npc.Name;
 
-        /// <summary>현재 대사 ({characterName} 치환됨)</summary>
-        public string Text => Current == null ? null : TextFormat.Apply(Current.Text, _characterName);
+        /// <summary>현재 대사 ({nickname} 치환됨)</summary>
+        public string Text => Current == null ? null : TextFormat.Apply(Current.Text, _nickname);
 
         public IReadOnlyList<DialogueChoice> Choices => Current?.Choices ?? (IReadOnlyList<DialogueChoice>)Array.Empty<DialogueChoice>();
 
@@ -33,11 +33,11 @@ namespace Executor.Game
         public IReadOnlyList<string> GivenKeys => _givenKeys;
 
         /// <exception cref="ArgumentException">인물의 dialogueId가 맵에 없음</exception>
-        public DialogueSession(Board board, BoardObject npc, string characterName)
+        public DialogueSession(Board board, BoardObject npc, string nickname)
         {
             _board = board;
             Npc = npc;
-            _characterName = characterName;
+            _nickname = nickname;
             if (npc.DialogueId == null || !board.Data.Dialogues.TryGetValue(npc.DialogueId, out _dialogue))
             {
                 throw new ArgumentException($"인물 {npc.Id}의 대화 {npc.DialogueId}가 맵에 없습니다.");
@@ -81,8 +81,11 @@ namespace Executor.Game
 
     public static class TextFormat
     {
-        /// <summary>{characterName}을 집행자 이름으로 바꾼다 (이름이 없으면 "집행자")</summary>
-        public static string Apply(string text, string characterName) =>
-            text?.Replace("{characterName}", string.IsNullOrWhiteSpace(characterName) ? "집행자" : characterName);
+        /// <summary>{nickname}을 내 닉네임으로 바꾼다 (닉네임이 없으면 "집행자"). 예전 표기 {characterName}도 받는다</summary>
+        public static string Apply(string text, string nickname)
+        {
+            string name = string.IsNullOrWhiteSpace(nickname) ? "집행자" : nickname;
+            return text?.Replace("{nickname}", name).Replace("{characterName}", name);
+        }
     }
 }

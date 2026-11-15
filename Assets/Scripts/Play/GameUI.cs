@@ -51,6 +51,11 @@ namespace Executor.Play
         private GameObject _narration;
         private Text _narrationText, _narrationHint;
         private InputField _nameInput;
+        private Button _nameCheck;
+        private Text _nameStatus;
+
+        /// <summary>닉네임 입력의 중복 확인 버튼</summary>
+        public Action OnCheckNickname;
 
         // 결과
         private GameObject _result;
@@ -197,7 +202,10 @@ namespace Executor.Play
             _narration.SetActive(true);
             _narrationText.text = text;
             _nameInput.gameObject.SetActive(askName);
-            _narrationHint.text = askName ? "이름을 입력하고 Enter (1~20자)" : "E / Space / 클릭: 다음";
+            _nameCheck.gameObject.SetActive(askName);
+            _nameStatus.gameObject.SetActive(askName);
+            _nameStatus.text = "";
+            _narrationHint.text = askName ? "닉네임을 입력하고 Enter (2~20자, 다른 사람과 겹칠 수 없습니다)" : "E / Space / 클릭: 다음";
             if (askName)
             {
                 _nameInput.text = currentName ?? "";
@@ -207,6 +215,13 @@ namespace Executor.Play
         }
 
         public void SetNarrationHint(string text) => _narrationHint.text = text;
+
+        /// <summary>닉네임 입력 아래 상태 문구 (사용 가능 / 이미 사용 중 / 오류)</summary>
+        public void SetNicknameStatus(string text, bool ok)
+        {
+            _nameStatus.text = text;
+            _nameStatus.color = ok ? Good : Bad;
+        }
 
         public string NameInput => _nameInput.text.Trim();
 
@@ -356,10 +371,15 @@ namespace Executor.Play
             Place(_narrationText, new Vector2(0.5f, 0.5f), new Vector2(0, 60), new Vector2(1500, 400));
             _narrationHint = Label(panel, "", 24, TextAnchor.MiddleCenter, Muted);
             Place(_narrationHint, new Vector2(0.5f, 0), new Vector2(0, 80), new Vector2(1200, 40));
-            _nameInput = Input(panel, "집행자 이름", limit: 20, size: 36);
+            // 닉네임 입력 + 중복 확인 버튼 (한 줄)
+            _nameInput = Input(panel, "닉네임 (2~20자)", limit: 20, size: 36);
             _nameInput.textComponent.alignment = TextAnchor.MiddleCenter;
             ((Text)_nameInput.placeholder).alignment = TextAnchor.MiddleCenter;
-            Place(_nameInput, new Vector2(0.5f, 0.5f), new Vector2(0, -160), new Vector2(600, 80));
+            Place(_nameInput, new Vector2(0.5f, 0.5f), new Vector2(-110, -160), new Vector2(560, 80));
+            _nameCheck = Button(panel, "중복 확인", () => OnCheckNickname?.Invoke(), 28);
+            Place(_nameCheck, new Vector2(0.5f, 0.5f), new Vector2(290, -160), new Vector2(200, 80));
+            _nameStatus = Label(panel, "", 26, TextAnchor.MiddleCenter, Good);
+            Place(_nameStatus, new Vector2(0.5f, 0.5f), new Vector2(0, -235), new Vector2(800, 40));
         }
 
         private void BuildResult()

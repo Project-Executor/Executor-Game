@@ -86,7 +86,9 @@ namespace Executor.Play
             // 로그인(또는 오프라인)한 뒤에만 화면 클릭으로 메인에 들어간다
             _menu.OnTitleStart = () =>
             {
-                if (!_menu.HasPopup && PlayerSession.CanPlay) ShowMain();
+                if (_menu.HasPopup || !PlayerSession.CanPlay) return;
+                // 닉네임을 아직 정하지 않았으면(가입 후 첫 로그인) 바로 튜토리얼 1스테이지로
+                if (PlayerSession.IsOnline && !PlayerSession.HasNickname) StartFirstTutorial(); else ShowMain();
             };
             _menu.OnTitleLogin = OpenLogin;
             _menu.OnTitleLogout = Logout;
@@ -127,14 +129,27 @@ namespace Executor.Play
             _mode = Mode.Title;
             Block();
             HideGame();
-            string account = PlayerSession.IsOnline ? $"{PlayerSession.Profile.Nickname} 님으로 로그인" : "오프라인 테스트 중";
+            string account = PlayerSession.IsOnline ? $"{PlayerSession.DisplayName} 님으로 로그인" : "오프라인 테스트 중";
             _menu.ShowTitle(PlayerSession.CanPlay, account, PlayerSession.IsOnline ? "로그아웃" : "오프라인 종료");
         }
 
         private void OpenLogin()
         {
-            // 로그인하면 시작 화면으로 돌아가고, 화면을 클릭해 메인으로 들어간다
-            _menu.ShowLogin(PlayerSession.LoginAsync, PlayerSession.SignupAsync, ShowTitle);
+            // 로그인하면 시작 화면으로 돌아가고 화면을 클릭해 메인으로 들어간다.
+            // 닉네임이 없으면(가입 후 첫 로그인) 바로 튜토리얼 1스테이지로 가서 닉네임을 입력받는다
+            _menu.ShowLogin(PlayerSession.LoginAsync, PlayerSession.SignupAsync, () =>
+            {
+                if (PlayerSession.IsOnline && !PlayerSession.HasNickname) StartFirstTutorial(); else ShowTitle();
+            });
+        }
+
+        /// <summary>첫 챕터(튜토리얼)의 1스테이지를 도입 나레이션부터 시작한다</summary>
+        private void StartFirstTutorial()
+        {
+            ChapterInfo first = _chapters.FirstOrDefault(c => c.IsAvailable);
+            if (first == null) { ShowTitle(); return; }
+            _chapter = first;
+            StartStage(first.Stages[0], true);
         }
 
         private async void Logout()
@@ -173,14 +188,13 @@ namespace Executor.Play
         {
             if (!PlayerSession.IsOnline)
             {
-                _menu.ShowList("프로필", new[] { "오프라인 테스트 중입니다.", $"집행자 이름: {NameOrDash(PlayerSession.CharacterName)}" });
+                _menu.ShowList("프로필", new[] { "오프라인 테스트 중입니다.", $"닉네임: {NameOrDash(PlayerSession.Nickname)}" });
                 return;
             }
             MyProfileResponse p = PlayerSession.Profile;
             _menu.ShowList("프로필", new[]
             {
-                $"닉네임: {p.Nickname}",
-                $"집행자 이름: {NameOrDash(p.CharacterName)}",
+                $"닉네임: {NameOrDash(p.Nickname)}",
                 $"코인: {p.Coin}",
                 $"이메일: {p.Email}",
                 $"자기소개: {NameOrDash(p.Comment)}",
@@ -253,6 +267,7 @@ namespace Executor.Play
         private void WireGame()
         {
             _game.OnSettings = ShowPauseMenu;
+            _game.OnCheckNickname = CheckNickname;
             _game.OnChat = () => _game.ShowMessage("채팅", "채팅은 준비 중입니다.\n(친구 메시지 API 연동 예정)");
             _game.OnCollect = () => _game.ShowMessage("수집", "이 스테이지에는 수집 요소가 없습니다.\n(숨겨진 요소는 본 스테이지에서 추가)");
         }
@@ -274,7 +289,7 @@ namespace Executor.Play
             Block();
             _stage = stage;
             _board = new Board(stage.Map, stage.Par);
-            _guides = new GuideTracker(_board, PlayerSession.CharacterName);
+            _guides = new GuideTracker(_board, PlayerSession.Nickname);
             _questGuides.Clear();
             _dialogue = null;
             _endAt = -1;
@@ -293,7 +308,7 @@ namespace Executor.Play
         {
             _mode = Mode.Playing;
             Block();
-            _guides = new GuideTracker(_board, PlayerSession.CharacterName);
+            _guides = new GuideTracker(_board, PlayerSession.Nickname);
             ShowGuides(_guides.OnStart());
         }
 
@@ -325,8 +340,8 @@ namespace Executor.Play
         private void NextStoryStep()
         {
             _storyIndex++;
-            while (_storyIndex < _story.Count && _story[_storyIndex].Type == "inputCharacterName"
-                   && !string.IsNullOrEmpty(PlayerSession.CharacterName))
+            while (_storyIndex < _story.Count && StoryTypes.IsNicknameInput(_story[_storyIndex].Type)
+                   && PlayerSession.HasNickname)
             {
                 _storyIndex++;
             }
@@ -337,31 +352,49 @@ namespace Executor.Play
                 return;
             }
             StoryStep step = _story[_storyIndex];
-            _game.ShowNarration(TextFormat.Apply(step.Text, PlayerSession.CharacterName),
-                step.Type == "inputCharacterName", PlayerSession.CharacterName);
+            _game.ShowNarration(TextFormat.Apply(step.Text, PlayerSession.Nickname),
+                StoryTypes.IsNicknameInput(step.Type), PlayerSession.Nickname);
         }
 
         private bool AskingName => _mode == Mode.Story && _storyIndex < _story.Count
-                                   && _story[_storyIndex].Type == "inputCharacterName";
+                                   && StoryTypes.IsNicknameInput(_story[_storyIndex].Type);
 
         private async void SubmitName()
         {
             string input = _game.NameInput;
-            if (_savingName || input.Length < 1 || input.Length > 20) return;
+            if (_savingName) return;
+            if (input.Length < 2 || input.Length > 20) { _game.SetNicknameStatus("닉네임은 2~20자여야 합니다.", false); return; }
             _savingName = true;
-            _game.SetNarrationHint("저장 중...");
+            _game.SetNicknameStatus("저장 중...", true);
             try
             {
-                await PlayerSession.SetCharacterNameAsync(input);
+                await PlayerSession.SetNicknameAsync(input);
                 NextStoryStep();
             }
             catch (ApiException e)
             {
-                _game.SetNarrationHint("저장하지 못했습니다: " + e.Message);
+                _game.SetNicknameStatus(e.Code == "DUPLICATE_NICKNAME" ? "이미 사용 중인 닉네임입니다." : "저장하지 못했습니다: " + e.Message, false);
             }
             finally
             {
                 _savingName = false;
+            }
+        }
+
+        /// <summary>닉네임 입력 옆 중복 확인 버튼</summary>
+        private async void CheckNickname()
+        {
+            string input = _game.NameInput;
+            if (input.Length < 2 || input.Length > 20) { _game.SetNicknameStatus("닉네임은 2~20자여야 합니다.", false); return; }
+            if (!PlayerSession.IsOnline) { _game.SetNicknameStatus("오프라인 테스트에서는 확인 없이 저장됩니다.", true); return; }
+            try
+            {
+                bool available = await PlayerSession.IsNicknameAvailableAsync(input);
+                _game.SetNicknameStatus(available ? $"'{input}' 사용할 수 있습니다." : $"'{input}'은(는) 이미 사용 중입니다.", available);
+            }
+            catch (ApiException e)
+            {
+                _game.SetNicknameStatus("확인하지 못했습니다: " + e.Message, false);
             }
         }
 
@@ -485,7 +518,7 @@ namespace Executor.Play
         {
             BoardObject npc = _board.TalkableNpc;
             if (npc == null) return;
-            _dialogue = new DialogueSession(_board, npc, PlayerSession.CharacterName);
+            _dialogue = new DialogueSession(_board, npc, PlayerSession.Nickname);
             _mode = Mode.Dialogue;
             ShowDialogueNode();
         }

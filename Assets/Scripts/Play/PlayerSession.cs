@@ -10,7 +10,7 @@ namespace Executor.Play
     /// </summary>
     public static class PlayerSession
     {
-        private const string OfflineNameKey = "executor.offline.characterName";
+        private const string OfflineNameKey = "executor.offline.nickname";
 
         /// <summary>로그인한 내 프로필. 오프라인·로그아웃이면 null</summary>
         public static MyProfileResponse Profile { get; private set; }
@@ -22,10 +22,14 @@ namespace Executor.Play
 
         public static bool CanPlay => IsOnline || IsOffline;
 
-        public static string DisplayName => IsOnline ? Profile.Nickname : IsOffline ? "오프라인 테스트" : "로그인 안 됨";
+        public static string DisplayName => IsOnline ? Profile.Nickname ?? "닉네임 미정"
+                                          : IsOffline ? "오프라인 테스트" : "로그인 안 됨";
 
-        /// <summary>대사의 {characterName}에 들어가는 집행자 이름</summary>
-        public static string CharacterName => IsOnline ? Profile.CharacterName ?? "" : PlayerPrefs.GetString(OfflineNameKey, "");
+        /// <summary>내 닉네임 (대사의 {nickname}). 가입 후 아직 정하지 않았으면 빈 문자열</summary>
+        public static string Nickname => IsOnline ? Profile.Nickname ?? "" : PlayerPrefs.GetString(OfflineNameKey, "");
+
+        /// <summary>닉네임을 정했는지. 로그인했는데 false면 튜토리얼 1스테이지로 보낸다</summary>
+        public static bool HasNickname => !string.IsNullOrEmpty(Nickname);
 
         /// <summary>진행 기록 키 앞부분 (계정마다 따로)</summary>
         public static string ProgressPrefix => IsOnline ? "u" + Profile.UserId : "offline";
@@ -55,10 +59,11 @@ namespace Executor.Play
             IsOffline = false;
         }
 
-        /// <exception cref="ApiException">400 INVALID_INPUT, 409 DUPLICATE_EMAIL, 409 DUPLICATE_NICKNAME</exception>
-        public static async Task SignupAsync(string email, string password, string nickname)
+        /// <summary>회원가입 후 바로 로그인한다. 닉네임은 튜토리얼에서 정한다</summary>
+        /// <exception cref="ApiException">400 INVALID_INPUT, 409 DUPLICATE_EMAIL</exception>
+        public static async Task SignupAsync(string email, string password)
         {
-            await AuthApi.SignupAsync(email, password, nickname);
+            await AuthApi.SignupAsync(email, password);
             await LoginAsync(email, password);
         }
 
@@ -80,13 +85,20 @@ namespace Executor.Play
             if (IsOnline) Profile = await ProfileApi.GetMeAsync();
         }
 
-        /// <summary>집행자 이름 저장. 로그인 상태면 서버 프로필에 저장한다</summary>
-        /// <exception cref="ApiException">서버 저장 실패</exception>
-        public static async Task SetCharacterNameAsync(string name)
+        /// <summary>닉네임 중복 확인. 오프라인이면 항상 사용 가능</summary>
+        public static async Task<bool> IsNicknameAvailableAsync(string name)
+        {
+            if (!IsOnline) return true;
+            return await ProfileApi.IsNicknameAvailableAsync(name);
+        }
+
+        /// <summary>닉네임 저장. 로그인 상태면 서버 프로필에 저장한다</summary>
+        /// <exception cref="ApiException">409 DUPLICATE_NICKNAME, 400 INVALID_INPUT</exception>
+        public static async Task SetNicknameAsync(string name)
         {
             if (IsOnline)
             {
-                Profile = await ProfileApi.UpdateCharacterNameAsync(name);
+                Profile = await ProfileApi.UpdateNicknameAsync(name);
             }
             else
             {

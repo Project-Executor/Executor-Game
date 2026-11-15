@@ -31,9 +31,15 @@ namespace Executor.Play
         /// <summary>스테이지가 하나라도 있는지 (없으면 "준비 중")</summary>
         public bool IsAvailable => Stages.Count > 0;
 
-        /// <summary>챕터 스토리 = 첫 스테이지의 도입 나레이션 (이름 입력 단계 제외)</summary>
+        /// <summary>챕터 스토리 = 첫 스테이지의 도입 나레이션 (닉네임 입력 단계 제외)</summary>
         public List<StoryStep> Story => Stages.FirstOrDefault()?.Map.Story?.Intro?
-            .Where(s => s.Type != "inputCharacterName").ToList() ?? new List<StoryStep>();
+            .Where(s => !StoryTypes.IsNicknameInput(s.Type)).ToList() ?? new List<StoryStep>();
+    }
+
+    public static class StoryTypes
+    {
+        /// <summary>닉네임 입력 단계인지 (예전 맵의 inputCharacterName도 같은 단계로 본다)</summary>
+        public static bool IsNicknameInput(string type) => type == "inputNickname" || type == "inputCharacterName";
     }
 
     public static class ChapterCatalog

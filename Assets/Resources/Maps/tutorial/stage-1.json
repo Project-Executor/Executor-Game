@@ -75,7 +75,7 @@
           "text": "당신의 여정 속 모든 프로세스가 정상 종료되기를."
         },
         {
-          "type": "inputCharacterName",
+          "type": "inputNickname",
           "text": "집행자의 이름을 입력하십시오."
         }
       ]

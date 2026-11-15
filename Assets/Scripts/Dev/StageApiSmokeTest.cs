@@ -67,8 +67,9 @@ namespace Executor.Dev
             Debug.Log($"[StageApiSmokeTest] 시작: {ApiConfig.BaseUrl} / {email}");
             try
             {
-                await AuthApi.SignupAsync(email, Password, nickname);
+                await AuthApi.SignupAsync(email, Password);
                 var login = await AuthApi.LoginAsync(email, Password);
+                await ProfileApi.UpdateNicknameAsync(nickname);
                 loggedIn = true;
                 long myId = login.User.UserId;
 

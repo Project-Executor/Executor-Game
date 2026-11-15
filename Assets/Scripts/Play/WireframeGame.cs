@@ -100,13 +100,14 @@ namespace Executor.Play
         // ================= 메뉴 =================
         private void WireMenu()
         {
+            // 로그인(또는 오프라인)한 뒤에만 화면 클릭으로 메인에 들어간다
             _menu.OnTitleStart = () =>
             {
-                if (_menu.HasPopup) return;
-                if (PlayerSession.CanPlay) ShowMain(); else OpenLogin();
+                if (!_menu.HasPopup && PlayerSession.CanPlay) ShowMain();
             };
             _menu.OnTitleLogin = OpenLogin;
             _menu.OnTitleLogout = Logout;
+            _menu.OnTitleOffline = () => { PlayerSession.StartOffline(); ShowTitle(); };
             _menu.OnSettings = () => _menu.ShowSettings(PlayerSession.DisplayName, PlayerSession.IsOnline, Logout);
 
             _menu.OnProfile = ShowProfile;
@@ -135,15 +136,14 @@ namespace Executor.Play
             _mode = Mode.Title;
             Block();
             HideGame();
-            string account = PlayerSession.IsOnline ? $"로그인: {PlayerSession.Profile.Nickname}"
-                           : PlayerSession.IsOffline ? "오프라인 테스트 중" : "로그인하지 않았습니다";
-            _menu.ShowTitle(account, PlayerSession.IsOnline || PlayerSession.IsOffline);
+            string account = PlayerSession.IsOnline ? $"{PlayerSession.Profile.Nickname} 님으로 로그인" : "오프라인 테스트 중";
+            _menu.ShowTitle(PlayerSession.CanPlay, account, PlayerSession.IsOnline ? "로그아웃" : "오프라인 종료");
         }
 
         private void OpenLogin()
         {
-            _menu.ShowLogin(PlayerSession.LoginAsync, PlayerSession.SignupAsync, ShowMain,
-                () => { PlayerSession.StartOffline(); ShowMain(); });
+            // 로그인하면 시작 화면으로 돌아가고, 화면을 클릭해 메인으로 들어간다
+            _menu.ShowLogin(PlayerSession.LoginAsync, PlayerSession.SignupAsync, ShowTitle);
         }
 
         private async void Logout()

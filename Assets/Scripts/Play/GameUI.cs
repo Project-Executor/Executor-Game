@@ -18,7 +18,7 @@ namespace Executor.Play
     public class GameUI : MonoBehaviour
     {
         /// <summary>게임 화면 영역 (화면 비율 0~1, 왼쪽 아래 기준). 왼쪽 패널과 위쪽 버튼을 피한다</summary>
-        public static readonly Rect GameArea = new Rect(400f / 1920, 60f / 1080, 1460f / 1920, 900f / 1080);
+        public static readonly Rect GameArea = new Rect(552f / 1920, 64f / 1080, 1320f / 1920, 872f / 1080);
 
         private RectTransform _root;
         private RectTransform _popupRoot;
@@ -27,6 +27,7 @@ namespace Executor.Play
         private GameObject _hud;
         private Text _stageTitle, _turns, _keys, _quest;
         private Image _turnsBox;
+        private GameObject _keyBox;
         private Button _collect;
 
         // 안내
@@ -102,7 +103,9 @@ namespace Executor.Play
             _turns.text = remaining?.ToString() ?? "∞";
             _turns.color = remaining < 0 ? Bad : remaining == 0 ? Warn : TextColor;
             _turnsBox.color = remaining < 0 ? (Color)new Color32(0x3a, 0x14, 0x1c, 0xee) : PanelColor;
-            _keys.text = keys > 0 ? $"열쇠 {keys}" : "";
+            // 열쇠는 남은 턴 옆 작은 상자에 그림과 개수로 (가지고 있을 때만)
+            _keyBox.SetActive(keys > 0);
+            _keys.text = "×" + keys;
         }
 
         public void SetQuest(string text) => _quest.text = text;
@@ -249,19 +252,30 @@ namespace Executor.Play
 
             // 남은 턴 (왼쪽 위)
             var box = Panel(_hud.transform, "Turns", PanelColor, Line);
-            Place(box, new Vector2(0, 1), new Vector2(40, -40), new Vector2(320, 170), new Vector2(0, 1));
+            Place(box, new Vector2(0, 1), new Vector2(48, -48), new Vector2(312, 168), new Vector2(0, 1));
             _turnsBox = box.GetComponent<Image>();
             var label = Label(box, "남은 턴", 24, TextAnchor.UpperLeft, Muted);
             Stretch(label.rectTransform, 18);
             _turns = Label(box, "", 80, TextAnchor.MiddleCenter, bold: true);
             Stretch(_turns.rectTransform);
             _turns.rectTransform.offsetMax = new Vector2(0, -24);
-            _keys = Label(box, "", 22, TextAnchor.LowerRight, new Color32(0xff, 0xd2, 0x3f, 0xff));
-            Stretch(_keys.rectTransform, 14);
+
+            // 열쇠 (남은 턴 오른쪽 작은 상자, 열쇠가 있을 때만 보인다)
+            var keyBox = Panel(_hud.transform, "Keys", PanelColor, Line);
+            Place(keyBox, new Vector2(0, 1), new Vector2(384, -48), new Vector2(120, 120), new Vector2(0, 1));
+            _keyBox = keyBox.gameObject;
+            var keyIcon = new GameObject("Icon", typeof(RectTransform), typeof(Image)).GetComponent<Image>();
+            keyIcon.transform.SetParent(keyBox, false);
+            keyIcon.sprite = ArtCatalog.ForObject(Data.MapObjectTypes.Key);
+            keyIcon.preserveAspect = true;
+            keyIcon.raycastTarget = false;
+            Place(keyIcon, new Vector2(0.5f, 1), new Vector2(0, -12), new Vector2(72, 72), new Vector2(0.5f, 1));
+            _keys = Label(keyBox, "", 24, TextAnchor.LowerCenter, new Color32(0xff, 0xd2, 0x3f, 0xff), bold: true);
+            Stretch(_keys.rectTransform, 8);
 
             // 퀘스트 (그 아래)
             var quest = Panel(_hud.transform, "Quest", PanelColor, Line);
-            Place(quest, new Vector2(0, 1), new Vector2(40, -240), new Vector2(320, 360), new Vector2(0, 1));
+            Place(quest, new Vector2(0, 1), new Vector2(48, -240), new Vector2(312, 420), new Vector2(0, 1));
             var qTitle = Label(quest, "퀘스트", 26, TextAnchor.UpperLeft, bold: true);
             Stretch(qTitle.rectTransform, 18);
             _quest = Label(quest, "", 22, TextAnchor.UpperLeft);
@@ -271,24 +285,24 @@ namespace Executor.Play
 
             // 스테이지 이름 (위쪽, 게임 화면 가운데)
             _stageTitle = Label(_hud.transform, "", 28, TextAnchor.MiddleCenter, Muted, bold: true);
-            Place(_stageTitle, new Vector2(0.5f, 1), new Vector2(170, -30), new Vector2(900, 40));
+            Place(_stageTitle, new Vector2(0.5f, 1), new Vector2(252, -58), new Vector2(560, 40));
 
             // 수집 / 채팅 / 설정 (오른쪽 위)
             var settings = Button(_hud.transform, "설정", () => OnSettings?.Invoke(), 22);
-            Place(settings, new Vector2(1, 1), new Vector2(-40, -24), new Vector2(100, 56), new Vector2(1, 1));
+            Place(settings, new Vector2(1, 1), new Vector2(-48, -48), new Vector2(110, 60), new Vector2(1, 1));
             var chat = Button(_hud.transform, "채팅", () => OnChat?.Invoke(), 22);
-            Place(chat, new Vector2(1, 1), new Vector2(-152, -24), new Vector2(100, 56), new Vector2(1, 1));
+            Place(chat, new Vector2(1, 1), new Vector2(-182, -48), new Vector2(110, 60), new Vector2(1, 1));
             _collect = Button(_hud.transform, "수집 0/0", () => OnCollect?.Invoke(), 22);
-            Place(_collect, new Vector2(1, 1), new Vector2(-264, -24), new Vector2(160, 56), new Vector2(1, 1));
+            Place(_collect, new Vector2(1, 1), new Vector2(-316, -48), new Vector2(170, 60), new Vector2(1, 1));
 
             var help = Label(_hud.transform, "W A S D 이동 · E 대화 · R 다시 · Esc 메뉴", 22, TextAnchor.MiddleLeft, Muted);
-            Place(help, new Vector2(0, 0), new Vector2(40, 16), new Vector2(900, 36), new Vector2(0, 0));
+            Place(help, new Vector2(0, 0), new Vector2(48, 20), new Vector2(900, 36), new Vector2(0, 0));
         }
 
         private void BuildToast()
         {
             var panel = Panel(_root, "Toast", PanelColor, Line);
-            Place(panel, new Vector2(0.5f, 1), new Vector2(170, -100), new Vector2(1000, 100));
+            Place(panel, new Vector2(0.5f, 1), new Vector2(252, -150), new Vector2(1000, 100));
             _toast = panel.gameObject;
             _toastText = Label(panel, "", 26, TextAnchor.MiddleCenter);
             Stretch(_toastText.rectTransform, 20);

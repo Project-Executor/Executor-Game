@@ -14,9 +14,9 @@ namespace Executor.Play
     /// 빈 씬의 GameObject 하나에 붙이면 카메라·UI를 만든다 (메뉴 Executor > 와이어프레임 플레이 씬 만들기).
     /// <list type="bullet">
     ///   <item>로그인: 서버 계정 (자동 로그인 포함). 오프라인 테스트로도 들어갈 수 있다</item>
-    ///   <item>맵: Resources/Maps/tutorial/stage-N.json (Executor-Server docs/maps/tutorial 복사본)</item>
+    ///   <item>챕터: Resources/Maps/chapters.json, 맵: Resources/Maps/{챕터ID}/stage-N.json (ChapterCatalog)</item>
     ///   <item>턴: 남은 턴(parMoves - 쓴 턴)만 보여 주고, -1이 되면 실패</item>
-    ///   <item>튜토리얼 진행 기록은 계정별로 PC에 저장 (서버에 튜토리얼 등록 후 서버 기록으로 교체)</item>
+    ///   <item>진행 기록은 계정·챕터별로 PC에 저장 (StageProgress, 서버에 공식 스테이지 등록 후 서버 기록으로 교체)</item>
     /// </list>
     /// </summary>
     public class WireframeGame : MonoBehaviour
@@ -26,21 +26,14 @@ namespace Executor.Play
 
         private enum Mode { Title, Main, StageSelect, Story, Playing, Dialogue, Result }
 
-        private class StageFile
-        {
-            public int No;
-            public string Title;
-            public int Par;
-            public MapData Map;
-        }
-
-        private readonly List<StageFile> _stages = new List<StageFile>();
+        private List<ChapterInfo> _chapters = new List<ChapterInfo>();
+        private ChapterInfo _chapter;
         private MenuUI _menu;
         private GameUI _game;
         private BoardView _view;
         private Mode _mode;
 
-        private StageFile _stage;
+        private StageInfo _stage;
         private Board _board;
         private GuideTracker _guides;
         private readonly List<string> _questGuides = new List<string>();
@@ -81,18 +74,8 @@ namespace Executor.Play
 
         private void LoadStages()
         {
-            foreach (TextAsset file in Resources.LoadAll<TextAsset>("Maps/tutorial"))
-            {
-                var json = JObject.Parse(file.text);
-                _stages.Add(new StageFile
-                {
-                    No = json.Value<int>("stageNo"),
-                    Title = json.Value<string>("title"),
-                    Par = json.Value<int>("parMoves"),
-                    Map = MapData.From((JObject)json["mapData"]),
-                });
-            }
-            _stages.Sort((a, b) => a.No.CompareTo(b.No));
+            _chapters = ChapterCatalog.Load();
+            _chapter = _chapters.FirstOrDefault(c => c.IsAvailable) ?? _chapters.FirstOrDefault();
         }
 
         private void Block() => _blockInputFrame = Time.frameCount;
@@ -119,15 +102,23 @@ namespace Executor.Play
             _menu.OnStageBack = ShowMain;
             _menu.OnStageSelected = no =>
             {
-                StageFile s = _stages.FirstOrDefault(x => x.No == no);
-                if (s != null && TutorialProgress.IsUnlocked(no)) StartStage(s, true);
+                StageInfo s = _chapter?.Stages.FirstOrDefault(x => x.No == no);
+                if (s != null && StageProgress.IsStageUnlocked(_chapter, s)) StartStage(s, true);
             };
             _menu.OnProgress = ShowProgress;
-            _menu.OnScenario = () =>
+            _menu.OnScenario = ShowNavigator;
+            _menu.OnChapterSelected = id =>
             {
-                List<StoryStep> intro = _stages.FirstOrDefault()?.Map.Story?.Intro;
-                if (intro == null || intro.Count == 0) { _menu.ShowMessage("시나리오", "아직 시나리오가 없습니다."); return; }
-                PlayStory(intro.Where(s => s.Type != "inputCharacterName").ToList(), ShowStageSelect);
+                ChapterInfo c = _chapters.FirstOrDefault(x => x.Id == id);
+                if (c == null || !StageProgress.IsChapterUnlocked(_chapters, c)) return;
+                _chapter = c;
+                ShowStageSelect();
+            };
+            _menu.OnChapterStory = id =>
+            {
+                ChapterInfo c = _chapters.FirstOrDefault(x => x.Id == id);
+                if (c == null || c.Story.Count == 0) return;
+                PlayStory(c.Story, ShowStageSelect);
             };
         }
 
@@ -203,25 +194,49 @@ namespace Executor.Play
             _mode = Mode.StageSelect;
             Block();
             HideGame();
-            _menu.ShowStageSelect("튜토리얼 · 홀로그램 시뮬레이션", _stages.Select(s => new MenuUI.StageNode
+            if (_chapter == null) { _menu.ShowStageSelect("", "챕터 없음", new List<MenuUI.StageNode>()); return; }
+            _menu.ShowStageSelect(_chapter.Id, $"{_chapter.Title} · {_chapter.Subtitle}", _chapter.Stages.Select(s => new MenuUI.StageNode
             {
                 No = s.No,
                 Title = s.Title.Replace("시뮬레이션 ", ""),
-                Unlocked = TutorialProgress.IsUnlocked(s.No),
-                Cleared = TutorialProgress.IsCleared(s.No),
-                Detail = TutorialProgress.IsCleared(s.No) ? $"최고 {TutorialProgress.BestMoves(s.No)}턴 사용" : null,
+                Unlocked = StageProgress.IsStageUnlocked(_chapter, s),
+                Cleared = StageProgress.IsCleared(_chapter.Id, s.No),
+                Detail = StageProgress.IsCleared(_chapter.Id, s.No) ? $"최고 {StageProgress.BestMoves(_chapter.Id, s.No)}턴 사용" : null,
+            }).ToList());
+        }
+
+        /// <summary>시나리오 버튼: 오른쪽 챕터 내비게이터</summary>
+        private void ShowNavigator()
+        {
+            _menu.ShowNavigator(_chapters.Select(c =>
+            {
+                bool unlocked = StageProgress.IsChapterUnlocked(_chapters, c);
+                string status = !c.IsAvailable ? "준비 중"
+                              : !unlocked ? "잠김 · 앞 챕터를 모두 클리어하면 열립니다"
+                              : $"클리어 {StageProgress.ClearedCount(c)} / {c.Stages.Count}";
+                return new MenuUI.ChapterEntry
+                {
+                    Id = c.Id,
+                    Title = c.Title,
+                    Subtitle = c.Subtitle,
+                    Status = status,
+                    Selectable = c.IsAvailable && unlocked,
+                    HasStory = unlocked && c.Story.Count > 0,
+                    Current = c == _chapter,
+                };
             }).ToList());
         }
 
         private void ShowProgress()
         {
-            int cleared = _stages.Count(s => TutorialProgress.IsCleared(s.No));
-            var lines = new List<string> { $"클리어 {cleared} / {_stages.Count}", "" };
-            foreach (StageFile s in _stages)
+            if (_chapter == null || !_chapter.IsAvailable) { _menu.ShowMessage("진행 상황", "준비 중인 챕터입니다."); return; }
+            int cleared = StageProgress.ClearedCount(_chapter);
+            var lines = new List<string> { $"{_chapter.Title} · 클리어 {cleared} / {_chapter.Stages.Count}", "" };
+            foreach (StageInfo s in _chapter.Stages)
             {
-                string state = TutorialProgress.IsCleared(s.No)
-                    ? $"클리어 · 최소 {TutorialProgress.BestMoves(s.No)}턴 사용 (제한 {s.Par})"
-                    : TutorialProgress.IsUnlocked(s.No) ? "도전 가능" : "잠김";
+                string state = StageProgress.IsCleared(_chapter.Id, s.No)
+                    ? $"클리어 · 최소 {StageProgress.BestMoves(_chapter.Id, s.No)}턴 사용 (제한 {s.Par})"
+                    : StageProgress.IsStageUnlocked(_chapter, s) ? "도전 가능" : "잠김";
                 lines.Add($"{s.No}. {s.Title} — {state}");
             }
             _menu.ShowList("진행 상황", lines);
@@ -254,7 +269,7 @@ namespace Executor.Play
             });
         }
 
-        private void StartStage(StageFile stage, bool withIntro)
+        private void StartStage(StageInfo stage, bool withIntro)
         {
             Block();
             _stage = stage;
@@ -371,12 +386,21 @@ namespace Executor.Play
 
                 case Mode.StageSelect:
                     if (_menu.HasPopup) break;
+                    if (_menu.IsNavigatorOpen)
+                    {
+                        if (k.escapeKey.wasPressedThisFrame) _menu.CloseNavigator();
+                        break;
+                    }
                     if (k.escapeKey.wasPressedThisFrame) { ShowMain(); return; }
-                    for (int i = 0; i < _stages.Count && i < 9; i++)
+                    // 확대: + / - (숫자 패드 포함), 0 맞춤
+                    if (k.equalsKey.wasPressedThisFrame || k.numpadPlusKey.wasPressedThisFrame) _menu.ZoomStageMap(1.25f);
+                    if (k.minusKey.wasPressedThisFrame || k.numpadMinusKey.wasPressedThisFrame) _menu.ZoomStageMap(0.8f);
+                    if (k.digit0Key.wasPressedThisFrame || k.numpad0Key.wasPressedThisFrame) _menu.ZoomStageMap(1f);
+                    for (int i = 0; _chapter != null && i < _chapter.Stages.Count && i < 9; i++)
                     {
                         if (k[Key.Digit1 + i].wasPressedThisFrame || k[Key.Numpad1 + i].wasPressedThisFrame)
                         {
-                            _menu.OnStageSelected(_stages[i].No);
+                            _menu.OnStageSelected(_chapter.Stages[i].No);
                             return;
                         }
                     }
@@ -508,14 +532,14 @@ namespace Executor.Play
             }
 
             // TODO: 서버에 튜토리얼이 등록되면 StageApi.SubmitResultAsync(stageId, _board.ToResultRequest())
-            int best = TutorialProgress.BestMoves(_stage.No);
-            bool newBest = TutorialProgress.RecordClear(_stage.No, _board.Turns);
+            int best = StageProgress.BestMoves(_chapter.Id, _stage.No);
+            bool newBest = StageProgress.RecordClear(_chapter.Id, _stage.No, _board.Turns);
 
             void ShowResult()
             {
                 _mode = Mode.Result;
                 Block();
-                bool hasNext = _stages.Any(s => s.No > _stage.No);
+                bool hasNext = _chapter.Stages.Any(s => s.No > _stage.No);
                 var buttons = new List<(string, System.Action)>();
                 if (hasNext) buttons.Add(("다음 (Enter)", NextStage));
                 buttons.Add(("다시 (R)", () => StartStage(_stage, false)));
@@ -530,8 +554,8 @@ namespace Executor.Play
 
         private void NextStage()
         {
-            StageFile next = _stages.FirstOrDefault(s => s.No > _stage.No);
-            if (next != null && TutorialProgress.IsUnlocked(next.No)) StartStage(next, true);
+            StageInfo next = _chapter.Stages.FirstOrDefault(s => s.No > _stage.No);
+            if (next != null && StageProgress.IsStageUnlocked(_chapter, next)) StartStage(next, true);
             else ShowStageSelect();
         }
     }

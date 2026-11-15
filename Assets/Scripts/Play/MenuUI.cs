@@ -35,6 +35,15 @@ namespace Executor.Play
         private Button _titleLogin, _titleLogout, _titleOffline, _titleTouch;
         private Text _profileName, _profileCoin;
         private RectTransform _stageMap;
+        private Text _stageTitle;
+        private ZoomPan _zoom;
+        private string _shownChapter;
+
+        // 챕터 내비게이터 (오른쪽에서 밀려 나옴)
+        private const float NavWidth = 620;
+        private GameObject _navDim;
+        private RectTransform _nav, _navList;
+        private bool _navOpen;
 
         public bool HasPopup => _popupRoot.childCount > 0;
 
@@ -122,6 +131,14 @@ namespace Executor.Play
 
         private void Update()
         {
+            if (_nav != null)
+            {
+                float target = _navOpen ? 0 : NavWidth + 20;
+                var p = _nav.anchoredPosition;
+                p.x = Mathf.Lerp(p.x, target, 1f - Mathf.Exp(-Time.unscaledDeltaTime * 14f));
+                if (Mathf.Abs(p.x - target) < 0.5f) p.x = target;
+                _nav.anchoredPosition = p;
+            }
             if (_title != null && _title.activeSelf && _titleHint.gameObject.activeSelf)
             {
                 var c = _titleHint.color;
@@ -186,14 +203,40 @@ namespace Executor.Play
         public Action OnStageBack, OnProgress, OnScenario;
         public Action<int> OnStageSelected;
 
-        public void ShowStageSelect(string chapter, IReadOnlyList<StageNode> nodes)
+        /// <summary>챕터 내비게이터의 한 줄</summary>
+        public class ChapterEntry
+        {
+            public string Id;
+            public string Title;
+            public string Subtitle;
+            public string Status;
+            public bool Selectable;
+            public bool HasStory;
+            public bool Current;
+        }
+
+        public Action<string> OnChapterSelected, OnChapterStory;
+
+        public bool IsNavigatorOpen => _navOpen;
+
+        /// <param name="chapterTitle">챕터 제목 (위쪽 가운데)</param>
+        /// <param name="nodes">비어 있으면 "준비 중" 안내</param>
+        public void ShowStageSelect(string chapterId, string chapterTitle, IReadOnlyList<StageNode> nodes)
         {
             HideAll();
             _stage.SetActive(true);
+            CloseNavigator(true);
             Clear(_stageMap);
+            _stageTitle.text = chapterTitle;
+            if (_shownChapter != chapterId) _zoom.ResetView();
+            _shownChapter = chapterId;
 
-            var title = Label(_stageMap, chapter, 36, TextAnchor.MiddleCenter, bold: true);
-            Place(title, new Vector2(0.5f, 1), new Vector2(0, -Margin - 30), new Vector2(1000, 60));
+            if (nodes.Count == 0)
+            {
+                var empty = Label(_stageMap, "준비 중인 챕터입니다.\n시나리오에서 다른 챕터를 고를 수 있습니다.", 30, TextAnchor.MiddleCenter, Muted);
+                Stretch(empty.rectTransform);
+                return;
+            }
 
             // 지그재그 배치 (와이어프레임 stage 화면). 화면 가운데 띠 안에서 좌우 대칭
             float[] heights = { 400, 560, 450, 610, 420, 580, 470, 630 };
@@ -219,13 +262,30 @@ namespace Executor.Play
             }
         }
 
+        /// <summary>스테이지 지도 확대·축소 (키보드·버튼용). factor 1이면 원래 크기로</summary>
+        public void ZoomStageMap(float factor)
+        {
+            if (Mathf.Approximately(factor, 1f)) _zoom.ResetView(); else _zoom.ZoomBy(factor);
+        }
+
         private GameObject BuildStage()
         {
             var screen = Panel(_root, "StageSelect", Background);
             Stretch(screen);
+
+            // 확대 가능한 지도: 뷰포트(밖은 잘라 냄) 안의 Content를 키운다. 지도 좌표는 화면 전체 기준(1920x1080)
+            var viewport = Panel(screen, "Viewport", new Color(0, 0, 0, 0));
+            Stretch(viewport);
+            viewport.gameObject.AddComponent<RectMask2D>();
             _stageMap = new GameObject("Map", typeof(RectTransform)).GetComponent<RectTransform>();
-            _stageMap.SetParent(screen, false);
+            _stageMap.SetParent(viewport, false);
             Stretch(_stageMap);
+            _zoom = viewport.gameObject.AddComponent<ZoomPan>();
+            _zoom.Content = _stageMap;
+
+            _stageTitle = Label(screen, "", 36, TextAnchor.MiddleCenter, bold: true);
+            Place(_stageTitle, new Vector2(0.5f, 1), new Vector2(0, -Margin - 30), new Vector2(1000, 60));
+
             var back = Button(screen, "돌아가기", () => OnStageBack?.Invoke(), 26);
             Place(back, new Vector2(0, 1), new Vector2(Margin, -Margin), new Vector2(220, 72), new Vector2(0, 1));
             SettingsButton(screen, () => OnSettings?.Invoke());
@@ -233,7 +293,91 @@ namespace Executor.Play
             Place(scenario, new Vector2(1, 0), new Vector2(-Margin, Margin), new Vector2(280, 80), new Vector2(1, 0));
             var progress = Button(screen, "진행 상황", () => OnProgress?.Invoke(), 28);
             Place(progress, new Vector2(1, 0), new Vector2(-Margin, Margin + 80 + Gap), new Vector2(280, 80), new Vector2(1, 0));
+
+            // 확대 버튼 (왼쪽 아래)
+            float x = Margin;
+            foreach (var (label, factor) in new[] { ("+", 1.25f), ("−", 0.8f), ("맞춤", 1f) })
+            {
+                float f = factor;
+                var z = Button(screen, label, () => ZoomStageMap(f), label == "맞춤" ? 22 : 34);
+                float w = label == "맞춤" ? 100 : 72;
+                Place(z, new Vector2(0, 0), new Vector2(x, Margin), new Vector2(w, 72), new Vector2(0, 0));
+                x += w + 12;
+            }
+            var zoomHelp = Label(screen, "휠·+/− 확대, 드래그 이동, 0 맞춤", 20, TextAnchor.MiddleLeft, Muted);
+            Place(zoomHelp, new Vector2(0, 0), new Vector2(Margin, Margin + 72 + 8), new Vector2(500, 30), new Vector2(0, 0));
+
+            BuildNavigator(screen);
             return screen.gameObject;
+        }
+
+        // ---------------- 챕터 내비게이터 ----------------
+        private void BuildNavigator(Transform screen)
+        {
+            var dim = Panel(screen, "NavDim", new Color(0, 0, 0, 0.45f));
+            Stretch(dim);
+            var dimButton = dim.gameObject.AddComponent<Button>();
+            dimButton.transition = Selectable.Transition.None;
+            dimButton.onClick.AddListener(() => CloseNavigator());
+            _navDim = dim.gameObject;
+
+            _nav = Panel(screen, "Navigator", PanelColor, Line);
+            _nav.anchorMin = new Vector2(1, 0);
+            _nav.anchorMax = new Vector2(1, 1);
+            _nav.pivot = new Vector2(1, 0.5f);
+            _nav.sizeDelta = new Vector2(NavWidth, 0);
+            _nav.anchoredPosition = new Vector2(NavWidth + 20, 0);
+            var title = Label(_nav, "챕터", 36, TextAnchor.MiddleLeft, bold: true);
+            Place(title, new Vector2(0, 1), new Vector2(40, -Margin), new Vector2(300, 60), new Vector2(0, 1));
+            var close = Button(_nav, "닫기", () => CloseNavigator(), 24);
+            Place(close, new Vector2(1, 1), new Vector2(-32, -Margin), new Vector2(120, 60), new Vector2(1, 1));
+            _navList = new GameObject("List", typeof(RectTransform)).GetComponent<RectTransform>();
+            _navList.SetParent(_nav, false);
+            Stretch(_navList);
+            _navList.offsetMin = new Vector2(40, 40);
+            _navList.offsetMax = new Vector2(-40, -(Margin + 90));
+            _navDim.SetActive(false);
+        }
+
+        /// <summary>오른쪽에서 챕터 내비게이터를 밀어 넣는다</summary>
+        public void ShowNavigator(IReadOnlyList<ChapterEntry> chapters)
+        {
+            Clear(_navList);
+            float y = 0;
+            foreach (ChapterEntry c in chapters)
+            {
+                Color color = c.Current ? new Color32(0x1c, 0x3a, 0x52, 0xff)
+                            : c.Selectable ? ButtonColor : new Color32(0x22, 0x26, 0x2e, 0xff);
+                string id = c.Id;
+                var row = Button(_navList, "", () => { CloseNavigator(); OnChapterSelected?.Invoke(id); }, 24, color);
+                row.interactable = c.Selectable;
+                Place(row, new Vector2(0.5f, 1), new Vector2(0, y), new Vector2(NavWidth - 80, 140));
+                var rowText = row.GetComponentInChildren<Text>();
+                rowText.alignment = TextAnchor.UpperLeft;
+                rowText.fontSize = 30;
+                rowText.text = c.Title + (c.Current ? "  · 현재" : "");
+                rowText.rectTransform.offsetMin = new Vector2(24, 16);
+                rowText.rectTransform.offsetMax = new Vector2(-24, -18);
+                var sub = Label(row.transform, c.Subtitle + "\n" + c.Status, 22, TextAnchor.LowerLeft, Muted);
+                Stretch(sub.rectTransform);
+                sub.rectTransform.offsetMin = new Vector2(24, 16);
+                sub.rectTransform.offsetMax = new Vector2(-150, -16);
+                if (c.HasStory)
+                {
+                    var story = Button(row.transform, "스토리", () => { CloseNavigator(); OnChapterStory?.Invoke(id); }, 22);
+                    Place(story, new Vector2(1, 0), new Vector2(-16, 16), new Vector2(120, 52), new Vector2(1, 0));
+                }
+                y -= 140 + Gap;
+            }
+            _navDim.SetActive(true);
+            _navOpen = true;
+        }
+
+        public void CloseNavigator(bool immediate = false)
+        {
+            _navOpen = false;
+            if (_navDim != null) _navDim.SetActive(false);
+            if (immediate && _nav != null) _nav.anchoredPosition = new Vector2(NavWidth + 20, 0);
         }
 
         private static void DashedLine(Transform parent, Vector2 a, Vector2 b, bool active)

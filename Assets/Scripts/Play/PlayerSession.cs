@@ -98,28 +98,4 @@ namespace Executor.Play
         /// <summary>오프라인 이름 초기화 (테스트용)</summary>
         public static void ClearOfflineName() => PlayerPrefs.DeleteKey(OfflineNameKey);
     }
-
-    /// <summary>튜토리얼 진행 기록 (계정별, PC 저장). 서버에 튜토리얼이 등록되면 서버 기록으로 바꾼다</summary>
-    public static class TutorialProgress
-    {
-        private static string Key(int stageNo) => $"executor.{PlayerSession.ProgressPrefix}.tutorial.best.{stageNo}";
-
-        /// <summary>최소 사용 턴. 클리어 기록이 없으면 0</summary>
-        public static int BestMoves(int stageNo) => PlayerPrefs.GetInt(Key(stageNo), 0);
-
-        public static bool IsCleared(int stageNo) => BestMoves(stageNo) > 0;
-
-        /// <summary>1스테이지는 처음부터, 나머지는 앞 스테이지를 클리어하면 열린다</summary>
-        public static bool IsUnlocked(int stageNo) => stageNo <= 1 || IsCleared(stageNo - 1);
-
-        /// <returns>최고 기록을 갱신했으면 true</returns>
-        public static bool RecordClear(int stageNo, int moves)
-        {
-            int best = BestMoves(stageNo);
-            if (best != 0 && best <= moves) return false;
-            PlayerPrefs.SetInt(Key(stageNo), moves);
-            PlayerPrefs.Save();
-            return true;
-        }
-    }
 }

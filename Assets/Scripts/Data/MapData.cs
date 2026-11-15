@@ -72,7 +72,7 @@ namespace Executor.Data
         /// 없으면 Speaker 이름으로 인물을 찾고 표정은 default (Resources/Portraits/{인물ID}/{표정}.png)
         /// </summary>
         public string Portrait { get; set; }
-        /// <summary>{characterName}은 집행자 이름으로 바꿔 보여 준다</summary>
+        /// <summary>{nickname}은 내 닉네임으로 바꿔 보여 준다</summary>
         public string Text { get; set; }
         /// <summary>선택지가 없을 때 다음 노드. null이면 대화 끝</summary>
         public string Next { get; set; }
@@ -111,7 +111,7 @@ namespace Executor.Data
         public List<StoryStep> Outro { get; set; } = new List<StoryStep>();
     }
 
-    /// <summary>Type: narration (나레이션 한 줄) / inputCharacterName (집행자 이름 입력, 이미 있으면 건너뜀)</summary>
+    /// <summary>Type: narration (나레이션 한 줄) / inputNickname (닉네임 입력 + 중복 확인, 이미 있으면 건너뜀)</summary>
     public class StoryStep
     {
         public string Type { get; set; }

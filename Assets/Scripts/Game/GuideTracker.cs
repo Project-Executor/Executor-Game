@@ -15,13 +15,13 @@ namespace Executor.Game
     public class GuideTracker
     {
         private readonly Board _board;
-        private readonly string _characterName;
+        private readonly string _nickname;
         private readonly HashSet<GuideData> _shown = new HashSet<GuideData>();
 
-        public GuideTracker(Board board, string characterName = null)
+        public GuideTracker(Board board, string nickname = null)
         {
             _board = board;
-            _characterName = characterName;
+            _nickname = nickname;
         }
 
         /// <summary>시작할 때 보여 줄 안내 (start, 그리고 시작 위치에서 이미 가까운 near)</summary>
@@ -58,7 +58,7 @@ namespace Executor.Game
             {
                 if (_shown.Contains(guide) || !match(guide)) continue;
                 _shown.Add(guide);
-                texts.Add(TextFormat.Apply(guide.Text, _characterName));
+                texts.Add(TextFormat.Apply(guide.Text, _nickname));
             }
             return texts;
         }

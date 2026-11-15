@@ -1,0 +1,16 @@
+{
+  "chapters": [
+    {
+      "id": "tutorial",
+      "title": "튜토리얼",
+      "subtitle": "홀로그램 시뮬레이션",
+      "maps": "Maps/tutorial"
+    },
+    {
+      "id": "chapter1",
+      "title": "Chapter 1",
+      "subtitle": "첫 발령지",
+      "maps": "Maps/chapter1"
+    }
+  ]
+}

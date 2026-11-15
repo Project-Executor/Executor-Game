@@ -2,7 +2,7 @@
   "stageNo": 4,
   "stageType": "TUTORIAL",
   "title": "시뮬레이션 4: 인물",
-  "parMoves": 8,
+  "parMoves": 12,
   "rewardCoin": 10,
   "mapData": {
     "version": 1,
@@ -49,7 +49,7 @@
         "nodes": {
           "n1": {
             "speaker": "연구원",
-            "text": "아, 깨어났군요. {characterName} 집행자님, 맞으시죠?",
+            "text": "아, 깨어났군요. {nickname} 집행자님, 맞으시죠?",
             "next": "n2"
           },
           "n2": {

@@ -15,17 +15,15 @@ namespace Executor.Data
     {
         /// <summary>이메일 형식, 최대 255자</summary>
         public string Email { get; set; }
-        /// <summary>8~64자</summary>
+        /// <summary>8~64자 (재입력 확인은 클라이언트에서)</summary>
         public string Password { get; set; }
-        /// <summary>2~20자</summary>
-        public string Nickname { get; set; }
     }
 
+    /// <summary>닉네임은 가입 후 첫 로그인 때 튜토리얼에서 정한다</summary>
     public class SignupResponse
     {
         public long UserId { get; set; }
         public string Email { get; set; }
-        public string Nickname { get; set; }
     }
 
     public class LoginRequest
@@ -49,8 +47,8 @@ namespace Executor.Data
         public string Nickname { get; set; }
         /// <summary>USER / ADMIN</summary>
         public string Role { get; set; }
-        /// <summary>false면 튜토리얼의 집행자 이름 입력 단계로 보낸다</summary>
-        public bool HasCharacterName { get; set; }
+        /// <summary>false면(가입 후 아직 닉네임을 정하지 않음) 바로 튜토리얼 1스테이지로 보내 닉네임을 입력받는다</summary>
+        public bool HasNickname { get; set; }
     }
 
     public class ReissueRequest
@@ -66,6 +64,12 @@ namespace Executor.Data
     }
 
     public class EmailCheckResponse
+    {
+        public bool Available { get; set; }
+    }
+
+    /// <summary>GET /profiles/check-nickname</summary>
+    public class NicknameCheckResponse
     {
         public bool Available { get; set; }
     }

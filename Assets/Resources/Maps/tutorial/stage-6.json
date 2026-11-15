@@ -2,7 +2,7 @@
   "stageNo": 6,
   "stageType": "TUTORIAL",
   "title": "시뮬레이션 6: 종합",
-  "parMoves": 29,
+  "parMoves": 44,
   "rewardCoin": 50,
   "mapData": {
     "version": 1,
@@ -65,7 +65,7 @@
         "nodes": {
           "n1": {
             "speaker": "감독관",
-            "text": "{characterName} 집행자님, 훈련은 여기까지입니다.",
+            "text": "{nickname} 집행자님, 훈련은 여기까지입니다.",
             "next": "n2"
           },
           "n2": {
@@ -100,7 +100,7 @@
         },
         {
           "type": "narration",
-          "text": "{characterName} 집행자, 첫 발령지로 이동합니다."
+          "text": "{nickname} 집행자, 첫 발령지로 이동합니다."
         }
       ]
     },

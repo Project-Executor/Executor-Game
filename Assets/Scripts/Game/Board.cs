@@ -89,11 +89,25 @@ namespace Executor.Game
         public int Turns { get; private set; }
         public bool IsCleared { get; private set; }
 
+        /// <summary>턴 제한 (스테이지 parMoves). null이면 제한 없음</summary>
+        public int? TurnLimit { get; }
+
+        /// <summary>남은 턴 = 턴 제한 - 쓴 턴. 0까지는 계속할 수 있고 -1이 되면 실패. 제한이 없으면 null</summary>
+        public int? RemainingTurns => TurnLimit - Turns;
+
+        /// <summary>남은 턴이 -1이 되어 실패했는지. 그 입력으로 출구에 들어갔어도 실패</summary>
+        public bool IsFailed { get; private set; }
+
+        /// <summary>클리어하거나 실패해서 더는 입력을 받지 않는지</summary>
+        public bool IsOver => IsCleared || IsFailed;
+
         /// <summary>모든 오브젝트 (IsRemoved 포함). 화면을 처음 그릴 때 쓴다</summary>
         public IReadOnlyList<BoardObject> Objects => _objects;
 
-        public Board(MapData data)
+        /// <param name="turnLimit">턴 제한 (스테이지 parMoves). null이면 제한 없음</param>
+        public Board(MapData data, int? turnLimit = null)
         {
+            TurnLimit = turnLimit;
             Data = data ?? throw new ArgumentNullException(nameof(data));
             Width = data.Width;
             Height = data.Height;
@@ -118,11 +132,22 @@ namespace Executor.Game
         /// <summary>가진 열쇠 전체 (keyId -> 개수)</summary>
         public IReadOnlyDictionary<string, int> Keys => _keys;
 
-        /// <summary>W·A·S·D 입력 하나를 처리한다</summary>
+        /// <summary>W·A·S·D 입력 하나를 처리한다. 턴을 써서 남은 턴이 -1이 되면 IsFailed (클리어도 취소)</summary>
         public MoveResult Move(Direction direction)
         {
+            MoveResult result = MoveCore(direction);
+            if (result.UsedTurn && Turns > TurnLimit)
+            {
+                IsFailed = true;
+                IsCleared = false;
+            }
+            return result;
+        }
+
+        private MoveResult MoveCore(Direction direction)
+        {
             GridPos from = PlayerPos;
-            if (IsCleared) return new MoveResult(MoveOutcome.Blocked, direction, from, from, null);
+            if (IsOver) return new MoveResult(MoveOutcome.Blocked, direction, from, from, null);
 
             GridPos to = from + direction.Delta();
             if (IsWall(to)) return new MoveResult(MoveOutcome.Blocked, direction, from, from, null);
@@ -196,7 +221,7 @@ namespace Executor.Game
             return true;
         }
 
-        /// <summary>결과 제출 요청. 클리어 전이면 실패(게임 오버·포기)로 보낸다</summary>
+        /// <summary>결과 제출 요청. 클리어하지 못했으면(턴 초과·포기 포함) 실패로 보낸다</summary>
         public StageResultRequest ToResultRequest(IEnumerable<long> encounteredGuidebookIds = null) => new StageResultRequest
         {
             Cleared = IsCleared,

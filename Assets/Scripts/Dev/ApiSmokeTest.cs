@@ -48,12 +48,12 @@ namespace Executor.Dev
             {
                 Check("이메일 중복 확인 (사용 가능)", await AuthApi.IsEmailAvailableAsync(email));
 
-                var signup = await AuthApi.SignupAsync(email, Password, nickname);
+                var signup = await AuthApi.SignupAsync(email, Password);
                 Check("회원가입", signup.UserId > 0, $"userId={signup.UserId}");
 
                 try
                 {
-                    await AuthApi.SignupAsync(email, Password, nickname + "x");
+                    await AuthApi.SignupAsync(email, Password);
                     Check("같은 이메일 다시 가입 -> 409", false);
                 }
                 catch (ApiException e)
@@ -74,7 +74,12 @@ namespace Executor.Dev
                 var login = await AuthApi.LoginAsync(email, Password);
                 loggedIn = true;
                 Check("로그인", !string.IsNullOrEmpty(login.AccessToken) && TokenStore.HasSession,
-                    $"hasCharacterName={login.User.HasCharacterName}, 만료 {login.AccessTokenExpiresIn}초");
+                    $"hasNickname={login.User.HasNickname}, 만료 {login.AccessTokenExpiresIn}초");
+                Check("가입 직후에는 닉네임 없음", !login.User.HasNickname && login.User.Nickname == null);
+
+                Check("닉네임 중복 확인 (사용 가능)", await ProfileApi.IsNicknameAvailableAsync(nickname));
+                await ProfileApi.UpdateNicknameAsync(nickname);
+                Check("닉네임 중복 확인 (이미 사용 중)", !await ProfileApi.IsNicknameAvailableAsync(nickname));
 
                 var me = await ProfileApi.GetMeAsync();
                 Check("내 프로필 (한글 포함 응답)", me.Nickname == nickname && me.Email == email,

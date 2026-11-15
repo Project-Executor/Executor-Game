@@ -7,10 +7,11 @@ namespace Executor.Network
     /// <summary>회원가입·로그인·로그아웃·탈퇴 (/api/auth, /api/users/me)</summary>
     public static class AuthApi
     {
-        /// <exception cref="ApiException">400 INVALID_INPUT, 409 DUPLICATE_EMAIL, 409 DUPLICATE_NICKNAME</exception>
-        public static Task<SignupResponse> SignupAsync(string email, string password, string nickname) =>
+        /// <summary>회원가입 (이메일 + 비밀번호). 닉네임은 로그인 후 ProfileApi.UpdateNicknameAsync로 정한다</summary>
+        /// <exception cref="ApiException">400 INVALID_INPUT, 409 DUPLICATE_EMAIL</exception>
+        public static Task<SignupResponse> SignupAsync(string email, string password) =>
             ApiClient.PostAsync<SignupResponse>("/auth/signup",
-                new SignupRequest { Email = email, Password = password, Nickname = nickname }, auth: false);
+                new SignupRequest { Email = email, Password = password }, auth: false);
 
         /// <summary>로그인하고 토큰을 저장한다</summary>
         /// <exception cref="ApiException">401 INVALID_CREDENTIALS</exception>

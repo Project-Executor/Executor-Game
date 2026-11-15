@@ -2,7 +2,7 @@
   "stageNo": 2,
   "stageType": "TUTORIAL",
   "title": "시뮬레이션 2: 장애물",
-  "parMoves": 12,
+  "parMoves": 18,
   "rewardCoin": 10,
   "mapData": {
     "version": 1,

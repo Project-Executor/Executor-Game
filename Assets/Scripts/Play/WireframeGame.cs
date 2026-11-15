@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Executor.Data;
 using Executor.Game;
+using Executor.Network;
 using Newtonsoft.Json.Linq;
 using UnityEngine;
 using UnityEngine.InputSystem;
@@ -9,21 +10,21 @@ using UnityEngine.InputSystem;
 namespace Executor.Play
 {
     /// <summary>
-    /// 와이어프레임 플레이 (서버 없이 오프라인).
-    /// 빈 씬의 GameObject 하나에 붙이면 카메라·UI를 만들고 튜토리얼 6개를 플레이할 수 있다.
-    /// 메뉴 Executor > 와이어프레임 플레이 씬 만들기 로 씬을 자동 생성할 수 있다.
+    /// 와이어프레임 앱 흐름: 시작 화면 → 메인 화면 → 스테이지 선택 → 게임.
+    /// 빈 씬의 GameObject 하나에 붙이면 카메라·UI를 만든다 (메뉴 Executor > 와이어프레임 플레이 씬 만들기).
     /// <list type="bullet">
+    ///   <item>로그인: 서버 계정 (자동 로그인 포함). 오프라인 테스트로도 들어갈 수 있다</item>
     ///   <item>맵: Resources/Maps/tutorial/stage-N.json (Executor-Server docs/maps/tutorial 복사본)</item>
-    ///   <item>그래픽: ArtCatalog 경로에 이미지를 넣으면 임시 상자 대신 그 이미지를 쓴다</item>
-    ///   <item>집행자 이름·최고 기록은 PlayerPrefs에만 저장 (서버 연동은 이후 작업)</item>
+    ///   <item>턴: 남은 턴(parMoves - 쓴 턴)만 보여 주고, -1이 되면 실패</item>
+    ///   <item>튜토리얼 진행 기록은 계정별로 PC에 저장 (서버에 튜토리얼 등록 후 서버 기록으로 교체)</item>
     /// </list>
     /// </summary>
     public class WireframeGame : MonoBehaviour
     {
-        private const string NameKey = "executor.characterName";
-        private const float ClearDelay = 0.35f;
+        private const float EndDelay = 0.35f;
+        private const string DefaultQuest = "목표: 출구(문 아이콘)에 도착하기";
 
-        private enum Mode { Select, Story, Playing, Dialogue, Result }
+        private enum Mode { Title, Main, StageSelect, Story, Playing, Dialogue, Result }
 
         private class StageFile
         {
@@ -34,28 +35,24 @@ namespace Executor.Play
         }
 
         private readonly List<StageFile> _stages = new List<StageFile>();
-        private GameUI _ui;
+        private MenuUI _menu;
+        private GameUI _game;
         private BoardView _view;
         private Mode _mode;
 
         private StageFile _stage;
         private Board _board;
         private GuideTracker _guides;
+        private readonly List<string> _questGuides = new List<string>();
         private DialogueSession _dialogue;
         private bool _choicesShown;
-        private float _clearAt = -1;
-        // 화면이 바뀐 프레임에는 입력을 받지 않는다 (버튼 클릭이 '다음'으로도 잡히는 것 방지)
+        private float _endAt = -1;
         private int _blockInputFrame = -1;
 
         private List<StoryStep> _story;
         private int _storyIndex;
         private System.Action _afterStory;
-
-        private static string CharacterName
-        {
-            get => PlayerPrefs.GetString(NameKey, "");
-            set { PlayerPrefs.SetString(NameKey, value); PlayerPrefs.Save(); }
-        }
+        private bool _savingName;
 
         private void Start()
         {
@@ -65,10 +62,21 @@ namespace Executor.Play
                 cam.GetComponent<Camera>().orthographic = true;
             }
             _view = new GameObject("Board").AddComponent<BoardView>();
-            _ui = new GameObject("UI").AddComponent<GameUI>();
-            _ui.Build();
+            _menu = new GameObject("MenuUI").AddComponent<MenuUI>();
+            _menu.Build();
+            _game = new GameObject("GameUI").AddComponent<GameUI>();
+            _game.Build();
+            WireMenu();
+            WireGame();
+            ApiClient.SessionExpired += () => { if (_mode != Mode.Title) ShowTitle(); };
             LoadStages();
-            ShowSelect();
+            ShowTitle();
+            RestoreLogin();
+        }
+
+        private async void RestoreLogin()
+        {
+            if (await PlayerSession.TryRestoreAsync() && _mode == Mode.Title) ShowTitle();
         }
 
         private void LoadStages()
@@ -87,61 +95,206 @@ namespace Executor.Play
             _stages.Sort((a, b) => a.No.CompareTo(b.No));
         }
 
-        // ---------------- 스테이지 선택 ----------------
-        private void ShowSelect()
+        private void Block() => _blockInputFrame = Time.frameCount;
+
+        // ================= 메뉴 =================
+        private void WireMenu()
         {
-            _blockInputFrame = Time.frameCount;
-            _mode = Mode.Select;
-            _board = null;
-            _view.gameObject.SetActive(false);
-            string name = string.IsNullOrEmpty(CharacterName) ? "아직 없음 (1스테이지에서 입력)" : CharacterName;
-            _ui.ShowSelect($"집행자 이름: {name}",
-                _stages.Select(s =>
-                {
-                    int best = PlayerPrefs.GetInt(BestKey(s.No), 0);
-                    string mark = best > 0 ? $"   ✓ 최고 {best}턴" : "";
-                    return ($"{s.No}. {s.Title}{mark}", (System.Action)(() => StartStage(s, true)));
-                }));
+            _menu.OnTitleStart = () =>
+            {
+                if (_menu.HasPopup) return;
+                if (PlayerSession.CanPlay) ShowMain(); else OpenLogin();
+            };
+            _menu.OnTitleLogin = OpenLogin;
+            _menu.OnTitleLogout = Logout;
+            _menu.OnSettings = () => _menu.ShowSettings(PlayerSession.DisplayName, PlayerSession.IsOnline, Logout);
+
+            _menu.OnProfile = ShowProfile;
+            _menu.OnMail = () => _menu.ShowMessage("우편", "우편함은 준비 중입니다.\n(서버 우편 API 연동 예정)");
+            _menu.OnShop = () => _menu.ShowMessage("상점", "상점은 준비 중입니다.\n(서버 상점 API 연동 예정)");
+            _menu.OnStages = ShowStageSelect;
+            _menu.OnMainBack = ShowTitle;
+
+            _menu.OnStageBack = ShowMain;
+            _menu.OnStageSelected = no =>
+            {
+                StageFile s = _stages.FirstOrDefault(x => x.No == no);
+                if (s != null && TutorialProgress.IsUnlocked(no)) StartStage(s, true);
+            };
+            _menu.OnProgress = ShowProgress;
+            _menu.OnScenario = () =>
+            {
+                List<StoryStep> intro = _stages.FirstOrDefault()?.Map.Story?.Intro;
+                if (intro == null || intro.Count == 0) { _menu.ShowMessage("시나리오", "아직 시나리오가 없습니다."); return; }
+                PlayStory(intro.Where(s => s.Type != "inputCharacterName").ToList(), ShowStageSelect);
+            };
         }
 
-        private static string BestKey(int no) => $"executor.tutorial.best.{no}";
+        private void ShowTitle()
+        {
+            _mode = Mode.Title;
+            Block();
+            HideGame();
+            string account = PlayerSession.IsOnline ? $"로그인: {PlayerSession.Profile.Nickname}"
+                           : PlayerSession.IsOffline ? "오프라인 테스트 중" : "로그인하지 않았습니다";
+            _menu.ShowTitle(account, PlayerSession.IsOnline || PlayerSession.IsOffline);
+        }
 
-        // ---------------- 스테이지 시작 ----------------
+        private void OpenLogin()
+        {
+            _menu.ShowLogin(PlayerSession.LoginAsync, PlayerSession.SignupAsync, ShowMain,
+                () => { PlayerSession.StartOffline(); ShowMain(); });
+        }
+
+        private async void Logout()
+        {
+            await PlayerSession.LogoutAsync();
+            ShowTitle();
+        }
+
+        private async void ShowMain()
+        {
+            _mode = Mode.Main;
+            Block();
+            HideGame();
+            ShowMainProfile();
+            if (PlayerSession.IsOnline)
+            {
+                try
+                {
+                    await PlayerSession.RefreshProfileAsync();
+                    if (_mode == Mode.Main) ShowMainProfile();
+                }
+                catch (ApiException e)
+                {
+                    Debug.LogWarning("[WireframeGame] 프로필 갱신 실패: " + e);
+                }
+            }
+        }
+
+        private void ShowMainProfile()
+        {
+            string coin = PlayerSession.IsOnline ? $"코인 {PlayerSession.Profile.Coin}" : "오프라인 (서버 기록 없음)";
+            _menu.ShowMain(PlayerSession.DisplayName, coin);
+        }
+
+        private void ShowProfile()
+        {
+            if (!PlayerSession.IsOnline)
+            {
+                _menu.ShowList("프로필", new[] { "오프라인 테스트 중입니다.", $"집행자 이름: {NameOrDash(PlayerSession.CharacterName)}" });
+                return;
+            }
+            MyProfileResponse p = PlayerSession.Profile;
+            _menu.ShowList("프로필", new[]
+            {
+                $"닉네임: {p.Nickname}",
+                $"집행자 이름: {NameOrDash(p.CharacterName)}",
+                $"코인: {p.Coin}",
+                $"이메일: {p.Email}",
+                $"자기소개: {NameOrDash(p.Comment)}",
+            });
+        }
+
+        private static string NameOrDash(string s) => string.IsNullOrEmpty(s) ? "-" : s;
+
+        private void ShowStageSelect()
+        {
+            _mode = Mode.StageSelect;
+            Block();
+            HideGame();
+            _menu.ShowStageSelect("튜토리얼 · 홀로그램 시뮬레이션", _stages.Select(s => new MenuUI.StageNode
+            {
+                No = s.No,
+                Title = s.Title.Replace("시뮬레이션 ", ""),
+                Unlocked = TutorialProgress.IsUnlocked(s.No),
+                Cleared = TutorialProgress.IsCleared(s.No),
+                Detail = TutorialProgress.IsCleared(s.No) ? $"최고 {TutorialProgress.BestMoves(s.No)}턴 사용" : null,
+            }).ToList());
+        }
+
+        private void ShowProgress()
+        {
+            int cleared = _stages.Count(s => TutorialProgress.IsCleared(s.No));
+            var lines = new List<string> { $"클리어 {cleared} / {_stages.Count}", "" };
+            foreach (StageFile s in _stages)
+            {
+                string state = TutorialProgress.IsCleared(s.No)
+                    ? $"클리어 · 최소 {TutorialProgress.BestMoves(s.No)}턴 사용 (제한 {s.Par})"
+                    : TutorialProgress.IsUnlocked(s.No) ? "도전 가능" : "잠김";
+                lines.Add($"{s.No}. {s.Title} — {state}");
+            }
+            _menu.ShowList("진행 상황", lines);
+        }
+
+        private void HideGame()
+        {
+            _board = null;
+            _view.gameObject.SetActive(false);
+            _game.HideAll();
+        }
+
+        // ================= 게임 =================
+        private void WireGame()
+        {
+            _game.OnSettings = ShowPauseMenu;
+            _game.OnChat = () => _game.ShowMessage("채팅", "채팅은 준비 중입니다.\n(친구 메시지 API 연동 예정)");
+            _game.OnCollect = () => _game.ShowMessage("수집", "이 스테이지에는 수집 요소가 없습니다.\n(숨겨진 요소는 본 스테이지에서 추가)");
+        }
+
+        private void ShowPauseMenu()
+        {
+            if (_board == null || _game.HasPopup) return;
+            _game.ShowMenu("일시 정지", new (string, System.Action)[]
+            {
+                ("계속하기", null),
+                ("다시 하기 (R)", () => StartStage(_stage, false)),
+                ("스테이지 선택", ShowStageSelect),
+                ("메인으로", ShowMain),
+            });
+        }
+
         private void StartStage(StageFile stage, bool withIntro)
         {
-            _blockInputFrame = Time.frameCount;
+            Block();
             _stage = stage;
-            _board = new Board(stage.Map);
-            _guides = new GuideTracker(_board, CharacterName);
+            _board = new Board(stage.Map, stage.Par);
+            _guides = new GuideTracker(_board, PlayerSession.CharacterName);
+            _questGuides.Clear();
             _dialogue = null;
-            _clearAt = -1;
-            _ui.HideAll();
+            _endAt = -1;
+            _menu.HideAll();
+            _game.HideAll();
             _view.gameObject.SetActive(true);
             _view.Build(_board);
-            _ui.ShowHud($"{stage.No}. {stage.Title}");
-            UpdateStats();
+            _game.ShowHud($"{stage.No}. {stage.Title}", DefaultQuest, 0, 0);
+            UpdateHud();
 
-            if (withIntro && stage.Map.Story?.Intro?.Count > 0)
-            {
-                PlayStory(stage.Map.Story.Intro, BeginPlay);
-            }
-            else
-            {
-                BeginPlay();
-            }
+            if (withIntro && stage.Map.Story?.Intro?.Count > 0) PlayStory(stage.Map.Story.Intro, BeginPlay);
+            else BeginPlay();
         }
 
         private void BeginPlay()
         {
             _mode = Mode.Playing;
-            foreach (string text in _guides.OnStart()) _ui.Toast(text);
+            Block();
+            _guides = new GuideTracker(_board, PlayerSession.CharacterName);
+            ShowGuides(_guides.OnStart());
         }
 
-        private void UpdateStats()
+        private void ShowGuides(IReadOnlyList<string> texts)
         {
-            int keys = _board.Keys.Values.Sum();
-            _ui.SetStats($"턴 {_board.Turns}   기준 {_stage.Par}   열쇠 {keys}");
+            foreach (string text in texts)
+            {
+                _game.Toast(text);
+                _questGuides.Add(text);
+            }
+            if (texts.Count == 0) return;
+            // 퀘스트 패널: 목표 + 최근 안내 2개
+            _game.SetQuest(DefaultQuest + "\n\n" + string.Join("\n\n", _questGuides.Skip(System.Math.Max(0, _questGuides.Count - 2))));
         }
+
+        private void UpdateHud() => _game.SetTurns(_board.RemainingTurns, _board.Keys.Values.Sum());
 
         // ---------------- 나레이션 ----------------
         private void PlayStory(List<StoryStep> steps, System.Action after)
@@ -150,95 +303,114 @@ namespace Executor.Play
             _storyIndex = -1;
             _afterStory = after;
             _mode = Mode.Story;
-            _blockInputFrame = Time.frameCount;
+            Block();
             NextStoryStep();
         }
 
         private void NextStoryStep()
         {
             _storyIndex++;
-            // 이름이 이미 있으면 이름 입력은 건너뛴다
             while (_storyIndex < _story.Count && _story[_storyIndex].Type == "inputCharacterName"
-                   && !string.IsNullOrEmpty(CharacterName))
+                   && !string.IsNullOrEmpty(PlayerSession.CharacterName))
             {
                 _storyIndex++;
             }
             if (_storyIndex >= _story.Count)
             {
-                _ui.HideNarration();
+                _game.HideNarration();
                 _afterStory?.Invoke();
                 return;
             }
             StoryStep step = _story[_storyIndex];
-            bool askName = step.Type == "inputCharacterName";
-            _ui.ShowNarration(TextFormat.Apply(step.Text, CharacterName), askName, CharacterName);
+            _game.ShowNarration(TextFormat.Apply(step.Text, PlayerSession.CharacterName),
+                step.Type == "inputCharacterName", PlayerSession.CharacterName);
         }
 
         private bool AskingName => _mode == Mode.Story && _storyIndex < _story.Count
                                    && _story[_storyIndex].Type == "inputCharacterName";
+
+        private async void SubmitName()
+        {
+            string input = _game.NameInput;
+            if (_savingName || input.Length < 1 || input.Length > 20) return;
+            _savingName = true;
+            _game.SetNarrationHint("저장 중...");
+            try
+            {
+                await PlayerSession.SetCharacterNameAsync(input);
+                NextStoryStep();
+            }
+            catch (ApiException e)
+            {
+                _game.SetNarrationHint("저장하지 못했습니다: " + e.Message);
+            }
+            finally
+            {
+                _savingName = false;
+            }
+        }
 
         // ---------------- 입력 ----------------
         private void Update()
         {
             Keyboard k = Keyboard.current;
             if (k == null || Time.frameCount == _blockInputFrame) return;
-            bool next = k.eKey.wasPressedThisFrame || k.spaceKey.wasPressedThisFrame || k.enterKey.wasPressedThisFrame
-                        || k.numpadEnterKey.wasPressedThisFrame
+            bool enter = k.enterKey.wasPressedThisFrame || k.numpadEnterKey.wasPressedThisFrame;
+            bool next = k.eKey.wasPressedThisFrame || k.spaceKey.wasPressedThisFrame || enter
                         || (Mouse.current != null && Mouse.current.leftButton.wasPressedThisFrame);
 
             switch (_mode)
             {
-                case Mode.Select:
+                case Mode.Title:
+                    if (!_menu.HasPopup && (enter || k.spaceKey.wasPressedThisFrame)) _menu.OnTitleStart();
+                    break;
+
+                case Mode.Main:
+                    if (!_menu.HasPopup && k.escapeKey.wasPressedThisFrame) ShowTitle();
+                    break;
+
+                case Mode.StageSelect:
+                    if (_menu.HasPopup) break;
+                    if (k.escapeKey.wasPressedThisFrame) { ShowMain(); return; }
                     for (int i = 0; i < _stages.Count && i < 9; i++)
                     {
                         if (k[Key.Digit1 + i].wasPressedThisFrame || k[Key.Numpad1 + i].wasPressedThisFrame)
                         {
-                            StartStage(_stages[i], true);
+                            _menu.OnStageSelected(_stages[i].No);
                             return;
                         }
                     }
-                    if (k.nKey.wasPressedThisFrame) { PlayerPrefs.DeleteKey(NameKey); ShowSelect(); }
                     break;
 
                 case Mode.Story:
-                    if (AskingName)
-                    {
-                        if (k.enterKey.wasPressedThisFrame || k.numpadEnterKey.wasPressedThisFrame)
-                        {
-                            string input = _ui.NameInput;
-                            if (input.Length >= 1 && input.Length <= 20)
-                            {
-                                CharacterName = input;
-                                _guides = new GuideTracker(_board, CharacterName);
-                                NextStoryStep();
-                            }
-                        }
-                    }
-                    else if (next)
-                    {
-                        NextStoryStep();
-                    }
+                    if (AskingName) { if (enter) SubmitName(); }
+                    else if (next) NextStoryStep();
                     break;
 
                 case Mode.Playing:
-                    if (k.escapeKey.wasPressedThisFrame) { ShowSelect(); return; }
-                    if (k.rKey.wasPressedThisFrame) { StartStage(_stage, false); return; }
-                    if (_clearAt >= 0)
+                    if (_game.HasPopup)
                     {
-                        if (Time.time >= _clearAt) FinishStage();
+                        if (k.escapeKey.wasPressedThisFrame) _game.ClosePopups();
                         return;
                     }
+                    if (_endAt >= 0)
+                    {
+                        if (Time.time >= _endAt) FinishStage();
+                        return;
+                    }
+                    if (k.escapeKey.wasPressedThisFrame) { ShowPauseMenu(); return; }
+                    if (k.rKey.wasPressedThisFrame) { StartStage(_stage, false); return; }
                     if (k.eKey.wasPressedThisFrame) { TryTalk(); return; }
                     if (Pressed(k, out Direction dir)) Move(dir);
                     break;
 
                 case Mode.Dialogue:
-                    if (_dialogue.HasChoices && !_ui.IsTyping)
+                    if (_dialogue.HasChoices && !_game.IsTyping)
                     {
                         if (!_choicesShown)
                         {
                             _choicesShown = true;
-                            _ui.ShowChoices(_dialogue.Choices.Select(c => c.Text).ToList(), Choose);
+                            _game.ShowChoices(_dialogue.Choices.Select(c => c.Text).ToList(), Choose);
                         }
                         for (int i = 0; i < _dialogue.Choices.Count && i < 9; i++)
                         {
@@ -251,15 +423,15 @@ namespace Executor.Play
                     }
                     else if (next)
                     {
-                        if (_ui.IsTyping) _ui.CompleteLine();
+                        if (_game.IsTyping) _game.CompleteLine();
                         else { _dialogue.Advance(); ShowDialogueNode(); }
                     }
                     break;
 
                 case Mode.Result:
                     if (k.rKey.wasPressedThisFrame) StartStage(_stage, false);
-                    else if (k.escapeKey.wasPressedThisFrame) ShowSelect();
-                    else if (k.enterKey.wasPressedThisFrame || k.numpadEnterKey.wasPressedThisFrame) NextStage();
+                    else if (k.escapeKey.wasPressedThisFrame) ShowStageSelect();
+                    else if (enter && _board != null && _board.IsCleared) NextStage();
                     break;
             }
         }
@@ -279,65 +451,77 @@ namespace Executor.Play
         {
             MoveResult result = _board.Move(dir);
             if (result.UsedTurn) _view.Sync(); else _view.Bump(dir);
-            foreach (string text in _guides.AfterMove(result)) _ui.Toast(text);
-            if (result.Outcome == MoveOutcome.PickedUpKey) _ui.Toast("열쇠를 얻었습니다.");
-            UpdateStats();
-            if (_board.IsCleared) _clearAt = Time.time + ClearDelay;
+            ShowGuides(_guides.AfterMove(result));
+            if (result.Outcome == MoveOutcome.PickedUpKey) _game.Toast("열쇠를 얻었습니다.");
+            UpdateHud();
+            if (_board.IsOver) _endAt = Time.time + EndDelay;
         }
 
         private void TryTalk()
         {
             BoardObject npc = _board.TalkableNpc;
             if (npc == null) return;
-            _dialogue = new DialogueSession(_board, npc, CharacterName);
+            _dialogue = new DialogueSession(_board, npc, PlayerSession.CharacterName);
             _mode = Mode.Dialogue;
             ShowDialogueNode();
         }
 
         private void Choose(int index)
         {
-            if (_mode != Mode.Dialogue || _dialogue == null || _dialogue.IsFinished) return;
-            if (_ui.IsTyping) return;
+            if (_mode != Mode.Dialogue || _dialogue == null || _dialogue.IsFinished || _game.IsTyping) return;
             _dialogue.Choose(index);
             ShowDialogueNode();
         }
 
         private void ShowDialogueNode()
         {
+            Block();
             if (_dialogue.IsFinished)
             {
-                _ui.HideDialogue();
-                foreach (string keyId in _dialogue.GivenKeys) _ui.Toast("열쇠를 받았습니다.");
+                _game.HideDialogue();
+                if (_dialogue.GivenKeys.Count > 0) _game.Toast("열쇠를 받았습니다.");
                 _dialogue = null;
                 _mode = Mode.Playing;
-                UpdateStats();
+                UpdateHud();
                 return;
             }
             _choicesShown = false;
-            _blockInputFrame = Time.frameCount;
             Sprite portrait = ArtCatalog.Portrait(_dialogue.Current.Portrait, _dialogue.Speaker, out string characterId);
-            _ui.ShowLine(_dialogue.Speaker, _dialogue.Text, portrait, characterId == "player", _dialogue.Speaker);
-            UpdateStats();
+            _game.ShowLine(_dialogue.Speaker, _dialogue.Text, portrait, characterId == "player", _dialogue.Speaker);
+            UpdateHud();
         }
 
-        // ---------------- 클리어 ----------------
+        // ---------------- 끝 ----------------
         private void FinishStage()
         {
-            _clearAt = -1;
-            int best = PlayerPrefs.GetInt(BestKey(_stage.No), 0);
-            bool newBest = best == 0 || _board.Turns < best;
-            if (newBest) { PlayerPrefs.SetInt(BestKey(_stage.No), _board.Turns); PlayerPrefs.Save(); }
+            _endAt = -1;
+            if (_board.IsFailed)
+            {
+                _mode = Mode.Result;
+                Block();
+                _game.ShowResult($"실패\n\n{_stage.Title}\n남은 턴이 없습니다.", false, new (string, System.Action)[]
+                {
+                    ("다시 (R)", () => StartStage(_stage, false)),
+                    ("스테이지 선택 (Esc)", ShowStageSelect),
+                });
+                return;
+            }
+
+            // TODO: 서버에 튜토리얼이 등록되면 StageApi.SubmitResultAsync(stageId, _board.ToResultRequest())
+            int best = TutorialProgress.BestMoves(_stage.No);
+            bool newBest = TutorialProgress.RecordClear(_stage.No, _board.Turns);
 
             void ShowResult()
             {
                 _mode = Mode.Result;
+                Block();
                 bool hasNext = _stages.Any(s => s.No > _stage.No);
                 var buttons = new List<(string, System.Action)>();
                 if (hasNext) buttons.Add(("다음 (Enter)", NextStage));
                 buttons.Add(("다시 (R)", () => StartStage(_stage, false)));
-                buttons.Add(("목록 (Esc)", ShowSelect));
-                _ui.ShowResult($"클리어!\n\n{_stage.Title}\n턴 {_board.Turns} / 기준 {_stage.Par}" +
-                               (newBest ? "\n최고 기록" : $"\n최고 {best}턴"), buttons);
+                buttons.Add(("스테이지 선택 (Esc)", ShowStageSelect));
+                _game.ShowResult($"클리어!\n\n{_stage.Title}\n남은 턴 {_board.RemainingTurns} · {_board.Turns}턴 사용" +
+                                 (newBest ? "\n최고 기록" : $"\n최고 {best}턴 사용"), true, buttons);
             }
 
             if (_stage.Map.Story?.Outro?.Count > 0) PlayStory(_stage.Map.Story.Outro, ShowResult);
@@ -347,7 +531,8 @@ namespace Executor.Play
         private void NextStage()
         {
             StageFile next = _stages.FirstOrDefault(s => s.No > _stage.No);
-            if (next != null) StartStage(next, true); else ShowSelect();
+            if (next != null && TutorialProgress.IsUnlocked(next.No)) StartStage(next, true);
+            else ShowStageSelect();
         }
     }
 }

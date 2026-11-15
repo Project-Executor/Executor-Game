@@ -41,7 +41,7 @@ public static class Program
             var stage = JObject.Parse(File.ReadAllText(Path.Combine(dir, $"stage-{no}.json")));
             var map = MapData.From((JObject)stage["mapData"]);
             int par = stage.Value<int>("parMoves");
-            var board = new Board(map);
+            var board = new Board(map, par);
             var guides = new GuideTracker(board, "오집행");
             int guideCount = guides.OnStart().Count;
             int talks = 0;
@@ -62,10 +62,11 @@ public static class Program
                 if (!r.UsedTurn) { Check($"stage {no}: 풀이 중 막힘", false, $"{c} at {board.PlayerPos}"); break; }
                 guideCount += guides.AfterMove(r).Count;
             }
-            Check($"stage {no} {stage.Value<string>("title")}", board.IsCleared && board.Turns == par,
-                $"턴 {board.Turns}/par {par}, 대화 {talks}, 안내 {guideCount}/{map.Guides.Count}");
+            int min = Solutions[no].Count(ch => ch != 'T');
+            Check($"stage {no} {stage.Value<string>("title")}", board.IsCleared && board.Turns == min && board.RemainingTurns == par - min,
+                $"최소 {board.Turns}턴, 제한 {par}, 남은 턴 {board.RemainingTurns}, 대화 {talks}, 안내 {guideCount}/{map.Guides.Count}");
             var result = board.ToResultRequest();
-            Check($"stage {no} 결과 제출 요청", result.Cleared && result.Moves == par);
+            Check($"stage {no} 결과 제출 요청", result.Cleared && result.Moves == min);
         }
 
         Console.WriteLine("== 이동 규칙");
@@ -188,6 +189,20 @@ public static class Program
         Check("pickup 안내 (이름 치환)", g.AfterMove(b.Move(Direction.Right)).SequenceEqual(new[] { "오집행 획득" }));
         b.Move(Direction.Left);
         Check("같은 안내는 다시 안 나옴", g.AfterMove(b.Move(Direction.Right)).Count == 0);
+
+        // 턴 제한: 남은 턴 0까지는 계속, -1이면 실패
+        b = new Board(Map(new[] { "######", "#....#", "######" }, Obj("e", MapObjectTypes.Exit, 4, 1)), 2);
+        b.Move(Direction.Right); b.Move(Direction.Up);
+        Check("막힌 입력은 남은 턴이 줄지 않음", b.RemainingTurns == 1 && !b.IsFailed);
+        b.Move(Direction.Right);
+        Check("남은 턴 0 -> 계속", b.RemainingTurns == 0 && !b.IsFailed && !b.IsOver);
+        r = b.Move(Direction.Right);
+        Check("남은 턴 -1 -> 출구에 들어가도 실패", b.IsFailed && !b.IsCleared && b.RemainingTurns == -1);
+        Check("실패 후 입력 무시, 결과는 실패", b.Move(Direction.Left).Outcome == MoveOutcome.Blocked && !b.ToResultRequest().Cleared);
+        b = new Board(Map(new[] { "#####", "#...#", "#####" }, Obj("e", MapObjectTypes.Exit, 3, 1)), 2);
+        b.Move(Direction.Right); b.Move(Direction.Right);
+        Check("남은 턴 0으로 출구 -> 클리어", b.IsCleared && !b.IsFailed && b.RemainingTurns == 0);
+        Check("제한 없는 판은 남은 턴 null", new Board(Map(new[] { "###", "#.#", "###" })).RemainingTurns == null);
 
         // 모르는 type은 지나간다
         b = new Board(Map(new[] { "####", "#..#", "####" }, Obj("x", "bot", 2, 1)));

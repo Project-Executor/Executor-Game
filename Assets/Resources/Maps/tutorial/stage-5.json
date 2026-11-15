@@ -2,7 +2,7 @@
   "stageNo": 5,
   "stageType": "TUTORIAL",
   "title": "시뮬레이션 5: 종료",
-  "parMoves": 20,
+  "parMoves": 30,
   "rewardCoin": 10,
   "mapData": {
     "version": 1,

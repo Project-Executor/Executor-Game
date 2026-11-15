@@ -105,17 +105,20 @@ namespace Executor.Play
             return sr;
         }
 
+        /// <summary>맵 전체(+여백 반 칸)가 GameUI.GameArea 안에 들어오도록 카메라 크기·위치를 맞춘다</summary>
         private void FitCamera()
         {
             Camera cam = Camera.main;
             if (cam == null) return;
             cam.orthographic = true;
-            // 위쪽 HUD(1칸)와 아래쪽 여백(1칸)을 남기고 맵 전체가 들어오게
-            float halfHeight = _board.Height / 2f + 1.5f;
-            float halfWidth = _board.Width / 2f + 1f;
-            cam.orthographicSize = Mathf.Max(halfHeight, halfWidth / cam.aspect);
-            cam.transform.position = new Vector3((_board.Width - 1) / 2f, (_board.Height - 1) / 2f, -10f);
-            cam.backgroundColor = new Color32(0x0b, 0x12, 0x1c, 0xff);
+            Rect area = GameUI.GameArea;
+            float aspect = cam.aspect;
+            float size = Mathf.Max((_board.Height + 1f) / (2f * area.height), (_board.Width + 1f) / (2f * aspect * area.width));
+            cam.orthographicSize = size;
+            var mapCenter = new Vector2((_board.Width - 1) / 2f, (_board.Height - 1) / 2f);
+            var offset = new Vector2((area.center.x - 0.5f) * 2f * size * aspect, (area.center.y - 0.5f) * 2f * size);
+            cam.transform.position = new Vector3(mapCenter.x - offset.x, mapCenter.y - offset.y, -10f);
+            cam.backgroundColor = new Color32(0x2a, 0x2f, 0x37, 0xff);
             cam.clearFlags = CameraClearFlags.SolidColor;
         }
 

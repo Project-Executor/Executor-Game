@@ -2,7 +2,7 @@
   "stageNo": 4,
   "stageType": "TUTORIAL",
   "title": "시뮬레이션 4: 인물",
-  "parMoves": 8,
+  "parMoves": 12,
   "rewardCoin": 10,
   "mapData": {
     "version": 1,

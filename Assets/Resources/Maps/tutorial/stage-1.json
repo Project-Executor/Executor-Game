@@ -2,7 +2,7 @@
   "stageNo": 1,
   "stageType": "TUTORIAL",
   "title": "시뮬레이션 1: 이동",
-  "parMoves": 22,
+  "parMoves": 33,
   "rewardCoin": 10,
   "mapData": {
     "version": 1,

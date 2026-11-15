@@ -2,7 +2,7 @@
   "stageNo": 3,
   "stageType": "TUTORIAL",
   "title": "시뮬레이션 3: 열쇠",
-  "parMoves": 16,
+  "parMoves": 24,
   "rewardCoin": 10,
   "mapData": {
     "version": 1,

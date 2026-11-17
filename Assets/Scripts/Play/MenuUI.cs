@@ -71,6 +71,27 @@ namespace Executor.Play
 
         public void ClosePopups() => Clear(_popupRoot);
 
+        /// <summary>
+        /// 일러스트를 parent 영역에 꽉 채워 깐다 (비율 유지, 넘치는 부분은 잘림). parent의 첫 자식이라 다른 요소 뒤에 그려진다.
+        /// sprite가 null이면 아무것도 하지 않는다
+        /// </summary>
+        private static void Cover(RectTransform parent, Sprite sprite)
+        {
+            if (sprite == null) return;
+            parent.gameObject.AddComponent<RectMask2D>();
+            var go = new GameObject("Illustration", typeof(RectTransform), typeof(Image), typeof(AspectRatioFitter));
+            go.transform.SetParent(parent, false);
+            go.transform.SetAsFirstSibling();
+            var image = go.GetComponent<Image>();
+            image.sprite = sprite;
+            image.raycastTarget = false;
+            var rt = (RectTransform)go.transform;
+            rt.anchorMin = rt.anchorMax = new Vector2(0.5f, 0.5f);
+            var fitter = go.GetComponent<AspectRatioFitter>();
+            fitter.aspectMode = AspectRatioFitter.AspectMode.EnvelopeParent;
+            fitter.aspectRatio = sprite.rect.width / sprite.rect.height;
+        }
+
         private static Button SettingsButton(Transform parent, Action onClick)
         {
             var b = Button(parent, "설정", onClick, 26);
@@ -103,6 +124,7 @@ namespace Executor.Play
         {
             var screen = Panel(_root, "Title", Background);
             Stretch(screen);
+            Cover(screen, ArtCatalog.Illustration("title"));
             // 준비되면 화면 아무 데나 클릭해서 시작 (다른 버튼보다 뒤에 깔린 투명 버튼)
             _titleTouch = screen.gameObject.AddComponent<Button>();
             _titleTouch.transition = Selectable.Transition.None;
@@ -112,6 +134,19 @@ namespace Executor.Play
             Place(logo, new Vector2(0.5f, 0.5f), new Vector2(0, 150), new Vector2(760, 300));
             var logoText = Label(logo, "EXECUTOR\n집행자", 72, TextAnchor.MiddleCenter, bold: true);
             Stretch(logoText.rectTransform);
+            // 로고 이미지가 있으면 임시 상자 대신 쓴다 (비율 유지)
+            Sprite logoArt = ArtCatalog.Illustration("title_logo");
+            if (logoArt != null)
+            {
+                var logoImage = logo.GetComponent<Image>();
+                logoImage.sprite = logoArt;
+                logoImage.color = Color.white;
+                logoImage.preserveAspect = true;
+                logoImage.raycastTarget = false;
+                logoText.gameObject.SetActive(false);
+                var outline = logo.GetComponent<Outline>();
+                if (outline != null) outline.enabled = false;
+            }
 
             _titleLogin = Button(screen, "로그인", () => OnTitleLogin?.Invoke(), 34);
             Place(_titleLogin, new Vector2(0.5f, 0.5f), new Vector2(0, -150), new Vector2(380, 96));
@@ -195,6 +230,12 @@ namespace Executor.Play
             Place(art, new Vector2(0.5f, 0.5f), new Vector2(0, 0), new Vector2(1120, 600));
             var artText = Label(art, "시나리오에 따른 화면 일러스트\n(이미지 자리)", 30, TextAnchor.MiddleCenter, Muted);
             Stretch(artText.rectTransform);
+            Sprite mainArt = ArtCatalog.Illustration("main");
+            if (mainArt != null)
+            {
+                artText.gameObject.SetActive(false);
+                Cover(art, mainArt);
+            }
 
             // 아래쪽 줄: 시작 화면(왼쪽), 스테이지(오른쪽)
             var back = Button(screen, "시작 화면", () => OnMainBack?.Invoke(), 24);

@@ -142,7 +142,7 @@ namespace Executor.Play
             _menu.OnSettings = () => _menu.ShowSettings(PlayerSession.DisplayName, PlayerSession.IsOnline, Logout);
 
             _menu.OnProfile = ShowProfile;
-            _menu.OnMail = () => _menu.ShowMessage("우편", "우편함은 준비 중입니다.\n(서버 우편 API 연동 예정)");
+            _menu.OnMail = OpenMailbox;
             _menu.OnNotice = OpenNotices;
             _menu.OnShop = () => _menu.ShowMessage("상점", "상점은 준비 중입니다.\n(서버 상점 API 연동 예정)");
             _menu.OnStages = ShowStageSelect;
@@ -219,12 +219,114 @@ namespace Executor.Play
                 {
                     await PlayerSession.RefreshProfileAsync();
                     if (_mode == Mode.Main) ShowMainProfile();
+                    RefreshMailCount();
                 }
                 catch (ApiException e)
                 {
                     Debug.LogWarning("[WireframeGame] 프로필 갱신 실패: " + e);
                 }
             }
+        }
+
+        // ---------------- 우편함 ----------------
+        private List<MailResponse> _mails = new List<MailResponse>();
+
+        /// <summary>메인 화면 우편 버튼의 받지 않은 우편 수를 갱신한다</summary>
+        private async void RefreshMailCount()
+        {
+            if (!PlayerSession.IsOnline) { _menu.SetMailCount(0); return; }
+            try
+            {
+                _mails = (await MailApi.GetMailsAsync()).Content;
+                _menu.SetMailCount(_mails.Count(m => !m.Claimed));
+            }
+            catch (ApiException e)
+            {
+                Debug.LogWarning("[WireframeGame] 우편 수를 불러오지 못했습니다: " + e.Message);
+            }
+        }
+
+        private async void OpenMailbox()
+        {
+            if (!PlayerSession.IsOnline)
+            {
+                _menu.ShowMessage("우편", "로그인해야 우편함을 쓸 수 있습니다.");
+                return;
+            }
+            try
+            {
+                _mails = (await MailApi.GetMailsAsync()).Content;
+                if (_mode != Mode.Main) return;
+                _menu.SetMailCount(_mails.Count(m => !m.Claimed));
+                _menu.ClosePopups();
+                _menu.ShowMailbox(_mails, OpenMail, ClaimAllMail);
+            }
+            catch (ApiException e)
+            {
+                _menu.ShowMessage("우편", e.IsNetworkError ? "서버에 연결할 수 없어 우편을 불러오지 못했습니다." : e.Message);
+            }
+        }
+
+        private void OpenMail(MailResponse mail)
+        {
+            _menu.ClosePopups();
+            _menu.ShowMail(mail, () => ClaimMail(mail));
+        }
+
+        private async void ClaimMail(MailResponse mail)
+        {
+            try
+            {
+                MailClaimResponse res = await MailApi.ClaimAsync(mail.MailId);
+                ApplyCoin(res.TotalCoin);
+                var parts = new List<string>();
+                if (res.RewardCoin > 0) parts.Add($"코인 {res.RewardCoin}");
+                if (res.RewardItem != null) parts.Add($"{mail.RewardItem?.Name ?? "아이템"} ×{res.RewardItem.Quantity}");
+                if (res.ConvertedCoin > 0) parts.Add($"이미 가진 아이템이라 코인 {res.ConvertedCoin}으로 바꿈");
+                _menu.ClosePopups();
+                _menu.ShowMessage("우편 받기", (parts.Count > 0 ? "받았습니다.\n" + string.Join("\n", parts) : "받았습니다.")
+                                             + $"\n\n보유 코인 {res.TotalCoin}");
+            }
+            catch (ApiException e)
+            {
+                _menu.ClosePopups();
+                _menu.ShowMessage("우편 받기", e.IsNetworkError ? "서버에 연결할 수 없습니다." : e.Message);
+            }
+            RefreshMailCount();
+        }
+
+        private async void ClaimAllMail()
+        {
+            try
+            {
+                MailClaimAllResponse res = await MailApi.ClaimAllAsync();
+                ApplyCoin(res.TotalCoin);
+                var lines = new List<string> { $"{res.ClaimedCount}통을 받았습니다." };
+                if (res.RewardCoin > 0) lines.Add($"코인 {res.RewardCoin}");
+                foreach (ClaimedItem item in res.RewardItems)
+                {
+                    string name = _mails.FirstOrDefault(m => m.RewardItem?.ItemId == item.ItemId)?.RewardItem?.Name ?? "아이템";
+                    lines.Add($"{name} ×{item.Quantity}");
+                }
+                if (res.ConvertedCoin > 0) lines.Add($"이미 가진 아이템은 코인 {res.ConvertedCoin}으로 바꿈");
+                lines.Add("");
+                lines.Add($"보유 코인 {res.TotalCoin}");
+                _menu.ClosePopups();
+                _menu.ShowMessage("모두 받기", string.Join("\n", lines));
+            }
+            catch (ApiException e)
+            {
+                _menu.ClosePopups();
+                _menu.ShowMessage("모두 받기", e.IsNetworkError ? "서버에 연결할 수 없습니다." : e.Message);
+            }
+            RefreshMailCount();
+        }
+
+        /// <summary>보유 코인을 바꾸고 메인 화면에 반영한다</summary>
+        private void ApplyCoin(int totalCoin)
+        {
+            if (PlayerSession.Profile != null) PlayerSession.Profile.Coin = totalCoin;
+            if (_mode == Mode.Main) ShowMainProfile();
         }
 
         /// <summary>공지 목록 (로그인 없이 조회). 서버에 닿지 못하면 안내만 한다</summary>

@@ -36,6 +36,7 @@ namespace Executor.Play
         private Text _titleAccount, _titleHint;
         private Button _titleLogin, _titleLogout, _titleOffline, _titleTouch;
         private Text _profileName, _profileCoin;
+        private Button _mailButton;
         private RectTransform _stageMap;
         private Text _stageTitle;
         private ZoomPan _zoom;
@@ -223,6 +224,7 @@ namespace Executor.Play
             {
                 var b = Button(screen, label, action, 26);
                 Place(b, new Vector2(0, 1), new Vector2(Margin, y), SettingsSize, new Vector2(0, 1));
+                if (label == "우편") _mailButton = b;
                 y -= 120 + Gap;
             }
 
@@ -447,6 +449,78 @@ namespace Executor.Play
             Popup(_popupRoot, title, new Vector2(760, 360), out RectTransform body);
             var t = Label(body, text, 28, TextAnchor.MiddleCenter);
             Stretch(t.rectTransform);
+        }
+
+        /// <summary>메인 화면 우편 버튼에 받지 않은 우편 수를 표시한다 (0이면 "우편"만)</summary>
+        public void SetMailCount(int unclaimed)
+        {
+            if (_mailButton == null) return;
+            SetButtonText(_mailButton, unclaimed > 0 ? $"우편\n({unclaimed})" : "우편");
+            var label = _mailButton.GetComponentInChildren<Text>();
+            if (label != null) label.color = unclaimed > 0 ? Warn : TextColor;
+        }
+
+        /// <summary>우편함 팝업: 최신순 목록(누르면 자세히) + 모두 받기</summary>
+        public void ShowMailbox(IReadOnlyList<Data.MailResponse> mails, Action<Data.MailResponse> onOpen, Action onClaimAll)
+        {
+            int unclaimed = mails.Count(m => !m.Claimed);
+            Popup(_popupRoot, $"우편함 · 받지 않은 우편 {unclaimed}통", new Vector2(1100, 820), out RectTransform body);
+            if (mails.Count == 0)
+            {
+                var empty = Label(body, "우편이 없습니다.", 28, TextAnchor.MiddleCenter, Muted);
+                Stretch(empty.rectTransform);
+                return;
+            }
+            float y = 0;
+            foreach (var m in mails.Take(6))
+            {
+                var mail = m;
+                string state = m.Claimed ? "받음" : "받기 전";
+                string expiry = m.ExpiresAt == null ? "무기한" : $"~{m.ExpiresAt.Value.ToLocalTime():MM.dd HH:mm}";
+                var b = Button(body, $"{m.Title}\n{m.RewardText} · {expiry} · {state}", () => onOpen(mail), 22,
+                    m.Claimed ? new Color32(0x1a, 0x1e, 0x25, 0xff) : (Color32?)null);
+                var text = b.GetComponentInChildren<Text>();
+                text.alignment = TextAnchor.MiddleLeft;
+                text.rectTransform.offsetMin = new Vector2(24, 0);
+                if (m.Claimed) text.color = Muted;
+                Place(b, new Vector2(0, 1), new Vector2(0, y), new Vector2(1020, 88), new Vector2(0, 1));
+                y -= 98;
+            }
+            if (mails.Count > 6)
+            {
+                var more = Label(body, $"외 {mails.Count - 6}통 (최근 6통만 표시, 모두 받기는 전부 받습니다)", 20, TextAnchor.UpperLeft, Muted);
+                Place(more, new Vector2(0, 1), new Vector2(0, y - 4), new Vector2(1020, 32), new Vector2(0, 1));
+            }
+            if (unclaimed > 0)
+            {
+                var all = Button(body, $"모두 받기 ({unclaimed}통)", () => onClaimAll(), 26);
+                Place(all, new Vector2(1, 0), Vector2.zero, new Vector2(300, 72), new Vector2(1, 0));
+            }
+        }
+
+        /// <summary>우편 자세히 팝업. 받지 않았으면 받기 버튼</summary>
+        public void ShowMail(Data.MailResponse mail, Action onClaim)
+        {
+            Popup(_popupRoot, mail.Title, new Vector2(1000, 640), out RectTransform body);
+            string expiry = mail.ExpiresAt == null ? "무기한" : $"{mail.ExpiresAt.Value.ToLocalTime():yyyy.MM.dd HH:mm}까지";
+            var meta = Label(body, $"{mail.CreatedAt.ToLocalTime():yyyy.MM.dd HH:mm} · {expiry}", 20, TextAnchor.UpperLeft, Muted);
+            Place(meta, new Vector2(0, 1), Vector2.zero, new Vector2(920, 32), new Vector2(0, 1));
+            var content = Label(body, string.IsNullOrEmpty(mail.Content) ? "(내용 없음)" : mail.Content, 24, TextAnchor.UpperLeft);
+            content.lineSpacing = 1.3f;
+            content.verticalOverflow = VerticalWrapMode.Truncate;
+            Place(content, new Vector2(0, 1), new Vector2(0, -48), new Vector2(920, 300), new Vector2(0, 1));
+            var reward = Label(body, "보상: " + mail.RewardText, 24, TextAnchor.MiddleLeft, Warn, bold: true);
+            Place(reward, new Vector2(0, 0), new Vector2(0, 88), new Vector2(920, 40), new Vector2(0, 0));
+            if (mail.Claimed)
+            {
+                var done = Label(body, "이미 받은 우편입니다.", 24, TextAnchor.MiddleRight, Muted);
+                Place(done, new Vector2(1, 0), Vector2.zero, new Vector2(400, 72), new Vector2(1, 0));
+            }
+            else
+            {
+                var claim = Button(body, "받기", () => onClaim(), 28);
+                Place(claim, new Vector2(1, 0), Vector2.zero, new Vector2(240, 72), new Vector2(1, 0));
+            }
         }
 
         /// <summary>공지 목록 팝업. 항목을 누르면 onOpen(공지 ID)</summary>

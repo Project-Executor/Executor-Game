@@ -500,6 +500,12 @@ namespace Executor.Play
                     if (k.rKey.wasPressedThisFrame) { StartStage(_stage, false); return; }
                     if (k.eKey.wasPressedThisFrame) { TryTalk(); return; }
                     if (k.qKey.wasPressedThisFrame) { ShowWarpMenu(); return; }
+                    if (k.mKey.wasPressedThisFrame)
+                    {
+                        _view.ToggleOverview();
+                        _game.Toast(_view.Overview ? "맵 전체 보기 (M으로 돌아가기)" : "구간 보기");
+                        return;
+                    }
                     if (Pressed(k, out Direction dir)) Move(dir);
                     break;
 

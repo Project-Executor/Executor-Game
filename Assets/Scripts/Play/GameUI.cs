@@ -10,7 +10,7 @@ namespace Executor.Play
     /// <summary>
     /// 게임 화면 UI (와이어프레임 stage(ex) 배치, 기준 1920x1080).
     /// <list type="bullet">
-    ///   <item>왼쪽 위: 남은 턴 / 그 아래: 퀘스트(안내 문구)</item>
+    ///   <item>왼쪽 위: 미니맵(누르면 전체 맵) / 그 아래: 남은 턴·열쇠 / 그 아래: 퀘스트(별 조건 3줄, 누르면 자세히)</item>
     ///   <item>오른쪽 위: 수집, 채팅, 설정</item>
     ///   <item>가운데: 게임 화면 (BoardView가 GameArea 안에 맞춰 그린다)</item>
     ///   <item>대화창 1760x300, 이름표 280x60, 선택지 600x64, 스탠딩 일러스트 높이 1000</item>
@@ -26,8 +26,12 @@ namespace Executor.Play
 
         // HUD
         private GameObject _hud;
-        private Text _stageTitle, _turns, _keys, _quest;
+        private Text _stageTitle, _turns, _keys;
         private Image _turnsBox;
+        private RawImage _minimap;
+        private readonly Text[] _questRows = new Text[3];
+        /// <summary>퀘스트 팝업에 보여 줄 자세한 내용 (목표·별 조건·체크포인트·안내)</summary>
+        private string _questDetail = "";
         private GameObject _keyBox;
         private Button _collect;
 
@@ -65,6 +69,9 @@ namespace Executor.Play
 
         public Action OnChat, OnSettings, OnCollect;
 
+        /// <summary>미니맵을 눌렀을 때 (전체 맵 팝업), 퀘스트를 눌렀을 때 (자세히)</summary>
+        public Action OnMinimap, OnQuest;
+
         public bool HasPopup => _popupRoot.childCount > 0;
 
         public void Build()
@@ -100,6 +107,7 @@ namespace Executor.Play
             _hud.SetActive(true);
             _stageTitle.text = title;
             SetQuest(quest);
+            SetQuestStars(new (string, QuestState)[0]);
             SetButtonText(_collect, $"수집 {collected}/{collectTotal}");
         }
 
@@ -117,7 +125,60 @@ namespace Executor.Play
             _keys.text = "×" + keys;
         }
 
-        public void SetQuest(string text) => _quest.text = text;
+        /// <summary>퀘스트 팝업에 보여 줄 자세한 내용</summary>
+        public void SetQuest(string text) => _questDetail = text;
+
+        public string QuestDetail => _questDetail;
+
+        public enum QuestState { Pending, Done, Warn }
+
+        /// <summary>퀘스트 칸의 별 조건 줄 (최대 3줄). 달성하면 초록 ✓, 지금 못 미치면 주황</summary>
+        public void SetQuestStars(IReadOnlyList<(string text, QuestState state)> rows)
+        {
+            for (int i = 0; i < _questRows.Length; i++)
+            {
+                bool has = i < rows.Count;
+                _questRows[i].gameObject.SetActive(has);
+                if (!has) continue;
+                var (text, state) = rows[i];
+                _questRows[i].text = (state == QuestState.Done ? "✓ " : "· ") + text;
+                _questRows[i].color = state == QuestState.Done ? Good : state == QuestState.Warn ? Warn : TextColor;
+            }
+        }
+
+        /// <summary>미니맵 그림을 바꾼다. 칸 비율을 지키며 미니맵 상자 안에 맞춘다</summary>
+        public void SetMinimap(Texture2D texture)
+        {
+            _minimap.texture = texture;
+            if (texture == null) return;
+            var inner = new Vector2(MinimapSize.x - 24, MinimapSize.y - 52);
+            float scale = Mathf.Min(inner.x / texture.width, inner.y / texture.height);
+            _minimap.rectTransform.sizeDelta = new Vector2(texture.width * scale, texture.height * scale);
+        }
+
+        /// <summary>전체 맵 팝업</summary>
+        public void ShowMapPopup(string title, Texture2D texture, string legend)
+        {
+            Popup(_popupRoot, title, new Vector2(1600, 940), out RectTransform body);
+            var img = new GameObject("Map", typeof(RectTransform), typeof(RawImage)).GetComponent<RawImage>();
+            img.transform.SetParent(body, false);
+            img.texture = texture;
+            img.raycastTarget = false;
+            float scale = Mathf.Min(1500f / texture.width, 720f / texture.height);
+            Place(img, new Vector2(0.5f, 1), new Vector2(0, -8), new Vector2(texture.width * scale, texture.height * scale), new Vector2(0.5f, 1));
+            var note = Label(body, legend, 20, TextAnchor.LowerCenter, Muted);
+            Stretch(note.rectTransform);
+        }
+
+        /// <summary>긴 글 팝업 (퀘스트 자세히 등)</summary>
+        public void ShowDetail(string title, string text)
+        {
+            Popup(_popupRoot, title, new Vector2(1000, 760), out RectTransform body);
+            var t = Label(body, text, 24, TextAnchor.UpperLeft);
+            t.lineSpacing = 1.3f;
+            t.verticalOverflow = VerticalWrapMode.Truncate;
+            Stretch(t.rectTransform);
+        }
 
         /// <summary>게임 화면 위 팝업 메뉴 (일시 정지 등). 버튼을 누르면 닫히고 동작한다</summary>
         public void ShowMenu(string title, IEnumerable<(string label, Action onClick)> buttons)
@@ -264,44 +325,63 @@ namespace Executor.Play
         }
 
         // ---------------- 만들기 ----------------
+        /// <summary>왼쪽 패널 x 위치와 미니맵 크기 (기준 1920x1080). 게임 화면(GameArea)은 x 552부터</summary>
+        private const float Left = 48;
+        private static readonly Vector2 MinimapSize = new Vector2(456, 320);
+
         private void BuildHud()
         {
             _hud = new GameObject("Hud", typeof(RectTransform));
             _hud.transform.SetParent(_root, false);
             Stretch((RectTransform)_hud.transform);
 
-            // 남은 턴 (왼쪽 위)
+            // 미니맵 (왼쪽 위). 누르면 전체 맵 팝업
+            var mapButton = Button(_hud.transform, "", () => OnMinimap?.Invoke(), 20, PanelColor);
+            Place(mapButton, new Vector2(0, 1), new Vector2(Left, -48), MinimapSize, new Vector2(0, 1));
+            var mapLabel = Label(mapButton.transform, "미니맵 · 누르면 전체 맵", 20, TextAnchor.UpperLeft, Muted);
+            Stretch(mapLabel.rectTransform, 14);
+            _minimap = new GameObject("Minimap", typeof(RectTransform), typeof(RawImage)).GetComponent<RawImage>();
+            _minimap.transform.SetParent(mapButton.transform, false);
+            _minimap.raycastTarget = false;
+            Place(_minimap, new Vector2(0.5f, 0), new Vector2(0, 12), new Vector2(MinimapSize.x - 24, MinimapSize.y - 52), new Vector2(0.5f, 0));
+
+            // 남은 턴 (미니맵 아래, 작게)
+            float turnsY = -48 - MinimapSize.y - 16;
             var box = Panel(_hud.transform, "Turns", PanelColor, Line);
-            Place(box, new Vector2(0, 1), new Vector2(48, -48), new Vector2(312, 168), new Vector2(0, 1));
+            Place(box, new Vector2(0, 1), new Vector2(Left, turnsY), new Vector2(MinimapSize.x - 112, 104), new Vector2(0, 1));
             _turnsBox = box.GetComponent<Image>();
-            var label = Label(box, "남은 턴", 24, TextAnchor.UpperLeft, Muted);
-            Stretch(label.rectTransform, 18);
-            _turns = Label(box, "", 80, TextAnchor.MiddleCenter, bold: true);
+            var label = Label(box, "남은 턴", 20, TextAnchor.UpperLeft, Muted);
+            Stretch(label.rectTransform, 14);
+            _turns = Label(box, "", 52, TextAnchor.MiddleCenter, bold: true);
             Stretch(_turns.rectTransform);
-            _turns.rectTransform.offsetMax = new Vector2(0, -24);
+            _turns.rectTransform.offsetMin = new Vector2(80, 0);
 
             // 열쇠 (남은 턴 오른쪽 작은 상자, 열쇠가 있을 때만 보인다)
             var keyBox = Panel(_hud.transform, "Keys", PanelColor, Line);
-            Place(keyBox, new Vector2(0, 1), new Vector2(384, -48), new Vector2(120, 120), new Vector2(0, 1));
+            Place(keyBox, new Vector2(0, 1), new Vector2(Left + MinimapSize.x - 96, turnsY), new Vector2(96, 104), new Vector2(0, 1));
             _keyBox = keyBox.gameObject;
             var keyIcon = new GameObject("Icon", typeof(RectTransform), typeof(Image)).GetComponent<Image>();
             keyIcon.transform.SetParent(keyBox, false);
             keyIcon.sprite = ArtCatalog.ForObject(Data.MapObjectTypes.Key);
             keyIcon.preserveAspect = true;
             keyIcon.raycastTarget = false;
-            Place(keyIcon, new Vector2(0.5f, 1), new Vector2(0, -12), new Vector2(72, 72), new Vector2(0.5f, 1));
+            Place(keyIcon, new Vector2(0.5f, 1), new Vector2(0, -10), new Vector2(56, 56), new Vector2(0.5f, 1));
             _keys = Label(keyBox, "", 24, TextAnchor.LowerCenter, new Color32(0xff, 0xd2, 0x3f, 0xff), bold: true);
             Stretch(_keys.rectTransform, 8);
 
-            // 퀘스트 (그 아래)
-            var quest = Panel(_hud.transform, "Quest", PanelColor, Line);
-            Place(quest, new Vector2(0, 1), new Vector2(48, -240), new Vector2(312, 420), new Vector2(0, 1));
-            var qTitle = Label(quest, "퀘스트", 26, TextAnchor.UpperLeft, bold: true);
-            Stretch(qTitle.rectTransform, 18);
-            _quest = Label(quest, "", 22, TextAnchor.UpperLeft);
-            _quest.lineSpacing = 1.25f;
-            Stretch(_quest.rectTransform, 18);
-            _quest.rectTransform.offsetMax = new Vector2(-18, -64);
+            // 퀘스트 (턴 아래): 별 조건 3줄. 누르면 자세히(목표·체크포인트·안내)
+            float questY = turnsY - 104 - 16;
+            var quest = Button(_hud.transform, "", () => OnQuest?.Invoke(), 20, PanelColor);
+            Place(quest, new Vector2(0, 1), new Vector2(Left, questY), new Vector2(MinimapSize.x, 236), new Vector2(0, 1));
+            var qTitle = Label(quest.transform, "퀘스트", 24, TextAnchor.UpperLeft, bold: true);
+            Stretch(qTitle.rectTransform, 16);
+            var qMore = Label(quest.transform, "자세히 ›", 18, TextAnchor.UpperRight, Muted);
+            Stretch(qMore.rectTransform, 18);
+            for (int i = 0; i < _questRows.Length; i++)
+            {
+                _questRows[i] = Label(quest.transform, "", 21, TextAnchor.UpperLeft);
+                Place(_questRows[i], new Vector2(0, 1), new Vector2(16, -58 - i * 56), new Vector2(MinimapSize.x - 32, 52), new Vector2(0, 1));
+            }
 
             // 스테이지 이름 (위쪽, 게임 화면 가운데)
             _stageTitle = Label(_hud.transform, "", 28, TextAnchor.MiddleCenter, Muted, bold: true);
@@ -315,7 +395,7 @@ namespace Executor.Play
             _collect = Button(_hud.transform, "수집 0/0", () => OnCollect?.Invoke(), 22);
             Place(_collect, new Vector2(1, 1), new Vector2(-316, -48), new Vector2(170, 60), new Vector2(1, 1));
 
-            var help = Label(_hud.transform, "W A S D 이동 · E 대화 · R 다시 · Esc 메뉴", 22, TextAnchor.MiddleLeft, Muted);
+            var help = Label(_hud.transform, "W A S D 이동 · E 대화 · Q 워프 · M 전체 맵 · R 다시 · Esc 메뉴", 22, TextAnchor.MiddleLeft, Muted);
             Place(help, new Vector2(0, 0), new Vector2(48, 20), new Vector2(900, 36), new Vector2(0, 0));
         }
 

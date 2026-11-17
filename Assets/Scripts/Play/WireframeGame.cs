@@ -308,6 +308,16 @@ namespace Executor.Play
             _game.OnCheckNickname = CheckNickname;
             _game.OnChat = () => _game.ShowMessage("채팅", "채팅은 준비 중입니다.\n(친구 메시지 API 연동 예정)");
             _game.OnCollect = () => _game.ShowMessage("수집", "이 스테이지에는 수집 요소가 없습니다.\n(숨겨진 요소는 본 스테이지에서 추가)");
+            _game.OnMinimap = () =>
+            {
+                if (_board == null || _game.HasPopup) return;
+                _game.ShowMapPopup($"{_stage.No}. {_stage.Title} · 전체 맵", Minimap.Render(_board), Minimap.Legend);
+            };
+            _game.OnQuest = () =>
+            {
+                if (_board == null || _game.HasPopup) return;
+                _game.ShowDetail("퀘스트", QuestDetail());
+            };
         }
 
         private void ShowPauseMenu()
@@ -362,10 +372,75 @@ namespace Executor.Play
             }
             if (texts.Count == 0) return;
             // 퀘스트 패널: 목표 + 최근 안내 2개
-            _game.SetQuest(DefaultQuest + "\n\n" + string.Join("\n\n", _questGuides.Skip(System.Math.Max(0, _questGuides.Count - 2))));
+            _game.SetQuest(QuestDetail());
         }
 
-        private void UpdateHud() => _game.SetTurns(_board.RemainingTurns, _board.Keys.Values.Sum());
+        private Texture2D _minimapTexture;
+
+        private void UpdateHud()
+        {
+            _game.SetTurns(_board.RemainingTurns, _board.Keys.Values.Sum());
+            _minimapTexture = Minimap.Render(_board, _minimapTexture);
+            _game.SetMinimap(_minimapTexture);
+            _game.SetQuestStars(QuestStars());
+        }
+
+        /// <summary>퀘스트 칸의 별 조건 3줄 (튜토리얼은 ★1만)</summary>
+        private List<(string, GameUI.QuestState)> QuestStars()
+        {
+            var rows = new List<(string, GameUI.QuestState)>
+            {
+                ("★1 출구에 도착", _board.IsCleared ? GameUI.QuestState.Done : GameUI.QuestState.Pending)
+            };
+            if (_stage.Tutorial) return rows;
+            int max = _board.Data.Stars?.MaxUnstable ?? 0;
+            int unstable = _board.UnstableCount + (_board.IsOverLimit ? 1 : 0); // 이대로 도착하면 하나 더
+            string limit = max == 0 ? "모든 구간을 턴 안에" : $"불안정 {max}개 이하";
+            rows.Add(($"★2 {limit} (불안정 {_board.UnstableCount})",
+                _board.IsCleared && _board.MeetsStableStar ? GameUI.QuestState.Done
+                : unstable > max ? GameUI.QuestState.Warn : GameUI.QuestState.Pending));
+            rows.Add(("★3 숨겨진 요소 찾기", GameUI.QuestState.Pending));
+            return rows;
+        }
+
+        /// <summary>퀘스트 자세히: 목표, 별 조건, 체크포인트 상태, 지금까지 나온 안내</summary>
+        private string QuestDetail()
+        {
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine(DefaultQuest).AppendLine();
+            sb.AppendLine("별 조건");
+            sb.AppendLine("  ★1 출구에 도착하면 클리어");
+            if (_stage.Tutorial)
+            {
+                sb.AppendLine("  튜토리얼은 ★1만 있습니다.");
+            }
+            else
+            {
+                int max = _board.Data.Stars?.MaxUnstable ?? 0;
+                sb.AppendLine($"  ★2 불안정 체크포인트(출구 포함)가 {max}개 이하. 남은 턴 안에 도착하면 안정, 넘기면 불안정");
+                sb.AppendLine("  ★3 숨겨진 요소 찾기");
+            }
+            if (_board.CheckpointCount > 0)
+            {
+                sb.AppendLine().AppendLine($"체크포인트 (Q로 도착한 곳에 워프, 지금 구간 {(_board.CurrentOrder == Board.StartOrder ? "시작" : _board.CurrentOrder.ToString())})");
+                for (int order = 1; order <= _board.CheckpointCount; order++)
+                {
+                    BoardObject cp = _board.CheckpointOf(order);
+                    if (cp == null) continue;
+                    bool? s = _board.StabilityOf(order);
+                    string state = s == null ? "아직" : s.Value ? "안정" : "불안정";
+                    sb.AppendLine($"  {order}. {state} · 다음 구간 {Turns(cp.SegmentTurns ?? _board.TurnLimit)}");
+                }
+                bool? exit = _board.StabilityOf(Board.ExitOrder);
+                sb.AppendLine($"  출구. {(exit == null ? "아직" : exit.Value ? "안정" : "불안정")}");
+            }
+            if (_questGuides.Count > 0)
+            {
+                sb.AppendLine().AppendLine("안내");
+                foreach (string g in _questGuides) sb.AppendLine("  · " + g);
+            }
+            return sb.ToString();
+        }
 
         // ---------------- 나레이션 ----------------
         private void PlayStory(List<StoryStep> steps, System.Action after)

@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Threading.Tasks;
 using System.Linq;
 using Executor.Data;
 using Executor.Game;
@@ -41,6 +42,9 @@ namespace Executor.Play
         private bool _choicesShown;
         private float _endAt = -1;
         private int _blockInputFrame = -1;
+        /// <summary>이번 판 결과를 서버에 보냈는지 (클리어 제출 또는 나갈 때의 실패 제출, 한 번만)</summary>
+        private bool _runSubmitted;
+        private bool _loadingStage;
 
         private List<StoryStep> _story;
         private int _storyIndex;
@@ -75,8 +79,44 @@ namespace Executor.Play
 
         private async void RestoreLogin()
         {
-            if (await PlayerSession.TryRestoreAsync() && _mode == Mode.Title) ShowTitle();
+            if (!await PlayerSession.TryRestoreAsync()) return;
+            await ReloadChaptersAsync();
+            if (_mode == Mode.Title) ShowTitle();
         }
+
+        /// <summary>
+        /// 로그인 상태에 맞춰 챕터를 다시 만든다. 로그인했으면 서버(작전·스테이지·내 진행도)에서, 아니면 Resources 맵에서.
+        /// 서버에 닿지 못하면 Resources 맵을 쓴다 (이때 결과는 서버에 보내지 않는다). 보내지 못한 결과가 있으면 먼저 보낸다
+        /// </summary>
+        private async Task ReloadChaptersAsync()
+        {
+            string current = _chapter?.Id;
+            if (PlayerSession.IsOnline)
+            {
+                try
+                {
+                    await PendingResults.FlushAsync();
+                    var chapters = await ServerCatalog.LoadAsync();
+                    _chapters = chapters;
+                    _chapter = _chapters.FirstOrDefault(c => c.Id == current)
+                               ?? _chapters.FirstOrDefault(c => c.IsAvailable) ?? _chapters.FirstOrDefault();
+                    return;
+                }
+                catch (ApiException e)
+                {
+                    Debug.LogWarning("[WireframeGame] 서버 스테이지를 불러오지 못해 PC의 맵을 씁니다: " + e);
+                    _menu.ShowMessage("스테이지", e.IsNetworkError
+                        ? "서버에 연결할 수 없어 PC에 있는 맵으로 플레이합니다.\n(이때 기록은 서버에 저장되지 않습니다)"
+                        : "서버 스테이지를 불러오지 못했습니다.\n" + e.Message);
+                }
+            }
+            StageProgress.ClearRemote();
+            _chapters = ChapterCatalog.Load();
+            _chapter = _chapters.FirstOrDefault(c => c.Id == current)
+                       ?? _chapters.FirstOrDefault(c => c.IsAvailable) ?? _chapters.FirstOrDefault();
+        }
+
+        private async void ReloadChapters() => await ReloadChaptersAsync();
 
         private void LoadStages()
         {
@@ -98,7 +138,7 @@ namespace Executor.Play
             };
             _menu.OnTitleLogin = OpenLogin;
             _menu.OnTitleLogout = Logout;
-            _menu.OnTitleOffline = () => { PlayerSession.StartOffline(); ShowTitle(); };
+            _menu.OnTitleOffline = () => { PlayerSession.StartOffline(); ReloadChapters(); ShowTitle(); };
             _menu.OnSettings = () => _menu.ShowSettings(PlayerSession.DisplayName, PlayerSession.IsOnline, Logout);
 
             _menu.OnProfile = ShowProfile;
@@ -144,8 +184,9 @@ namespace Executor.Play
         {
             // 로그인하면 시작 화면으로 돌아가고 화면을 클릭해 메인으로 들어간다.
             // 닉네임이 없으면(가입 후 첫 로그인) 바로 튜토리얼 1스테이지로 가서 닉네임을 입력받는다
-            _menu.ShowLogin(PlayerSession.LoginAsync, PlayerSession.SignupAsync, () =>
+            _menu.ShowLogin(PlayerSession.LoginAsync, PlayerSession.SignupAsync, async () =>
             {
+                await ReloadChaptersAsync();
                 if (PlayerSession.IsOnline && !PlayerSession.HasNickname) StartFirstTutorial(); else ShowTitle();
             });
         }
@@ -162,6 +203,7 @@ namespace Executor.Play
         private async void Logout()
         {
             await PlayerSession.LogoutAsync();
+            await ReloadChaptersAsync();
             ShowTitle();
         }
 
@@ -253,8 +295,16 @@ namespace Executor.Play
                 Title = s.Title.Replace("시뮬레이션 ", ""),
                 Unlocked = StageProgress.IsStageUnlocked(_chapter, s),
                 Cleared = StageProgress.IsCleared(_chapter.Id, s.No),
-                Detail = StageProgress.IsCleared(_chapter.Id, s.No) ? $"최고 {StageProgress.BestMoves(_chapter.Id, s.No)}턴 사용" : null,
+                Detail = StageProgress.IsCleared(_chapter.Id, s.No) ? StageDetail(_chapter, s) : null,
             }).ToList());
+        }
+
+        /// <summary>스테이지 선택의 기록 줄: "최고 22턴 · 별 2/3" (서버 기록이면 별까지)</summary>
+        private static string StageDetail(ChapterInfo chapter, StageInfo stage)
+        {
+            string text = $"최고 {StageProgress.BestMoves(chapter.Id, stage.No)}턴";
+            var stars = StageProgress.RemoteOf(chapter.Id, stage.No)?.Stars;
+            return stars == null ? text : $"{text} · 별 {stars.Count}/{stars.Max}";
         }
 
         /// <summary>시나리오 버튼: 오른쪽 챕터 내비게이터</summary>
@@ -296,6 +346,7 @@ namespace Executor.Play
 
         private void HideGame()
         {
+            SubmitAbandon();
             _board = null;
             _view.gameObject.SetActive(false);
             _game.HideAll();
@@ -343,8 +394,15 @@ namespace Executor.Play
         private void StartStage(StageInfo stage, bool withIntro)
         {
             Block();
+            SubmitAbandon();
+            if (stage.Map == null)
+            {
+                LoadAndStart(stage, withIntro);
+                return;
+            }
             _stage = stage;
             _board = new Board(stage.Map, stage.Par);
+            _runSubmitted = false;
             _guides = new GuideTracker(_board, PlayerSession.Nickname);
             _questGuides.Clear();
             _dialogue = null;
@@ -358,6 +416,51 @@ namespace Executor.Play
 
             if (withIntro && stage.Map.Story?.Intro?.Count > 0) PlayStory(stage.Map.Story.Intro, BeginPlay);
             else BeginPlay();
+        }
+
+        /// <summary>서버 스테이지의 맵을 받아서 시작한다 (잠겨 있던 스테이지는 맵을 미리 받지 못한다)</summary>
+        private async void LoadAndStart(StageInfo stage, bool withIntro)
+        {
+            if (_loadingStage) return;
+            _loadingStage = true;
+            try
+            {
+                await ServerCatalog.LoadMapAsync(stage);
+                StartStage(stage, withIntro);
+            }
+            catch (ApiException e)
+            {
+                _menu.ShowMessage("스테이지", e.IsNetworkError ? "서버에 연결할 수 없어 스테이지를 불러오지 못했습니다." : e.Message);
+            }
+            finally
+            {
+                _loadingStage = false;
+            }
+        }
+
+        /// <summary>
+        /// 클리어하지 않고 나가면(다시 하기, 스테이지 선택, 메인 등) 실패로 보낸다: 도전 횟수와 만난 이상 개체(도감)가 반영된다.
+        /// 아무것도 하지 않았으면 보내지 않는다. 서버 스테이지이고 로그인했을 때만
+        /// </summary>
+        private void SubmitAbandon()
+        {
+            if (_board == null || _runSubmitted || _board.IsCleared || _stage?.StageId == null || !PlayerSession.IsOnline) return;
+            if (_board.Turns == 0 && _board.EncounteredGuidebookIds.Count == 0) return;
+            _runSubmitted = true;
+            SubmitInBackground(_stage.StageId.Value, _board.ToResultRequest());
+        }
+
+        private static async void SubmitInBackground(long stageId, StageResultRequest request)
+        {
+            try
+            {
+                await StageApi.SubmitResultAsync(stageId, request);
+            }
+            catch (ApiException e)
+            {
+                if (e.IsNetworkError) PendingResults.Add(stageId, request);
+                else Debug.LogWarning($"[WireframeGame] 결과 제출 실패 stage {stageId}: {e.Message}");
+            }
         }
 
         private void BeginPlay()
@@ -751,14 +854,44 @@ namespace Executor.Play
         {
             _endAt = -1;
 
-            // TODO: 서버에 튜토리얼이 등록되면 StageApi.SubmitResultAsync(stageId, _board.ToResultRequest())
             // 기록 = 구간 최고 기록의 합 (워프로 다시 통과한 구간은 좋은 쪽만). 체크포인트가 없으면 쓴 턴과 같다
             int record = _board.RecordMoves;
             int best = StageProgress.BestMoves(_chapter.Id, _stage.No);
             bool newBest = StageProgress.RecordClear(_chapter.Id, _stage.No, record);
 
-            void ShowResult()
+            // 서버 스테이지면 결과를 보낸다 (아웃트로 나레이션을 보는 동안 보내고, 결과 화면에서 응답을 쓴다)
+            ChapterInfo chapter = _chapter;
+            StageInfo stage = _stage;
+            StageResultRequest request = _board.ToResultRequest();
+            Task<StageResultResponse> submit = null;
+            if (PlayerSession.IsOnline && stage.StageId != null)
             {
+                _runSubmitted = true;
+                submit = StageApi.SubmitResultAsync(stage.StageId.Value, request);
+            }
+
+            async void ShowResult()
+            {
+                string serverLine = "";
+                if (submit != null)
+                {
+                    try
+                    {
+                        StageResultResponse res = await submit;
+                        ApplyServerResult(chapter, stage, res);
+                        newBest = res.IsNewBest;
+                        best = res.BestMoves ?? best;
+                        serverLine = ServerResultText(res);
+                    }
+                    catch (ApiException e)
+                    {
+                        if (e.IsNetworkError) PendingResults.Add(stage.StageId.Value, request);
+                        serverLine = e.IsNetworkError
+                            ? "\n서버에 저장하지 못했습니다. 다음에 접속할 때 다시 보냅니다."
+                            : "\n서버 저장 실패: " + e.Message;
+                    }
+                }
+                if (_board == null || _stage != stage) return; // 기다리는 동안 다른 화면으로 갔으면 그만
                 _mode = Mode.Result;
                 Block();
                 bool hasNext = _chapter.Stages.Any(s => s.No > _stage.No);
@@ -780,11 +913,48 @@ namespace Executor.Play
                     : $"\n★3 미달성 (숨겨진 요소 {_board.HiddenCollected}/{_board.HiddenTotal})";
                 string guide = _board.EncounteredGuidebookIds.Count > 0 ? $"\n도감 기록 {_board.EncounteredGuidebookIds.Count}종" : "";
                 _game.ShowResult($"클리어!\n\n{_stage.Title}\n{detail}{star2}{star3}{guide}" +
-                                 (newBest ? "\n최고 기록" : $"\n최고 {best}턴"), true, buttons);
+                                 (newBest ? "\n최고 기록" : $"\n최고 {best}턴") + serverLine, true, buttons);
             }
 
             if (_stage.Map.Story?.Outro?.Count > 0) PlayStory(_stage.Map.Story.Outro, ShowResult);
             else ShowResult();
+        }
+
+        /// <summary>서버 응답을 화면 기록에 반영한다: 코인, 최고 기록·별, 다음 스테이지 해금. 새로 열린 맵은 뒤에서 다시 불러온다</summary>
+        private void ApplyServerResult(ChapterInfo chapter, StageInfo stage, StageResultResponse res)
+        {
+            if (PlayerSession.Profile != null) PlayerSession.Profile.Coin = res.TotalCoin;
+            StageProgress.RemoteRecord record = StageProgress.RemoteOf(chapter.Id, stage.No);
+            if (record != null)
+            {
+                record.Cleared = res.Cleared || record.Cleared;
+                record.Best = res.BestMoves ?? record.Best;
+                record.Stars = res.Stars ?? record.Stars;
+            }
+            if (res.NextStageId != null)
+            {
+                foreach (ChapterInfo c in _chapters)
+                foreach (StageInfo s in c.Stages)
+                {
+                    if (s.StageId != res.NextStageId) continue;
+                    StageProgress.RemoteRecord next = StageProgress.RemoteOf(c.Id, s.No);
+                    if (next != null) next.Unlocked = true;
+                }
+                ReloadChapters();
+            }
+        }
+
+        /// <summary>결과 화면의 서버 줄: 누적 별, 첫 클리어 보상, 해금된 도감</summary>
+        private static string ServerResultText(StageResultResponse res)
+        {
+            var sb = new System.Text.StringBuilder();
+            if (res.Stars != null) sb.Append($"\n누적 별 {res.Stars.Count}/{res.Stars.Max}");
+            if (res.FirstClear && res.RewardCoin > 0) sb.Append($"\n첫 클리어 보상 +{res.RewardCoin} 코인 (보유 {res.TotalCoin})");
+            if (res.UnlockedGuidebooks?.Count > 0)
+            {
+                sb.Append("\n도감 해금: " + string.Join(", ", res.UnlockedGuidebooks.Select(g => g.Title)));
+            }
+            return sb.ToString();
         }
 
         private void NextStage()

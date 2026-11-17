@@ -11,15 +11,18 @@ namespace Executor.Play
     /// 게임 화면 UI (와이어프레임 stage(ex) 배치, 기준 1920x1080).
     /// <list type="bullet">
     ///   <item>왼쪽 위: 미니맵(누르면 전체 맵) + 오른쪽 아이템 칸 / 그 아래: 퀘스트(별 조건 3줄, 누르면 자세히). 왼쪽 아래는 비워 둔다</item>
-    ///   <item>오른쪽 위 줄: 남은 턴 · 수집 · 채팅 · 설정</item>
+    ///   <item>오른쪽 위: 수집 · 채팅 · 설정, 그 아래 남은 턴</item>
     ///   <item>가운데: 게임 화면 (BoardView가 GameArea 안에 맞춰 그린다)</item>
     ///   <item>대화창 1760x300, 이름표 280x60, 선택지 600x64, 스탠딩 일러스트 높이 1000</item>
     /// </list>
     /// </summary>
     public class GameUI : MonoBehaviour
     {
-        /// <summary>게임 화면 영역 (화면 비율 0~1, 왼쪽 아래 기준). 왼쪽 패널과 위쪽 버튼을 피한다</summary>
-        public static readonly Rect GameArea = new Rect(552f / 1920, 64f / 1080, 1320f / 1920, 872f / 1080);
+        /// <summary>
+        /// 게임 화면 영역 (화면 비율 0~1, 왼쪽 아래 기준). 왼쪽 패널과 오른쪽 위(버튼 줄 + 그 아래 남은 턴)를 피한다.
+        /// 기준 1920x1080에서 x 552~1872, 아래 64 ~ 위에서 232
+        /// </summary>
+        public static readonly Rect GameArea = new Rect(552f / 1920, 64f / 1080, 1320f / 1920, 784f / 1080);
 
         private RectTransform _root;
         private RectTransform _popupRoot;
@@ -325,9 +328,9 @@ namespace Executor.Play
         }
 
         // ---------------- 만들기 ----------------
-        // 배치 (기준 1920x1080). 게임 화면(GameArea)은 x 552~1872, 위에서 144 아래부터.
+        // 배치 (기준 1920x1080). 게임 화면(GameArea)은 x 552~1872, 위에서 232 아래부터.
         // 왼쪽 위: 미니맵 + 오른쪽 아이템 칸, 그 아래 퀘스트. 왼쪽 아래는 비워 둔다 (모바일 방향 패드 자리).
-        // 오른쪽 위 줄: 남은 턴 · 수집 · 채팅 · 설정 (엄지가 가리지 않는 위쪽에 계속 볼 값을 둔다)
+        // 오른쪽 위: 수집 · 채팅 · 설정 줄, 그 아래 남은 턴 (엄지가 가리지 않는 위쪽에 계속 볼 값을 둔다)
         private const float Left = 48;
         private static readonly Vector2 MinimapSize = new Vector2(360, 300);
         private const float ItemSlot = 84;
@@ -364,7 +367,7 @@ namespace Executor.Play
 
             // 퀘스트 (미니맵 아래): 별 조건 3줄. 누르면 자세히(목표·체크포인트·안내)
             float questY = -48 - MinimapSize.y - 16;
-            float questW = MinimapSize.x + 12 + ItemSlot;
+            float questW = MinimapSize.x; // 미니맵과 같은 너비
             var quest = Button(_hud.transform, "", () => OnQuest?.Invoke(), 20, PanelColor);
             Place(quest, new Vector2(0, 1), new Vector2(Left, questY), new Vector2(questW, 184), new Vector2(0, 1));
             var qTitle = Label(quest.transform, "퀘스트", 22, TextAnchor.UpperLeft, bold: true);
@@ -373,18 +376,27 @@ namespace Executor.Play
             Stretch(qMore.rectTransform, 16);
             for (int i = 0; i < _questRows.Length; i++)
             {
-                _questRows[i] = Label(quest.transform, "", 20, TextAnchor.UpperLeft);
+                _questRows[i] = Label(quest.transform, "", 20, TextAnchor.MiddleLeft);
+                // 긴 줄(★2 설명 등)은 한 줄에 들어가게 글자를 줄인다 (14~20)
+                _questRows[i].resizeTextForBestFit = true;
+                _questRows[i].resizeTextMinSize = 14;
+                _questRows[i].resizeTextMaxSize = 20;
                 Place(_questRows[i], new Vector2(0, 1), new Vector2(14, -50 - i * 42), new Vector2(questW - 28, 40), new Vector2(0, 1));
             }
 
-            // 남은 턴 (오른쪽 위 줄, 수집 버튼 왼쪽)
+            // 남은 턴 (오른쪽 위, 수집·채팅·설정 줄 바로 아래, 오른쪽 끝에 맞춤)
             var box = Panel(_hud.transform, "Turns", PanelColor, Line);
-            Place(box, new Vector2(1, 1), new Vector2(-500, -40), new Vector2(240, 84), new Vector2(1, 1));
+            Place(box, new Vector2(1, 1), new Vector2(-48, -124), new Vector2(250, 92), new Vector2(1, 1));
             _turnsBox = box.GetComponent<Image>();
-            var label = Label(box, "남은 턴", 20, TextAnchor.MiddleLeft, Muted);
-            Stretch(label.rectTransform, 16);
-            _turns = Label(box, "", 48, TextAnchor.MiddleRight, bold: true);
-            Stretch(_turns.rectTransform, 16);
+            // "남은 턴"과 숫자를 가운데에 모은다: 글자는 가운데 왼쪽(오른쪽 정렬), 숫자는 가운데 오른쪽(왼쪽 정렬)
+            var label = Label(box, "남은 턴", 22, TextAnchor.MiddleRight, Muted);
+            Stretch(label.rectTransform);
+            label.rectTransform.anchorMax = new Vector2(0.5f, 1);
+            label.rectTransform.offsetMax = new Vector2(-8, 0);
+            _turns = Label(box, "", 48, TextAnchor.MiddleLeft, bold: true);
+            Stretch(_turns.rectTransform);
+            _turns.rectTransform.anchorMin = new Vector2(0.5f, 0);
+            _turns.rectTransform.offsetMin = new Vector2(8, 0);
 
             // 스테이지 이름 (위쪽, 게임 화면 왼쪽 위 ~ 남은 턴 사이 가운데)
             _stageTitle = Label(_hud.transform, "", 28, TextAnchor.MiddleCenter, Muted, bold: true);
@@ -405,9 +417,14 @@ namespace Executor.Play
         private void BuildToast()
         {
             var panel = Panel(_root, "Toast", PanelColor, Line);
-            Place(panel, new Vector2(0.5f, 1), new Vector2(252, -150), new Vector2(1000, 100));
+            // 게임 화면 위쪽 띠 (x 600~1420, 위에서 136~228). 오른쪽 위 남은 턴 상자와 겹치지 않게
+            Place(panel, new Vector2(0.5f, 1), new Vector2(50, -136), new Vector2(820, 92));
             _toast = panel.gameObject;
             _toastText = Label(panel, "", 26, TextAnchor.MiddleCenter);
+            // 긴 안내도 상자 안에 들어오게 글자 크기를 줄인다 (18~26)
+            _toastText.resizeTextForBestFit = true;
+            _toastText.resizeTextMinSize = 18;
+            _toastText.resizeTextMaxSize = 26;
             Stretch(_toastText.rectTransform, 20);
         }
 

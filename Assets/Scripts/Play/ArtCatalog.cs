@@ -10,9 +10,11 @@ namespace Executor.Play
     /// <list type="bullet">
     ///   <item>도트 (16x16, Pixels Per Unit 16, Filter Point):
     ///     Resources/Pixel/tiles/floor, Resources/Pixel/tiles/wall,
-    ///     Resources/Pixel/objects/{exit|crate|breakable|key|door|npc}, Resources/Pixel/player,
+    ///     Resources/Pixel/objects/{exit|crate|breakable|key|door|npc|checkpoint|hidden|anomaly}, Resources/Pixel/player,
     ///     인물별 도트는 Resources/Pixel/npcs/{인물ID} (없으면 objects/npc)</item>
     ///   <item>스탠딩 일러스트: Resources/Portraits/{인물ID}/{표정} (예: Portraits/cassia/smile)</item>
+    ///   <item>화면 일러스트: Resources/Illustrations/title (시작 화면 배경), title_logo (시작 화면 로고),
+    ///     main (메인 화면 가운데 그림)</item>
     /// </list>
     /// </summary>
     public static class ArtCatalog
@@ -50,6 +52,9 @@ namespace Executor.Play
                 case MapObjectTypes.Key: return Pixel("objects/key", new Color32(0xff, 0xd2, 0x3f, 0xff), Shape.Small);
                 case MapObjectTypes.Door: return Pixel("objects/door", new Color32(0xc0, 0x45, 0x55, 0xff), Shape.Bar);
                 case MapObjectTypes.Npc: return Pixel("objects/npc", new Color32(0xb0, 0x7c, 0xf0, 0xff), Shape.Diamond);
+                case MapObjectTypes.Checkpoint: return Pixel("objects/checkpoint", new Color32(0x2c, 0xd5, 0xe8, 0xff), Shape.Small);
+                case MapObjectTypes.Hidden: return Pixel("objects/hidden", new Color32(0xff, 0x5f, 0xb0, 0xff), Shape.Small);
+                case MapObjectTypes.Anomaly: return Pixel("objects/anomaly", new Color32(0xe0, 0x36, 0x2c, 0xff), Shape.Diamond);
                 default: return Pixel("objects/" + type, new Color32(0xff, 0x00, 0xff, 0xff), Shape.Small);
             }
         }
@@ -82,6 +87,22 @@ namespace Executor.Play
         private static Sprite Pixel(string path, Color32 color, Shape shape)
         {
             return Load<Sprite>("Pixel/" + path) ?? Placeholder(path, color, shape);
+        }
+
+        /// <summary>
+        /// 화면 일러스트 (Resources/Illustrations/{이름}). 없으면 null (임시 상자를 그대로 둔다).
+        /// 가져오기 설정의 Sprite Mode가 Multiple(자동으로 조각냄)이어도 조각 하나가 아니라 이미지 전체를 쓰도록
+        /// 텍스처를 읽어 전체 크기 스프라이트를 만든다
+        /// </summary>
+        public static Sprite Illustration(string name)
+        {
+            string path = $"Illustrations/{name}";
+            if (Cache.TryGetValue(path, out Sprite cached)) return cached;
+            var texture = Resources.Load<Texture2D>(path);
+            Sprite sprite = texture == null ? null
+                : Sprite.Create(texture, new Rect(0, 0, texture.width, texture.height), new Vector2(0.5f, 0.5f), 100);
+            if (sprite != null) Cache[path] = sprite;
+            return sprite;
         }
 
         private static T Load<T>(string path) where T : Object

@@ -17,6 +17,31 @@ namespace Executor.Data
         public string Role { get; set; }
     }
 
+    /// <summary>GET /profiles/{userId}: 공개 프로필 (클리어 수·별은 공식 스테이지만)</summary>
+    public class ProfileDetailResponse
+    {
+        public long UserId { get; set; }
+        public string Nickname { get; set; }
+        public string Comment { get; set; }
+        public long? EquippedSkinId { get; set; }
+        public long ClearedStageCount { get; set; }
+        public long TotalStars { get; set; }
+        public bool IsFriend { get; set; }
+    }
+
+    /// <summary>PUT /profiles/me/equipment 요청·응답. null이면 기본 스킨·테마</summary>
+    public class EquipmentRequest
+    {
+        public long? SkinItemId { get; set; }
+        public long? ThemeItemId { get; set; }
+    }
+
+    public class EquipmentResponse
+    {
+        public long? EquippedSkinId { get; set; }
+        public long? EquippedThemeId { get; set; }
+    }
+
     /// <summary>다른 사용자를 표시할 때 쓰는 공통 객체</summary>
     public class UserSummary
     {

@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Threading.Tasks;
 using System.Linq;
 using Executor.Data;
 using Executor.Game;
@@ -41,6 +42,9 @@ namespace Executor.Play
         private bool _choicesShown;
         private float _endAt = -1;
         private int _blockInputFrame = -1;
+        /// <summary>이번 판 결과를 서버에 보냈는지 (클리어 제출 또는 나갈 때의 실패 제출, 한 번만)</summary>
+        private bool _runSubmitted;
+        private bool _loadingStage;
 
         private List<StoryStep> _story;
         private int _storyIndex;
@@ -61,7 +65,13 @@ namespace Executor.Play
             _game.Build();
             WireMenu();
             WireGame();
-            ApiClient.SessionExpired += () => { if (_mode != Mode.Title) ShowTitle(); };
+            ApiClient.SessionExpired += () =>
+            {
+                if (_mode != Mode.Title) ShowTitle();
+                // 계정이 정지돼서 끝났으면 기한과 사유를 보여 준다
+                string reason = ApiClient.TakeSessionEndReason();
+                if (reason != null) _menu.ShowMessage("계정 정지", reason);
+            };
             LoadStages();
             ShowTitle();
             RestoreLogin();
@@ -69,8 +79,44 @@ namespace Executor.Play
 
         private async void RestoreLogin()
         {
-            if (await PlayerSession.TryRestoreAsync() && _mode == Mode.Title) ShowTitle();
+            if (!await PlayerSession.TryRestoreAsync()) return;
+            await ReloadChaptersAsync();
+            if (_mode == Mode.Title) ShowTitle();
         }
+
+        /// <summary>
+        /// 로그인 상태에 맞춰 챕터를 다시 만든다. 로그인했으면 서버(작전·스테이지·내 진행도)에서, 아니면 Resources 맵에서.
+        /// 서버에 닿지 못하면 Resources 맵을 쓴다 (이때 결과는 서버에 보내지 않는다). 보내지 못한 결과가 있으면 먼저 보낸다
+        /// </summary>
+        private async Task ReloadChaptersAsync()
+        {
+            string current = _chapter?.Id;
+            if (PlayerSession.IsOnline)
+            {
+                try
+                {
+                    await PendingResults.FlushAsync();
+                    var chapters = await ServerCatalog.LoadAsync();
+                    _chapters = chapters;
+                    _chapter = _chapters.FirstOrDefault(c => c.Id == current)
+                               ?? _chapters.FirstOrDefault(c => c.IsAvailable) ?? _chapters.FirstOrDefault();
+                    return;
+                }
+                catch (ApiException e)
+                {
+                    Debug.LogWarning("[WireframeGame] 서버 스테이지를 불러오지 못해 PC의 맵을 씁니다: " + e);
+                    _menu.ShowMessage("스테이지", e.IsNetworkError
+                        ? "서버에 연결할 수 없어 PC에 있는 맵으로 플레이합니다.\n(이때 기록은 서버에 저장되지 않습니다)"
+                        : "서버 스테이지를 불러오지 못했습니다.\n" + e.Message);
+                }
+            }
+            StageProgress.ClearRemote();
+            _chapters = ChapterCatalog.Load();
+            _chapter = _chapters.FirstOrDefault(c => c.Id == current)
+                       ?? _chapters.FirstOrDefault(c => c.IsAvailable) ?? _chapters.FirstOrDefault();
+        }
+
+        private async void ReloadChapters() => await ReloadChaptersAsync();
 
         private void LoadStages()
         {
@@ -92,12 +138,13 @@ namespace Executor.Play
             };
             _menu.OnTitleLogin = OpenLogin;
             _menu.OnTitleLogout = Logout;
-            _menu.OnTitleOffline = () => { PlayerSession.StartOffline(); ShowTitle(); };
+            _menu.OnTitleOffline = () => { PlayerSession.StartOffline(); ReloadChapters(); ShowTitle(); };
             _menu.OnSettings = () => _menu.ShowSettings(PlayerSession.DisplayName, PlayerSession.IsOnline, Logout);
 
             _menu.OnProfile = ShowProfile;
-            _menu.OnMail = () => _menu.ShowMessage("우편", "우편함은 준비 중입니다.\n(서버 우편 API 연동 예정)");
-            _menu.OnShop = () => _menu.ShowMessage("상점", "상점은 준비 중입니다.\n(서버 상점 API 연동 예정)");
+            _menu.OnMail = OpenMailbox;
+            _menu.OnNotice = OpenNotices;
+            _menu.OnShop = () => OpenShop(_shopFilter);
             _menu.OnStages = ShowStageSelect;
             _menu.OnMainBack = ShowTitle;
 
@@ -137,8 +184,9 @@ namespace Executor.Play
         {
             // 로그인하면 시작 화면으로 돌아가고 화면을 클릭해 메인으로 들어간다.
             // 닉네임이 없으면(가입 후 첫 로그인) 바로 튜토리얼 1스테이지로 가서 닉네임을 입력받는다
-            _menu.ShowLogin(PlayerSession.LoginAsync, PlayerSession.SignupAsync, () =>
+            _menu.ShowLogin(PlayerSession.LoginAsync, PlayerSession.SignupAsync, async () =>
             {
+                await ReloadChaptersAsync();
                 if (PlayerSession.IsOnline && !PlayerSession.HasNickname) StartFirstTutorial(); else ShowTitle();
             });
         }
@@ -155,6 +203,7 @@ namespace Executor.Play
         private async void Logout()
         {
             await PlayerSession.LogoutAsync();
+            await ReloadChaptersAsync();
             ShowTitle();
         }
 
@@ -170,11 +219,201 @@ namespace Executor.Play
                 {
                     await PlayerSession.RefreshProfileAsync();
                     if (_mode == Mode.Main) ShowMainProfile();
+                    RefreshMailCount();
                 }
                 catch (ApiException e)
                 {
                     Debug.LogWarning("[WireframeGame] 프로필 갱신 실패: " + e);
                 }
+            }
+        }
+
+        // ---------------- 우편함 ----------------
+        private List<MailResponse> _mails = new List<MailResponse>();
+
+        /// <summary>메인 화면 우편 버튼의 받지 않은 우편 수를 갱신한다</summary>
+        private async void RefreshMailCount()
+        {
+            if (!PlayerSession.IsOnline) { _menu.SetMailCount(0); return; }
+            try
+            {
+                _mails = (await MailApi.GetMailsAsync()).Content;
+                _menu.SetMailCount(_mails.Count(m => !m.Claimed));
+            }
+            catch (ApiException e)
+            {
+                Debug.LogWarning("[WireframeGame] 우편 수를 불러오지 못했습니다: " + e.Message);
+            }
+        }
+
+        private async void OpenMailbox()
+        {
+            if (!PlayerSession.IsOnline)
+            {
+                _menu.ShowMessage("우편", "로그인해야 우편함을 쓸 수 있습니다.");
+                return;
+            }
+            try
+            {
+                _mails = (await MailApi.GetMailsAsync()).Content;
+                if (_mode != Mode.Main) return;
+                _menu.SetMailCount(_mails.Count(m => !m.Claimed));
+                _menu.ClosePopups();
+                _menu.ShowMailbox(_mails, OpenMail, ClaimAllMail);
+            }
+            catch (ApiException e)
+            {
+                _menu.ShowMessage("우편", e.IsNetworkError ? "서버에 연결할 수 없어 우편을 불러오지 못했습니다." : e.Message);
+            }
+        }
+
+        private void OpenMail(MailResponse mail)
+        {
+            _menu.ClosePopups();
+            _menu.ShowMail(mail, () => ClaimMail(mail));
+        }
+
+        private async void ClaimMail(MailResponse mail)
+        {
+            try
+            {
+                MailClaimResponse res = await MailApi.ClaimAsync(mail.MailId);
+                ApplyCoin(res.TotalCoin);
+                var parts = new List<string>();
+                if (res.RewardCoin > 0) parts.Add($"코인 {res.RewardCoin}");
+                if (res.RewardItem != null) parts.Add($"{mail.RewardItem?.Name ?? "아이템"} ×{res.RewardItem.Quantity}");
+                if (res.ConvertedCoin > 0) parts.Add($"이미 가진 아이템이라 코인 {res.ConvertedCoin}으로 바꿈");
+                _menu.ClosePopups();
+                _menu.ShowMessage("우편 받기", (parts.Count > 0 ? "받았습니다.\n" + string.Join("\n", parts) : "받았습니다.")
+                                             + $"\n\n보유 코인 {res.TotalCoin}");
+            }
+            catch (ApiException e)
+            {
+                _menu.ClosePopups();
+                _menu.ShowMessage("우편 받기", e.IsNetworkError ? "서버에 연결할 수 없습니다." : e.Message);
+            }
+            RefreshMailCount();
+        }
+
+        private async void ClaimAllMail()
+        {
+            try
+            {
+                MailClaimAllResponse res = await MailApi.ClaimAllAsync();
+                ApplyCoin(res.TotalCoin);
+                var lines = new List<string> { $"{res.ClaimedCount}통을 받았습니다." };
+                if (res.RewardCoin > 0) lines.Add($"코인 {res.RewardCoin}");
+                foreach (ClaimedItem item in res.RewardItems)
+                {
+                    string name = _mails.FirstOrDefault(m => m.RewardItem?.ItemId == item.ItemId)?.RewardItem?.Name ?? "아이템";
+                    lines.Add($"{name} ×{item.Quantity}");
+                }
+                if (res.ConvertedCoin > 0) lines.Add($"이미 가진 아이템은 코인 {res.ConvertedCoin}으로 바꿈");
+                lines.Add("");
+                lines.Add($"보유 코인 {res.TotalCoin}");
+                _menu.ClosePopups();
+                _menu.ShowMessage("모두 받기", string.Join("\n", lines));
+            }
+            catch (ApiException e)
+            {
+                _menu.ClosePopups();
+                _menu.ShowMessage("모두 받기", e.IsNetworkError ? "서버에 연결할 수 없습니다." : e.Message);
+            }
+            RefreshMailCount();
+        }
+
+        // ---------------- 상점 ----------------
+        /// <summary>상점 종류 탭 (null = 전체)</summary>
+        private string _shopFilter;
+
+        private async void OpenShop(string filter)
+        {
+            if (!PlayerSession.IsOnline)
+            {
+                _menu.ShowMessage("상점", "로그인해야 상점을 쓸 수 있습니다.");
+                return;
+            }
+            _shopFilter = filter;
+            try
+            {
+                List<ShopItem> items = await ItemApi.GetShopItemsAsync(filter);
+                if (_mode != Mode.Main) return;
+                _menu.ClosePopups();
+                _menu.ShowShop(items, PlayerSession.Profile.Coin, filter, OpenShop, ConfirmPurchase);
+            }
+            catch (ApiException e)
+            {
+                _menu.ShowMessage("상점", e.IsNetworkError ? "서버에 연결할 수 없어 상점을 불러오지 못했습니다." : e.Message);
+            }
+        }
+
+        private void ConfirmPurchase(ShopItem item, int quantity)
+        {
+            int price = item.Price * quantity;
+            int coin = PlayerSession.Profile?.Coin ?? 0;
+            string count = ItemTypes.IsUnique(item.ItemType) ? "" : $" {quantity}개";
+            string text = $"{item.Name}{count}을(를) {price} 코인에 살까요?\n\n보유 코인 {coin} → {coin - price}";
+            if (price > coin)
+            {
+                _menu.ShowMessage("구매", $"코인이 모자랍니다.\n\n필요 {price} · 보유 {coin}");
+                return;
+            }
+            _menu.ShowConfirm("구매", text, () => Purchase(item, quantity));
+        }
+
+        private async void Purchase(ShopItem item, int quantity)
+        {
+            try
+            {
+                PurchaseResponse res = await ItemApi.PurchaseAsync(item.ItemId, quantity);
+                ApplyCoin(res.RemainingCoin);
+                _menu.ClosePopups();
+                OpenShop(_shopFilter);
+                string have = ItemTypes.IsUnique(item.ItemType) ? "프로필에서 장착할 수 있습니다." : $"지금 {res.Quantity}개 가지고 있습니다.";
+                _menu.ShowMessage("구매 완료", $"{item.Name}을(를) 샀습니다.\n{have}\n\n남은 코인 {res.RemainingCoin}");
+            }
+            catch (ApiException e)
+            {
+                _menu.ClosePopups();
+                _menu.ShowMessage("구매", e.IsNetworkError ? "서버에 연결할 수 없습니다." : e.Message);
+            }
+        }
+
+        /// <summary>보유 코인을 바꾸고 메인 화면에 반영한다</summary>
+        private void ApplyCoin(int totalCoin)
+        {
+            if (PlayerSession.Profile != null) PlayerSession.Profile.Coin = totalCoin;
+            if (_mode == Mode.Main) ShowMainProfile();
+        }
+
+        /// <summary>공지 목록 (로그인 없이 조회). 서버에 닿지 못하면 안내만 한다</summary>
+        private async void OpenNotices()
+        {
+            try
+            {
+                var page = await NoticeApi.GetNoticesAsync(size: 20);
+                if (_mode != Mode.Main) return;
+                _menu.ClosePopups();
+                _menu.ShowNotices(page.Content, OpenNotice);
+            }
+            catch (ApiException e)
+            {
+                _menu.ShowMessage("공지사항", e.IsNetworkError ? "서버에 연결할 수 없어 공지를 불러오지 못했습니다." : e.Message);
+            }
+        }
+
+        private async void OpenNotice(long noticeId)
+        {
+            try
+            {
+                var notice = await NoticeApi.GetNoticeAsync(noticeId);
+                _menu.ClosePopups();
+                _menu.ShowNoticeDetail(notice);
+            }
+            catch (ApiException e)
+            {
+                _menu.ClosePopups();
+                _menu.ShowMessage("공지사항", e.Status == 404 ? "내려간 공지입니다." : e.IsNetworkError ? "서버에 연결할 수 없습니다." : e.Message);
             }
         }
 
@@ -184,21 +423,85 @@ namespace Executor.Play
             _menu.ShowMain(PlayerSession.DisplayName, coin);
         }
 
-        private void ShowProfile()
+        /// <summary>프로필: 정보·기록, 닉네임·자기소개 수정, 스킨·테마 장착</summary>
+        private async void ShowProfile()
         {
             if (!PlayerSession.IsOnline)
             {
                 _menu.ShowList("프로필", new[] { "오프라인 테스트 중입니다.", $"닉네임: {NameOrDash(PlayerSession.Nickname)}" });
                 return;
             }
-            MyProfileResponse p = PlayerSession.Profile;
-            _menu.ShowList("프로필", new[]
+            try
             {
-                $"닉네임: {NameOrDash(p.Nickname)}",
-                $"코인: {p.Coin}",
-                $"이메일: {p.Email}",
-                $"자기소개: {NameOrDash(p.Comment)}",
-            });
+                MyProfileResponse p = PlayerSession.Profile;
+                var itemsTask = ItemApi.GetMyItemsAsync();
+                var statsTask = ProfileApi.GetProfileAsync(p.UserId);
+                List<MyItem> items = await itemsTask;
+                ProfileDetailResponse stats = null;
+                try { stats = await statsTask; } catch (ApiException) { /* 기록 줄만 빠진다 */ }
+                if (_mode != Mode.Main) return;
+                _menu.ClosePopups();
+                _menu.ShowProfileEditor(PlayerSession.Profile, stats, items, new MenuUI.ProfileActions
+                {
+                    CheckNickname = CheckNicknameForProfile,
+                    SaveNickname = SaveNicknameForProfile,
+                    SaveComment = SaveCommentForProfile,
+                    Equip = Equip,
+                });
+            }
+            catch (ApiException e)
+            {
+                _menu.ShowMessage("프로필", e.IsNetworkError ? "서버에 연결할 수 없어 프로필을 불러오지 못했습니다." : e.Message);
+            }
+        }
+
+        private static string NicknameRule(string name) =>
+            name.Length < 2 || name.Length > 20 ? "닉네임은 2~20자여야 합니다." : null;
+
+        private async Task<string> CheckNicknameForProfile(string name)
+        {
+            if (NicknameRule(name) is string rule) return rule;
+            if (name == PlayerSession.Profile.Nickname) return "✓ 지금 쓰고 있는 닉네임입니다.";
+            try { return await PlayerSession.IsNicknameAvailableAsync(name) ? "✓ 쓸 수 있는 닉네임입니다." : "이미 쓰는 닉네임입니다."; }
+            catch (ApiException e) { return e.IsNetworkError ? "서버에 연결할 수 없습니다." : e.Message; }
+        }
+
+        private async Task<string> SaveNicknameForProfile(string name)
+        {
+            if (NicknameRule(name) is string rule) return rule;
+            if (name == PlayerSession.Profile.Nickname) return "✓ 바뀐 것이 없습니다.";
+            try
+            {
+                await PlayerSession.SetNicknameAsync(name);
+                ShowMainProfile();
+                return $"✓ 닉네임을 '{name}'(으)로 바꿨습니다.";
+            }
+            catch (ApiException e) { return e.IsNetworkError ? "서버에 연결할 수 없습니다." : e.Message; }
+        }
+
+        private async Task<string> SaveCommentForProfile(string comment)
+        {
+            try
+            {
+                PlayerSession.SetProfile(await ProfileApi.UpdateCommentAsync(comment.Trim()));
+                return string.IsNullOrWhiteSpace(comment) ? "✓ 자기소개를 지웠습니다." : "✓ 자기소개를 저장했습니다.";
+            }
+            catch (ApiException e) { return e.IsNetworkError ? "서버에 연결할 수 없습니다." : e.Message; }
+        }
+
+        private async void Equip(long? skinId, long? themeId)
+        {
+            try
+            {
+                EquipmentResponse res = await ProfileApi.UpdateEquipmentAsync(skinId, themeId);
+                PlayerSession.Profile.EquippedSkinId = res.EquippedSkinId;
+                PlayerSession.Profile.EquippedThemeId = res.EquippedThemeId;
+                ShowProfile();
+            }
+            catch (ApiException e)
+            {
+                _menu.ShowMessage("장착", e.IsNetworkError ? "서버에 연결할 수 없습니다." : e.Message);
+            }
         }
 
         private static string NameOrDash(string s) => string.IsNullOrEmpty(s) ? "-" : s;
@@ -215,8 +518,16 @@ namespace Executor.Play
                 Title = s.Title.Replace("시뮬레이션 ", ""),
                 Unlocked = StageProgress.IsStageUnlocked(_chapter, s),
                 Cleared = StageProgress.IsCleared(_chapter.Id, s.No),
-                Detail = StageProgress.IsCleared(_chapter.Id, s.No) ? $"최고 {StageProgress.BestMoves(_chapter.Id, s.No)}턴 사용" : null,
+                Detail = StageProgress.IsCleared(_chapter.Id, s.No) ? StageDetail(_chapter, s) : null,
             }).ToList());
+        }
+
+        /// <summary>스테이지 선택의 기록 줄: "최고 22턴 · 별 2/3" (서버 기록이면 별까지)</summary>
+        private static string StageDetail(ChapterInfo chapter, StageInfo stage)
+        {
+            string text = $"최고 {StageProgress.BestMoves(chapter.Id, stage.No)}턴";
+            var stars = StageProgress.RemoteOf(chapter.Id, stage.No)?.Stars;
+            return stars == null ? text : $"{text} · 별 {stars.Count}/{stars.Max}";
         }
 
         /// <summary>시나리오 버튼: 오른쪽 챕터 내비게이터</summary>
@@ -258,6 +569,7 @@ namespace Executor.Play
 
         private void HideGame()
         {
+            SubmitAbandon();
             _board = null;
             _view.gameObject.SetActive(false);
             _game.HideAll();
@@ -269,26 +581,51 @@ namespace Executor.Play
             _game.OnSettings = ShowPauseMenu;
             _game.OnCheckNickname = CheckNickname;
             _game.OnChat = () => _game.ShowMessage("채팅", "채팅은 준비 중입니다.\n(친구 메시지 API 연동 예정)");
-            _game.OnCollect = () => _game.ShowMessage("수집", "이 스테이지에는 수집 요소가 없습니다.\n(숨겨진 요소는 본 스테이지에서 추가)");
+            _game.OnCollect = () =>
+            {
+                if (_board == null || _game.HasPopup) return;
+                int total = _board.HiddenTotal, found = _board.HiddenCollected;
+                _game.ShowMessage("수집", total == 0
+                    ? "이 스테이지에는 숨겨진 요소가 없습니다."
+                    : $"숨겨진 요소 {found}/{total}\n\n" + (found == total
+                        ? "모두 찾았습니다. 클리어하면 별 3을 받습니다."
+                        : "가까이(3x3) 가면 드러납니다. 모두 모으면 별 3입니다.\n워프해도 모은 것은 유지됩니다."));
+            };
+            _game.OnMinimap = () =>
+            {
+                if (_board == null || _game.HasPopup) return;
+                _game.ShowMapPopup($"{_stage.No}. {_stage.Title} · 전체 맵", Minimap.Render(_board), Minimap.Legend);
+            };
+            _game.OnQuest = () =>
+            {
+                if (_board == null || _game.HasPopup) return;
+                _game.ShowDetail("퀘스트", QuestDetail());
+            };
         }
 
         private void ShowPauseMenu()
         {
             if (_board == null || _game.HasPopup) return;
-            _game.ShowMenu("일시 정지", new (string, System.Action)[]
-            {
-                ("계속하기", null),
-                ("다시 하기 (R)", () => StartStage(_stage, false)),
-                ("스테이지 선택", ShowStageSelect),
-                ("메인으로", ShowMain),
-            });
+            var buttons = new List<(string, System.Action)> { ("계속하기", null) };
+            if (_board.CheckpointCount > 0) buttons.Add(("체크포인트로 이동 (Q)", () => ShowWarpMenu()));
+            buttons.Add(("다시 하기 (R)", () => StartStage(_stage, false)));
+            buttons.Add(("스테이지 선택", ShowStageSelect));
+            buttons.Add(("메인으로", ShowMain));
+            _game.ShowMenu("일시 정지", buttons);
         }
 
         private void StartStage(StageInfo stage, bool withIntro)
         {
             Block();
+            SubmitAbandon();
+            if (stage.Map == null)
+            {
+                LoadAndStart(stage, withIntro);
+                return;
+            }
             _stage = stage;
             _board = new Board(stage.Map, stage.Par);
+            _runSubmitted = false;
             _guides = new GuideTracker(_board, PlayerSession.Nickname);
             _questGuides.Clear();
             _dialogue = null;
@@ -304,12 +641,62 @@ namespace Executor.Play
             else BeginPlay();
         }
 
+        /// <summary>서버 스테이지의 맵을 받아서 시작한다 (잠겨 있던 스테이지는 맵을 미리 받지 못한다)</summary>
+        private async void LoadAndStart(StageInfo stage, bool withIntro)
+        {
+            if (_loadingStage) return;
+            _loadingStage = true;
+            try
+            {
+                await ServerCatalog.LoadMapAsync(stage);
+                StartStage(stage, withIntro);
+            }
+            catch (ApiException e)
+            {
+                _menu.ShowMessage("스테이지", e.IsNetworkError ? "서버에 연결할 수 없어 스테이지를 불러오지 못했습니다." : e.Message);
+            }
+            finally
+            {
+                _loadingStage = false;
+            }
+        }
+
+        /// <summary>
+        /// 클리어하지 않고 나가면(다시 하기, 스테이지 선택, 메인 등) 실패로 보낸다: 도전 횟수와 만난 이상 개체(도감)가 반영된다.
+        /// 아무것도 하지 않았으면 보내지 않는다. 서버 스테이지이고 로그인했을 때만
+        /// </summary>
+        private void SubmitAbandon()
+        {
+            if (_board == null || _runSubmitted || _board.IsCleared || _stage?.StageId == null || !PlayerSession.IsOnline) return;
+            if (_board.Turns == 0 && _board.EncounteredGuidebookIds.Count == 0) return;
+            _runSubmitted = true;
+            SubmitInBackground(_stage.StageId.Value, _board.ToResultRequest());
+        }
+
+        private static async void SubmitInBackground(long stageId, StageResultRequest request)
+        {
+            try
+            {
+                await StageApi.SubmitResultAsync(stageId, request);
+            }
+            catch (ApiException e)
+            {
+                if (e.IsNetworkError) PendingResults.Add(stageId, request);
+                else Debug.LogWarning($"[WireframeGame] 결과 제출 실패 stage {stageId}: {e.Message}");
+            }
+        }
+
         private void BeginPlay()
         {
             _mode = Mode.Playing;
             Block();
             _guides = new GuideTracker(_board, PlayerSession.Nickname);
             ShowGuides(_guides.OnStart());
+            ToastEncounters();
+            if (_board.CheckpointCount > 0)
+            {
+                _game.Toast($"체크포인트 {_board.CheckpointCount}개: 남은 턴 안에 도착하면 안정, 넘기면 불안정. Q로 도착한 체크포인트에 워프할 수 있습니다.");
+            }
         }
 
         private void ShowGuides(IReadOnlyList<string> texts)
@@ -321,10 +708,83 @@ namespace Executor.Play
             }
             if (texts.Count == 0) return;
             // 퀘스트 패널: 목표 + 최근 안내 2개
-            _game.SetQuest(DefaultQuest + "\n\n" + string.Join("\n\n", _questGuides.Skip(System.Math.Max(0, _questGuides.Count - 2))));
+            _game.SetQuest(QuestDetail());
         }
 
-        private void UpdateHud() => _game.SetTurns(_board.RemainingTurns, _board.Keys.Values.Sum());
+        private Texture2D _minimapTexture;
+
+        private void UpdateHud()
+        {
+            _game.SetTurns(_board.RemainingTurns, _board.Keys.Values.Sum());
+            _game.SetCollect(_board.HiddenCollected, _board.HiddenTotal);
+            _minimapTexture = Minimap.Render(_board, _minimapTexture);
+            _game.SetMinimap(_minimapTexture);
+            _game.SetQuestStars(QuestStars());
+        }
+
+        /// <summary>퀘스트 칸의 별 조건 3줄 (튜토리얼은 ★1만)</summary>
+        private List<(string, GameUI.QuestState)> QuestStars()
+        {
+            var rows = new List<(string, GameUI.QuestState)>
+            {
+                ("★1 출구에 도착", _board.IsCleared ? GameUI.QuestState.Done : GameUI.QuestState.Pending)
+            };
+            if (_stage.Tutorial) return rows;
+            int max = _board.Data.Stars?.MaxUnstable ?? 0;
+            int unstable = _board.UnstableCount + (_board.IsOverLimit ? 1 : 0); // 이대로 도착하면 하나 더
+            string limit = max == 0 ? "모든 구간을 턴 안에" : $"불안정 {max}개 이하";
+            rows.Add(($"★2 {limit} (불안정 {_board.UnstableCount})",
+                _board.IsCleared && _board.MeetsStableStar ? GameUI.QuestState.Done
+                : unstable > max ? GameUI.QuestState.Warn : GameUI.QuestState.Pending));
+            rows.Add((_board.HiddenTotal == 0 ? "★3 숨겨진 요소 없음" : $"★3 숨겨진 요소 모두 찾기 ({_board.HiddenCollected}/{_board.HiddenTotal})",
+                _board.IsCleared && _board.AllHiddenFound ? GameUI.QuestState.Done : GameUI.QuestState.Pending));
+            return rows;
+        }
+
+        /// <summary>퀘스트 자세히: 목표, 별 조건, 체크포인트 상태, 지금까지 나온 안내</summary>
+        private string QuestDetail()
+        {
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine(DefaultQuest).AppendLine();
+            sb.AppendLine("별 조건");
+            sb.AppendLine("  ★1 출구에 도착하면 클리어");
+            if (_stage.Tutorial)
+            {
+                sb.AppendLine("  튜토리얼은 ★1만 있습니다.");
+            }
+            else
+            {
+                int max = _board.Data.Stars?.MaxUnstable ?? 0;
+                sb.AppendLine($"  ★2 불안정 체크포인트(출구 포함)가 {max}개 이하. 남은 턴 안에 도착하면 안정, 넘기면 불안정");
+                sb.AppendLine(_board.HiddenTotal == 0
+                    ? "  ★3 이 스테이지에는 숨겨진 요소가 없습니다."
+                    : $"  ★3 숨겨진 요소 {_board.HiddenTotal}개를 모두 찾기 (지금 {_board.HiddenCollected}개). 가까이 가면 드러나고, 워프해도 유지");
+                if (_board.EncounteredGuidebookIds.Count > 0)
+                {
+                    sb.AppendLine($"  만난 이상 개체 {_board.EncounteredGuidebookIds.Count}종 (클리어하지 않아도 도감에 기록)");
+                }
+            }
+            if (_board.CheckpointCount > 0)
+            {
+                sb.AppendLine().AppendLine($"체크포인트 (Q로 도착한 곳에 워프, 지금 구간 {(_board.CurrentOrder == Board.StartOrder ? "시작" : _board.CurrentOrder.ToString())})");
+                for (int order = 1; order <= _board.CheckpointCount; order++)
+                {
+                    BoardObject cp = _board.CheckpointOf(order);
+                    if (cp == null) continue;
+                    bool? s = _board.StabilityOf(order);
+                    string state = s == null ? "아직" : s.Value ? "안정" : "불안정";
+                    sb.AppendLine($"  {order}. {state} · 다음 구간 {Turns(cp.SegmentTurns ?? _board.TurnLimit)}");
+                }
+                bool? exit = _board.StabilityOf(Board.ExitOrder);
+                sb.AppendLine($"  출구. {(exit == null ? "아직" : exit.Value ? "안정" : "불안정")}");
+            }
+            if (_questGuides.Count > 0)
+            {
+                sb.AppendLine().AppendLine("안내");
+                foreach (string g in _questGuides) sb.AppendLine("  · " + g);
+            }
+            return sb.ToString();
+        }
 
         // ---------------- 나레이션 ----------------
         private void PlayStory(List<StoryStep> steps, System.Action after)
@@ -458,6 +918,13 @@ namespace Executor.Play
                     if (k.escapeKey.wasPressedThisFrame) { ShowPauseMenu(); return; }
                     if (k.rKey.wasPressedThisFrame) { StartStage(_stage, false); return; }
                     if (k.eKey.wasPressedThisFrame) { TryTalk(); return; }
+                    if (k.qKey.wasPressedThisFrame) { ShowWarpMenu(); return; }
+                    if (k.mKey.wasPressedThisFrame)
+                    {
+                        _view.ToggleOverview();
+                        _game.Toast(_view.Overview ? "맵 전체 보기 (M으로 돌아가기)" : "구간 보기");
+                        return;
+                    }
                     if (Pressed(k, out Direction dir)) Move(dir);
                     break;
 
@@ -510,8 +977,65 @@ namespace Executor.Play
             if (result.UsedTurn) _view.Sync(); else _view.Bump(dir);
             ShowGuides(_guides.AfterMove(result));
             if (result.Outcome == MoveOutcome.PickedUpKey) _game.Toast("열쇠를 얻었습니다.");
+            if (result.Outcome == MoveOutcome.Collected)
+            {
+                string name = string.IsNullOrEmpty(result.Target.Name) ? "숨겨진 요소" : result.Target.Name;
+                _game.Toast(_board.AllHiddenFound
+                    ? $"{name} 발견! 숨겨진 요소를 모두 찾았습니다. ({_board.HiddenCollected}/{_board.HiddenTotal})"
+                    : $"{name} 발견! ({_board.HiddenCollected}/{_board.HiddenTotal})");
+            }
+            ToastEncounters();
+            if (result.Outcome == MoveOutcome.ReachedCheckpoint)
+            {
+                _game.Toast(_board.LastArrivalStable
+                    ? $"체크포인트 {result.Target.Order} 도착 (안정). 다음 구간 {Turns(_board.SegmentLimit)}"
+                    : $"체크포인트 {result.Target.Order} 도착 (불안정: 턴 초과). Q로 앞 체크포인트에 워프해 다시 시도할 수 있습니다.");
+            }
             UpdateHud();
             if (_board.IsOver) _endAt = Time.time + EndDelay;
+        }
+
+        private static string Turns(int? limit) => limit == null ? "제한 없음" : $"{limit}턴";
+
+        /// <summary>방금 처음 만난 이상 개체 알림 (도감 기록)</summary>
+        private void ToastEncounters()
+        {
+            foreach (BoardObject o in _board.LastEncounters)
+            {
+                _game.Toast($"이상 개체 발견: {(string.IsNullOrEmpty(o.Name) ? "알 수 없는 개체" : o.Name)} (도감에 기록)");
+            }
+        }
+
+        /// <summary>도착한 체크포인트 목록 (Q). 고르면 그때 상태로 워프한다</summary>
+        private void ShowWarpMenu()
+        {
+            if (_board == null || _board.IsOver || _game.HasPopup) return;
+            if (_board.CheckpointCount == 0)
+            {
+                _game.Toast("이 스테이지에는 체크포인트가 없습니다.");
+                return;
+            }
+            var buttons = new List<(string, System.Action)>();
+            foreach (int order in _board.WarpPoints)
+            {
+                string name = order == Board.StartOrder ? "시작 지점" : $"체크포인트 {order}";
+                bool? stable = order == Board.StartOrder ? null : _board.StabilityOf(order);
+                string tag = stable == null ? "" : stable.Value ? " · 안정" : " · 불안정";
+                string here = order == _board.CurrentOrder ? " (지금 구간)" : "";
+                int target = order;
+                buttons.Add(($"{name}{tag}{here}", () => Warp(target)));
+            }
+            buttons.Add(("닫기", null));
+            _game.ShowMenu($"워프 · 불안정 {_board.UnstableCount}개 (별 2: {_board.Data.Stars?.MaxUnstable ?? 0}개 이하)", buttons);
+        }
+
+        private void Warp(int order)
+        {
+            if (!_board.WarpTo(order)) return;
+            _view.SnapToBoard();
+            UpdateHud();
+            ToastEncounters();
+            _game.Toast(order == Board.StartOrder ? "시작 지점으로 돌아왔습니다." : $"체크포인트 {order}(으)로 돌아왔습니다. {Turns(_board.SegmentLimit)} 안에 다음 체크포인트로.");
         }
 
         private void TryTalk()
@@ -552,37 +1076,108 @@ namespace Executor.Play
         private void FinishStage()
         {
             _endAt = -1;
-            if (_board.IsFailed)
+
+            // 기록 = 구간 최고 기록의 합 (워프로 다시 통과한 구간은 좋은 쪽만). 체크포인트가 없으면 쓴 턴과 같다
+            int record = _board.RecordMoves;
+            int best = StageProgress.BestMoves(_chapter.Id, _stage.No);
+            bool newBest = StageProgress.RecordClear(_chapter.Id, _stage.No, record);
+
+            // 서버 스테이지면 결과를 보낸다 (아웃트로 나레이션을 보는 동안 보내고, 결과 화면에서 응답을 쓴다)
+            ChapterInfo chapter = _chapter;
+            StageInfo stage = _stage;
+            StageResultRequest request = _board.ToResultRequest();
+            Task<StageResultResponse> submit = null;
+            if (PlayerSession.IsOnline && stage.StageId != null)
             {
-                _mode = Mode.Result;
-                Block();
-                _game.ShowResult($"실패\n\n{_stage.Title}\n남은 턴이 없습니다.", false, new (string, System.Action)[]
-                {
-                    ("다시 (R)", () => StartStage(_stage, false)),
-                    ("스테이지 선택 (Esc)", ShowStageSelect),
-                });
-                return;
+                _runSubmitted = true;
+                submit = StageApi.SubmitResultAsync(stage.StageId.Value, request);
             }
 
-            // TODO: 서버에 튜토리얼이 등록되면 StageApi.SubmitResultAsync(stageId, _board.ToResultRequest())
-            int best = StageProgress.BestMoves(_chapter.Id, _stage.No);
-            bool newBest = StageProgress.RecordClear(_chapter.Id, _stage.No, _board.Turns);
-
-            void ShowResult()
+            async void ShowResult()
             {
+                string serverLine = "";
+                if (submit != null)
+                {
+                    try
+                    {
+                        StageResultResponse res = await submit;
+                        ApplyServerResult(chapter, stage, res);
+                        newBest = res.IsNewBest;
+                        best = res.BestMoves ?? best;
+                        serverLine = ServerResultText(res);
+                    }
+                    catch (ApiException e)
+                    {
+                        if (e.IsNetworkError) PendingResults.Add(stage.StageId.Value, request);
+                        serverLine = e.IsNetworkError
+                            ? "\n서버에 저장하지 못했습니다. 다음에 접속할 때 다시 보냅니다."
+                            : "\n서버 저장 실패: " + e.Message;
+                    }
+                }
+                if (_board == null || _stage != stage) return; // 기다리는 동안 다른 화면으로 갔으면 그만
                 _mode = Mode.Result;
                 Block();
                 bool hasNext = _chapter.Stages.Any(s => s.No > _stage.No);
-                var buttons = new List<(string, System.Action)>();
+                var buttons = new List<(string, System.Action)>
+                {
+                    ("다시 (R)", () => StartStage(_stage, false)),
+                    ("스테이지 선택 (Esc)", ShowStageSelect),
+                };
                 if (hasNext) buttons.Add(("다음 (Enter)", NextStage));
-                buttons.Add(("다시 (R)", () => StartStage(_stage, false)));
-                buttons.Add(("스테이지 선택 (Esc)", ShowStageSelect));
-                _game.ShowResult($"클리어!\n\n{_stage.Title}\n남은 턴 {_board.RemainingTurns} · {_board.Turns}턴 사용" +
-                                 (newBest ? "\n최고 기록" : $"\n최고 {best}턴 사용"), true, buttons);
+                string detail = _board.CheckpointCount == 0
+                    ? $"남은 턴 {_board.RemainingTurns} · {record}턴 사용"
+                    : $"기록 {record}턴 (구간 최고의 합) · 누른 턴 {_board.Turns} · 워프 {_board.Rewinds}회";
+                bool tutorial = _stage.Tutorial;
+                string star2 = tutorial ? "" : _board.MeetsStableStar
+                    ? $"\n★2 달성 (불안정 {_board.UnstableCount}개)"
+                    : $"\n★2 미달성 (불안정 {_board.UnstableCount}개 > 허용 {_board.Data.Stars?.MaxUnstable ?? 0}개)";
+                string star3 = tutorial ? "" : _board.HiddenTotal == 0 ? ""
+                    : _board.AllHiddenFound ? $"\n★3 달성 (숨겨진 요소 {_board.HiddenTotal}개)"
+                    : $"\n★3 미달성 (숨겨진 요소 {_board.HiddenCollected}/{_board.HiddenTotal})";
+                string guide = _board.EncounteredGuidebookIds.Count > 0 ? $"\n도감 기록 {_board.EncounteredGuidebookIds.Count}종" : "";
+                _game.ShowResult($"클리어!\n\n{_stage.Title}\n{detail}{star2}{star3}{guide}" +
+                                 (newBest ? "\n최고 기록" : $"\n최고 {best}턴") + serverLine, true, buttons);
             }
 
             if (_stage.Map.Story?.Outro?.Count > 0) PlayStory(_stage.Map.Story.Outro, ShowResult);
             else ShowResult();
+        }
+
+        /// <summary>서버 응답을 화면 기록에 반영한다: 코인, 최고 기록·별, 다음 스테이지 해금. 새로 열린 맵은 뒤에서 다시 불러온다</summary>
+        private void ApplyServerResult(ChapterInfo chapter, StageInfo stage, StageResultResponse res)
+        {
+            if (PlayerSession.Profile != null) PlayerSession.Profile.Coin = res.TotalCoin;
+            StageProgress.RemoteRecord record = StageProgress.RemoteOf(chapter.Id, stage.No);
+            if (record != null)
+            {
+                record.Cleared = res.Cleared || record.Cleared;
+                record.Best = res.BestMoves ?? record.Best;
+                record.Stars = res.Stars ?? record.Stars;
+            }
+            if (res.NextStageId != null)
+            {
+                foreach (ChapterInfo c in _chapters)
+                foreach (StageInfo s in c.Stages)
+                {
+                    if (s.StageId != res.NextStageId) continue;
+                    StageProgress.RemoteRecord next = StageProgress.RemoteOf(c.Id, s.No);
+                    if (next != null) next.Unlocked = true;
+                }
+                ReloadChapters();
+            }
+        }
+
+        /// <summary>결과 화면의 서버 줄: 누적 별, 첫 클리어 보상, 해금된 도감</summary>
+        private static string ServerResultText(StageResultResponse res)
+        {
+            var sb = new System.Text.StringBuilder();
+            if (res.Stars != null) sb.Append($"\n누적 별 {res.Stars.Count}/{res.Stars.Max}");
+            if (res.FirstClear && res.RewardCoin > 0) sb.Append($"\n첫 클리어 보상 +{res.RewardCoin} 코인 (보유 {res.TotalCoin})");
+            if (res.UnlockedGuidebooks?.Count > 0)
+            {
+                sb.Append("\n도감 해금: " + string.Join(", ", res.UnlockedGuidebooks.Select(g => g.Title)));
+            }
+            return sb.ToString();
         }
 
         private void NextStage()

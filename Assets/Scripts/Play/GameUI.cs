@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using UnityEngine;
 using UnityEngine.UI;
 using static Executor.Play.UiKit;
@@ -9,24 +10,31 @@ namespace Executor.Play
     /// <summary>
     /// 게임 화면 UI (와이어프레임 stage(ex) 배치, 기준 1920x1080).
     /// <list type="bullet">
-    ///   <item>왼쪽 위: 남은 턴 / 그 아래: 퀘스트(안내 문구)</item>
-    ///   <item>오른쪽 위: 수집, 채팅, 설정</item>
+    ///   <item>왼쪽 위: 미니맵(누르면 전체 맵) + 오른쪽 아이템 칸 / 그 아래: 퀘스트(별 조건 3줄, 누르면 자세히). 왼쪽 아래는 비워 둔다</item>
+    ///   <item>오른쪽 위: 수집 · 채팅 · 설정, 그 아래 남은 턴</item>
     ///   <item>가운데: 게임 화면 (BoardView가 GameArea 안에 맞춰 그린다)</item>
     ///   <item>대화창 1760x300, 이름표 280x60, 선택지 600x64, 스탠딩 일러스트 높이 1000</item>
     /// </list>
     /// </summary>
     public class GameUI : MonoBehaviour
     {
-        /// <summary>게임 화면 영역 (화면 비율 0~1, 왼쪽 아래 기준). 왼쪽 패널과 위쪽 버튼을 피한다</summary>
-        public static readonly Rect GameArea = new Rect(552f / 1920, 64f / 1080, 1320f / 1920, 872f / 1080);
+        /// <summary>
+        /// 게임 화면 영역 (화면 비율 0~1, 왼쪽 아래 기준). 왼쪽 패널과 오른쪽 위(버튼 줄 + 그 아래 남은 턴)를 피한다.
+        /// 기준 1920x1080에서 x 552~1872, 아래 64 ~ 위에서 232
+        /// </summary>
+        public static readonly Rect GameArea = new Rect(552f / 1920, 64f / 1080, 1320f / 1920, 784f / 1080);
 
         private RectTransform _root;
         private RectTransform _popupRoot;
 
         // HUD
         private GameObject _hud;
-        private Text _stageTitle, _turns, _keys, _quest;
+        private Text _stageTitle, _turns, _keys;
         private Image _turnsBox;
+        private RawImage _minimap;
+        private readonly Text[] _questRows = new Text[3];
+        /// <summary>퀘스트 팝업에 보여 줄 자세한 내용 (목표·별 조건·체크포인트·안내)</summary>
+        private string _questDetail = "";
         private GameObject _keyBox;
         private Button _collect;
 
@@ -64,6 +72,9 @@ namespace Executor.Play
 
         public Action OnChat, OnSettings, OnCollect;
 
+        /// <summary>미니맵을 눌렀을 때 (전체 맵 팝업), 퀘스트를 눌렀을 때 (자세히)</summary>
+        public Action OnMinimap, OnQuest;
+
         public bool HasPopup => _popupRoot.childCount > 0;
 
         public void Build()
@@ -99,10 +110,14 @@ namespace Executor.Play
             _hud.SetActive(true);
             _stageTitle.text = title;
             SetQuest(quest);
+            SetQuestStars(new (string, QuestState)[0]);
             SetButtonText(_collect, $"수집 {collected}/{collectTotal}");
         }
 
-        /// <summary>남은 턴 표시. 0이면 주의 색, 음수면 실패 색. 제한이 없으면 ∞</summary>
+        /// <summary>
+        /// 지금 구간의 남은 턴. 0이면 주의 색, 넘기면 -1, -2처럼 빨간색으로 (실패는 아니고 도착이 불안정이 된다).
+        /// 제한이 없으면 ∞
+        /// </summary>
         public void SetTurns(int? remaining, int keys)
         {
             _turns.text = remaining?.ToString() ?? "∞";
@@ -113,14 +128,76 @@ namespace Executor.Play
             _keys.text = "×" + keys;
         }
 
-        public void SetQuest(string text) => _quest.text = text;
+        /// <summary>퀘스트 팝업에 보여 줄 자세한 내용</summary>
+        public void SetQuest(string text) => _questDetail = text;
+
+        /// <summary>오른쪽 위 "수집 n/m" (숨겨진 요소). 모두 모으면 초록</summary>
+        public void SetCollect(int collected, int total)
+        {
+            SetButtonText(_collect, $"수집 {collected}/{total}");
+            var label = _collect.GetComponentInChildren<Text>();
+            if (label != null) label.color = total > 0 && collected == total ? Good : TextColor;
+        }
+
+        public string QuestDetail => _questDetail;
+
+        public enum QuestState { Pending, Done, Warn }
+
+        /// <summary>퀘스트 칸의 별 조건 줄 (최대 3줄). 달성하면 초록 ✓, 지금 못 미치면 주황</summary>
+        public void SetQuestStars(IReadOnlyList<(string text, QuestState state)> rows)
+        {
+            for (int i = 0; i < _questRows.Length; i++)
+            {
+                bool has = i < rows.Count;
+                _questRows[i].gameObject.SetActive(has);
+                if (!has) continue;
+                var (text, state) = rows[i];
+                _questRows[i].text = (state == QuestState.Done ? "✓ " : "· ") + text;
+                _questRows[i].color = state == QuestState.Done ? Good : state == QuestState.Warn ? Warn : TextColor;
+            }
+        }
+
+        /// <summary>미니맵 그림을 바꾼다. 칸 비율을 지키며 미니맵 상자 안에 맞춘다</summary>
+        public void SetMinimap(Texture2D texture)
+        {
+            _minimap.texture = texture;
+            if (texture == null) return;
+            var inner = new Vector2(MinimapSize.x - 24, MinimapSize.y - 52);
+            float scale = Mathf.Min(inner.x / texture.width, inner.y / texture.height);
+            _minimap.rectTransform.sizeDelta = new Vector2(texture.width * scale, texture.height * scale);
+        }
+
+        /// <summary>전체 맵 팝업</summary>
+        public void ShowMapPopup(string title, Texture2D texture, string legend)
+        {
+            Popup(_popupRoot, title, new Vector2(1600, 940), out RectTransform body);
+            var img = new GameObject("Map", typeof(RectTransform), typeof(RawImage)).GetComponent<RawImage>();
+            img.transform.SetParent(body, false);
+            img.texture = texture;
+            img.raycastTarget = false;
+            float scale = Mathf.Min(1500f / texture.width, 720f / texture.height);
+            Place(img, new Vector2(0.5f, 1), new Vector2(0, -8), new Vector2(texture.width * scale, texture.height * scale), new Vector2(0.5f, 1));
+            var note = Label(body, legend, 20, TextAnchor.LowerCenter, Muted);
+            Stretch(note.rectTransform);
+        }
+
+        /// <summary>긴 글 팝업 (퀘스트 자세히 등)</summary>
+        public void ShowDetail(string title, string text)
+        {
+            Popup(_popupRoot, title, new Vector2(1000, 760), out RectTransform body);
+            var t = Label(body, text, 24, TextAnchor.UpperLeft);
+            t.lineSpacing = 1.3f;
+            t.verticalOverflow = VerticalWrapMode.Truncate;
+            Stretch(t.rectTransform);
+        }
 
         /// <summary>게임 화면 위 팝업 메뉴 (일시 정지 등). 버튼을 누르면 닫히고 동작한다</summary>
         public void ShowMenu(string title, IEnumerable<(string label, Action onClick)> buttons)
         {
-            Popup(_popupRoot, title, new Vector2(620, 520), out RectTransform body);
+            var list = buttons.ToList();
+            Popup(_popupRoot, title, new Vector2(620, Mathf.Max(520, 200 + list.Count * 92)), out RectTransform body);
             float y = 0;
-            foreach (var (label, onClick) in buttons)
+            foreach (var (label, onClick) in list)
             {
                 var b = Button(body, label, () => { ClosePopups(); onClick?.Invoke(); }, 28);
                 Place(b, new Vector2(0.5f, 1), new Vector2(0, y), new Vector2(480, 72));
@@ -259,48 +336,79 @@ namespace Executor.Play
         }
 
         // ---------------- 만들기 ----------------
+        // 배치 (기준 1920x1080). 게임 화면(GameArea)은 x 552~1872, 위에서 232 아래부터.
+        // 왼쪽 위: 미니맵 + 오른쪽 아이템 칸, 그 아래 퀘스트. 왼쪽 아래는 비워 둔다 (모바일 방향 패드 자리).
+        // 오른쪽 위: 수집 · 채팅 · 설정 줄, 그 아래 남은 턴 (엄지가 가리지 않는 위쪽에 계속 볼 값을 둔다)
+        private const float Left = 48;
+        private static readonly Vector2 MinimapSize = new Vector2(360, 300);
+        private const float ItemSlot = 84;
+
         private void BuildHud()
         {
             _hud = new GameObject("Hud", typeof(RectTransform));
             _hud.transform.SetParent(_root, false);
             Stretch((RectTransform)_hud.transform);
 
-            // 남은 턴 (왼쪽 위)
-            var box = Panel(_hud.transform, "Turns", PanelColor, Line);
-            Place(box, new Vector2(0, 1), new Vector2(48, -48), new Vector2(312, 168), new Vector2(0, 1));
-            _turnsBox = box.GetComponent<Image>();
-            var label = Label(box, "남은 턴", 24, TextAnchor.UpperLeft, Muted);
-            Stretch(label.rectTransform, 18);
-            _turns = Label(box, "", 80, TextAnchor.MiddleCenter, bold: true);
-            Stretch(_turns.rectTransform);
-            _turns.rectTransform.offsetMax = new Vector2(0, -24);
+            // 미니맵 (왼쪽 위). 누르면 전체 맵 팝업
+            var mapButton = Button(_hud.transform, "", () => OnMinimap?.Invoke(), 20, PanelColor);
+            Place(mapButton, new Vector2(0, 1), new Vector2(Left, -48), MinimapSize, new Vector2(0, 1));
+            var mapLabel = Label(mapButton.transform, "미니맵 · 누르면 전체 맵", 18, TextAnchor.UpperLeft, Muted);
+            Stretch(mapLabel.rectTransform, 12);
+            _minimap = new GameObject("Minimap", typeof(RectTransform), typeof(RawImage)).GetComponent<RawImage>();
+            _minimap.transform.SetParent(mapButton.transform, false);
+            _minimap.raycastTarget = false;
+            Place(_minimap, new Vector2(0.5f, 0), new Vector2(0, 12), new Vector2(MinimapSize.x - 24, MinimapSize.y - 52), new Vector2(0.5f, 0));
 
-            // 열쇠 (남은 턴 오른쪽 작은 상자, 열쇠가 있을 때만 보인다)
+            // 아이템 칸 (미니맵 오른쪽 세로 줄). 지금은 열쇠 하나, 가지고 있을 때만 보인다. 아이템이 늘면 아래로 쌓는다
+            float itemX = Left + MinimapSize.x + 12;
             var keyBox = Panel(_hud.transform, "Keys", PanelColor, Line);
-            Place(keyBox, new Vector2(0, 1), new Vector2(384, -48), new Vector2(120, 120), new Vector2(0, 1));
+            Place(keyBox, new Vector2(0, 1), new Vector2(itemX, -48), new Vector2(ItemSlot, ItemSlot), new Vector2(0, 1));
             _keyBox = keyBox.gameObject;
             var keyIcon = new GameObject("Icon", typeof(RectTransform), typeof(Image)).GetComponent<Image>();
             keyIcon.transform.SetParent(keyBox, false);
             keyIcon.sprite = ArtCatalog.ForObject(Data.MapObjectTypes.Key);
             keyIcon.preserveAspect = true;
             keyIcon.raycastTarget = false;
-            Place(keyIcon, new Vector2(0.5f, 1), new Vector2(0, -12), new Vector2(72, 72), new Vector2(0.5f, 1));
-            _keys = Label(keyBox, "", 24, TextAnchor.LowerCenter, new Color32(0xff, 0xd2, 0x3f, 0xff), bold: true);
-            Stretch(_keys.rectTransform, 8);
+            Place(keyIcon, new Vector2(0.5f, 1), new Vector2(0, -6), new Vector2(48, 48), new Vector2(0.5f, 1));
+            _keys = Label(keyBox, "", 20, TextAnchor.LowerCenter, new Color32(0xff, 0xd2, 0x3f, 0xff), bold: true);
+            Stretch(_keys.rectTransform, 4);
 
-            // 퀘스트 (그 아래)
-            var quest = Panel(_hud.transform, "Quest", PanelColor, Line);
-            Place(quest, new Vector2(0, 1), new Vector2(48, -240), new Vector2(312, 420), new Vector2(0, 1));
-            var qTitle = Label(quest, "퀘스트", 26, TextAnchor.UpperLeft, bold: true);
-            Stretch(qTitle.rectTransform, 18);
-            _quest = Label(quest, "", 22, TextAnchor.UpperLeft);
-            _quest.lineSpacing = 1.25f;
-            Stretch(_quest.rectTransform, 18);
-            _quest.rectTransform.offsetMax = new Vector2(-18, -64);
+            // 퀘스트 (미니맵 아래): 별 조건 3줄. 누르면 자세히(목표·체크포인트·안내)
+            float questY = -48 - MinimapSize.y - 16;
+            float questW = MinimapSize.x; // 미니맵과 같은 너비
+            var quest = Button(_hud.transform, "", () => OnQuest?.Invoke(), 20, PanelColor);
+            Place(quest, new Vector2(0, 1), new Vector2(Left, questY), new Vector2(questW, 184), new Vector2(0, 1));
+            var qTitle = Label(quest.transform, "퀘스트", 22, TextAnchor.UpperLeft, bold: true);
+            Stretch(qTitle.rectTransform, 14);
+            var qMore = Label(quest.transform, "자세히 ›", 18, TextAnchor.UpperRight, Muted);
+            Stretch(qMore.rectTransform, 16);
+            for (int i = 0; i < _questRows.Length; i++)
+            {
+                _questRows[i] = Label(quest.transform, "", 20, TextAnchor.MiddleLeft);
+                // 긴 줄(★2 설명 등)은 한 줄에 들어가게 글자를 줄인다 (14~20)
+                _questRows[i].resizeTextForBestFit = true;
+                _questRows[i].resizeTextMinSize = 14;
+                _questRows[i].resizeTextMaxSize = 20;
+                Place(_questRows[i], new Vector2(0, 1), new Vector2(14, -50 - i * 42), new Vector2(questW - 28, 40), new Vector2(0, 1));
+            }
 
-            // 스테이지 이름 (위쪽, 게임 화면 가운데)
+            // 남은 턴 (오른쪽 위, 수집·채팅·설정 줄 바로 아래, 오른쪽 끝에 맞춤)
+            var box = Panel(_hud.transform, "Turns", PanelColor, Line);
+            Place(box, new Vector2(1, 1), new Vector2(-48, -124), new Vector2(250, 92), new Vector2(1, 1));
+            _turnsBox = box.GetComponent<Image>();
+            // "남은 턴"과 숫자를 가운데에 모은다: 글자는 가운데 왼쪽(오른쪽 정렬), 숫자는 가운데 오른쪽(왼쪽 정렬)
+            var label = Label(box, "남은 턴", 22, TextAnchor.MiddleRight, Muted);
+            Stretch(label.rectTransform);
+            label.rectTransform.anchorMax = new Vector2(0.5f, 1);
+            label.rectTransform.offsetMax = new Vector2(-8, 0);
+            _turns = Label(box, "", 48, TextAnchor.MiddleLeft, bold: true);
+            Stretch(_turns.rectTransform);
+            _turns.rectTransform.anchorMin = new Vector2(0.5f, 0);
+            _turns.rectTransform.offsetMin = new Vector2(8, 0);
+
+            // 스테이지 이름 (위쪽, 게임 화면 왼쪽 위 ~ 남은 턴 사이 가운데)
             _stageTitle = Label(_hud.transform, "", 28, TextAnchor.MiddleCenter, Muted, bold: true);
-            Place(_stageTitle, new Vector2(0.5f, 1), new Vector2(252, -58), new Vector2(560, 40));
+            Place(_stageTitle, new Vector2(0.5f, 1), new Vector2(-94, -58), new Vector2(560, 40));
 
             // 수집 / 채팅 / 설정 (오른쪽 위)
             var settings = Button(_hud.transform, "설정", () => OnSettings?.Invoke(), 22);
@@ -310,16 +418,21 @@ namespace Executor.Play
             _collect = Button(_hud.transform, "수집 0/0", () => OnCollect?.Invoke(), 22);
             Place(_collect, new Vector2(1, 1), new Vector2(-316, -48), new Vector2(170, 60), new Vector2(1, 1));
 
-            var help = Label(_hud.transform, "W A S D 이동 · E 대화 · R 다시 · Esc 메뉴", 22, TextAnchor.MiddleLeft, Muted);
+            var help = Label(_hud.transform, "W A S D 이동 · E 대화 · Q 워프 · M 전체 맵 · R 다시 · Esc 메뉴", 22, TextAnchor.MiddleLeft, Muted);
             Place(help, new Vector2(0, 0), new Vector2(48, 20), new Vector2(900, 36), new Vector2(0, 0));
         }
 
         private void BuildToast()
         {
             var panel = Panel(_root, "Toast", PanelColor, Line);
-            Place(panel, new Vector2(0.5f, 1), new Vector2(252, -150), new Vector2(1000, 100));
+            // 게임 화면 위쪽 띠 (x 600~1420, 위에서 136~228). 오른쪽 위 남은 턴 상자와 겹치지 않게
+            Place(panel, new Vector2(0.5f, 1), new Vector2(50, -136), new Vector2(820, 92));
             _toast = panel.gameObject;
             _toastText = Label(panel, "", 26, TextAnchor.MiddleCenter);
+            // 긴 안내도 상자 안에 들어오게 글자 크기를 줄인다 (18~26)
+            _toastText.resizeTextForBestFit = true;
+            _toastText.resizeTextMinSize = 18;
+            _toastText.resizeTextMaxSize = 26;
             Stretch(_toastText.rectTransform, 20);
         }
 

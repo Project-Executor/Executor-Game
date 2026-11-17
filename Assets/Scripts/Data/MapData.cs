@@ -19,6 +19,8 @@ namespace Executor.Data
         public Dictionary<string, DialogueData> Dialogues { get; set; } = new Dictionary<string, DialogueData>();
         public List<GuideData> Guides { get; set; } = new List<GuideData>();
         public StoryData Story { get; set; } = new StoryData();
+        /// <summary>별 조건 설정. 없으면 기본값 (docs/map-data.md 3.4)</summary>
+        public StarsData Stars { get; set; } = new StarsData();
 
         /// <summary>스테이지 상세의 mapData(JObject)를 읽는다</summary>
         public static MapData From(JObject mapData) => Json.Convert<MapData>(mapData);
@@ -46,6 +48,19 @@ namespace Executor.Data
         public string Name { get; set; }
         /// <summary>npc: Dialogues의 키</summary>
         public string DialogueId { get; set; }
+        /// <summary>checkpoint: 구간 번호 (1부터, 플레이 순서)</summary>
+        public int? Order { get; set; }
+        /// <summary>checkpoint: 여기서 시작하는 구간의 턴</summary>
+        public int? Turns { get; set; }
+        /// <summary>anomaly: 만나면 해금되는 도감 ID</summary>
+        public long? GuidebookId { get; set; }
+    }
+
+    /// <summary>별 조건 (docs/map-data.md 3.4)</summary>
+    public class StarsData
+    {
+        /// <summary>별 2: 허용하는 불안정 체크포인트 수 (출구 포함). 기본 0</summary>
+        public int MaxUnstable { get; set; }
     }
 
     public static class MapObjectTypes
@@ -56,6 +71,11 @@ namespace Executor.Data
         public const string Key = "key";
         public const string Door = "door";
         public const string Npc = "npc";
+        public const string Checkpoint = "checkpoint";
+        /// <summary>숨겨진 요소 (버그·피스). 모두 모으면 별 3</summary>
+        public const string Hidden = "hidden";
+        /// <summary>이상 개체. 만나면 도감 해금</summary>
+        public const string Anomaly = "anomaly";
     }
 
     public class DialogueData

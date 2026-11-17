@@ -1,5 +1,7 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using UnityEngine;
 using UnityEngine.UI;
@@ -34,6 +36,7 @@ namespace Executor.Play
         private Text _titleAccount, _titleHint;
         private Button _titleLogin, _titleLogout, _titleOffline, _titleTouch;
         private Text _profileName, _profileCoin;
+        private Button _mailButton;
         private RectTransform _stageMap;
         private Text _stageTitle;
         private ZoomPan _zoom;
@@ -69,6 +72,27 @@ namespace Executor.Play
 
         public void ClosePopups() => Clear(_popupRoot);
 
+        /// <summary>
+        /// 일러스트를 parent 영역에 꽉 채워 깐다 (비율 유지, 넘치는 부분은 잘림). parent의 첫 자식이라 다른 요소 뒤에 그려진다.
+        /// sprite가 null이면 아무것도 하지 않는다
+        /// </summary>
+        private static void Cover(RectTransform parent, Sprite sprite)
+        {
+            if (sprite == null) return;
+            parent.gameObject.AddComponent<RectMask2D>();
+            var go = new GameObject("Illustration", typeof(RectTransform), typeof(Image), typeof(AspectRatioFitter));
+            go.transform.SetParent(parent, false);
+            go.transform.SetAsFirstSibling();
+            var image = go.GetComponent<Image>();
+            image.sprite = sprite;
+            image.raycastTarget = false;
+            var rt = (RectTransform)go.transform;
+            rt.anchorMin = rt.anchorMax = new Vector2(0.5f, 0.5f);
+            var fitter = go.GetComponent<AspectRatioFitter>();
+            fitter.aspectMode = AspectRatioFitter.AspectMode.EnvelopeParent;
+            fitter.aspectRatio = sprite.rect.width / sprite.rect.height;
+        }
+
         private static Button SettingsButton(Transform parent, Action onClick)
         {
             var b = Button(parent, "설정", onClick, 26);
@@ -101,6 +125,7 @@ namespace Executor.Play
         {
             var screen = Panel(_root, "Title", Background);
             Stretch(screen);
+            Cover(screen, ArtCatalog.Illustration("title"));
             // 준비되면 화면 아무 데나 클릭해서 시작 (다른 버튼보다 뒤에 깔린 투명 버튼)
             _titleTouch = screen.gameObject.AddComponent<Button>();
             _titleTouch.transition = Selectable.Transition.None;
@@ -110,12 +135,26 @@ namespace Executor.Play
             Place(logo, new Vector2(0.5f, 0.5f), new Vector2(0, 150), new Vector2(760, 300));
             var logoText = Label(logo, "EXECUTOR\n집행자", 72, TextAnchor.MiddleCenter, bold: true);
             Stretch(logoText.rectTransform);
+            // 로고 이미지가 있으면 임시 상자 대신 쓴다 (비율 유지)
+            Sprite logoArt = ArtCatalog.Illustration("title_logo");
+            if (logoArt != null)
+            {
+                var logoImage = logo.GetComponent<Image>();
+                logoImage.sprite = logoArt;
+                logoImage.color = Color.white;
+                logoImage.preserveAspect = true;
+                logoImage.raycastTarget = false;
+                logoText.gameObject.SetActive(false);
+                var outline = logo.GetComponent<Outline>();
+                if (outline != null) outline.enabled = false;
+            }
 
             _titleLogin = Button(screen, "로그인", () => OnTitleLogin?.Invoke(), 34);
             Place(_titleLogin, new Vector2(0.5f, 0.5f), new Vector2(0, -150), new Vector2(380, 96));
 
-            _titleHint = Label(screen, "화면을 클릭해 게임을 시작하세요", 32, TextAnchor.MiddleCenter, Muted);
-            Place(_titleHint, new Vector2(0.5f, 0.5f), new Vector2(0, -150), new Vector2(1000, 60));
+            // 화면 아래쪽 (배경 그림 맨 아래 "made by" 글씨보다 위). 흰색, 깜빡임은 Update에서 투명도만 바꾼다
+            _titleHint = Label(screen, "화면을 클릭해 게임을 시작하세요", 32, TextAnchor.MiddleCenter, Color.white);
+            Place(_titleHint, new Vector2(0.5f, 0), new Vector2(0, 120), new Vector2(1000, 60));
 
             SettingsButton(screen, () => OnSettings?.Invoke());
 
@@ -148,7 +187,7 @@ namespace Executor.Play
         }
 
         // ================= 메인 화면 =================
-        public Action OnProfile, OnMail, OnShop, OnStages, OnMainBack;
+        public Action OnProfile, OnMail, OnShop, OnNotice, OnStages, OnMainBack;
 
         public void ShowMain(string nickname, string coin)
         {
@@ -176,12 +215,16 @@ namespace Executor.Play
             _profileCoin.rectTransform.offsetMax = new Vector2(-28, -16);
             SettingsButton(screen, () => OnSettings?.Invoke());
 
-            // 왼쪽 줄: 우편, 상점 (설정 버튼과 같은 120x120)
+            // 왼쪽 줄: 우편, 상점, 공지 (설정 버튼과 같은 120x120)
             float y = -(Margin + 120 + Gap);
-            foreach (var (label, action) in new (string, Action)[] { ("우편", () => OnMail?.Invoke()), ("상점", () => OnShop?.Invoke()) })
+            foreach (var (label, action) in new (string, Action)[]
+                     {
+                         ("우편", () => OnMail?.Invoke()), ("상점", () => OnShop?.Invoke()), ("공지", () => OnNotice?.Invoke())
+                     })
             {
                 var b = Button(screen, label, action, 26);
                 Place(b, new Vector2(0, 1), new Vector2(Margin, y), SettingsSize, new Vector2(0, 1));
+                if (label == "우편") _mailButton = b;
                 y -= 120 + Gap;
             }
 
@@ -190,6 +233,12 @@ namespace Executor.Play
             Place(art, new Vector2(0.5f, 0.5f), new Vector2(0, 0), new Vector2(1120, 600));
             var artText = Label(art, "시나리오에 따른 화면 일러스트\n(이미지 자리)", 30, TextAnchor.MiddleCenter, Muted);
             Stretch(artText.rectTransform);
+            Sprite mainArt = ArtCatalog.Illustration("main");
+            if (mainArt != null)
+            {
+                artText.gameObject.SetActive(false);
+                Cover(art, mainArt);
+            }
 
             // 아래쪽 줄: 시작 화면(왼쪽), 스테이지(오른쪽)
             var back = Button(screen, "시작 화면", () => OnMainBack?.Invoke(), 24);
@@ -402,6 +451,306 @@ namespace Executor.Play
             Stretch(t.rectTransform);
         }
 
+        /// <summary>메인 화면 우편 버튼에 받지 않은 우편 수를 표시한다 (0이면 "우편"만)</summary>
+        public void SetMailCount(int unclaimed)
+        {
+            if (_mailButton == null) return;
+            SetButtonText(_mailButton, unclaimed > 0 ? $"우편\n({unclaimed})" : "우편");
+            var label = _mailButton.GetComponentInChildren<Text>();
+            if (label != null) label.color = unclaimed > 0 ? Warn : TextColor;
+        }
+
+        /// <summary>우편함 팝업: 최신순 목록(누르면 자세히) + 모두 받기</summary>
+        public void ShowMailbox(IReadOnlyList<Data.MailResponse> mails, Action<Data.MailResponse> onOpen, Action onClaimAll)
+        {
+            int unclaimed = mails.Count(m => !m.Claimed);
+            Popup(_popupRoot, $"우편함 · 받지 않은 우편 {unclaimed}통", new Vector2(1100, 820), out RectTransform body);
+            if (mails.Count == 0)
+            {
+                var empty = Label(body, "우편이 없습니다.", 28, TextAnchor.MiddleCenter, Muted);
+                Stretch(empty.rectTransform);
+                return;
+            }
+            float y = 0;
+            foreach (var m in mails.Take(6))
+            {
+                var mail = m;
+                string state = m.Claimed ? "받음" : "받기 전";
+                string expiry = m.ExpiresAt == null ? "무기한" : $"~{m.ExpiresAt.Value.ToLocalTime():MM.dd HH:mm}";
+                var b = Button(body, $"{m.Title}\n{m.RewardText} · {expiry} · {state}", () => onOpen(mail), 22,
+                    m.Claimed ? new Color32(0x1a, 0x1e, 0x25, 0xff) : (Color32?)null);
+                var text = b.GetComponentInChildren<Text>();
+                text.alignment = TextAnchor.MiddleLeft;
+                text.rectTransform.offsetMin = new Vector2(24, 0);
+                if (m.Claimed) text.color = Muted;
+                Place(b, new Vector2(0, 1), new Vector2(0, y), new Vector2(1020, 88), new Vector2(0, 1));
+                y -= 98;
+            }
+            if (mails.Count > 6)
+            {
+                var more = Label(body, $"외 {mails.Count - 6}통 (최근 6통만 표시, 모두 받기는 전부 받습니다)", 20, TextAnchor.UpperLeft, Muted);
+                Place(more, new Vector2(0, 1), new Vector2(0, y - 4), new Vector2(1020, 32), new Vector2(0, 1));
+            }
+            if (unclaimed > 0)
+            {
+                var all = Button(body, $"모두 받기 ({unclaimed}통)", () => onClaimAll(), 26);
+                Place(all, new Vector2(1, 0), Vector2.zero, new Vector2(300, 72), new Vector2(1, 0));
+            }
+        }
+
+        /// <summary>
+        /// 상점 팝업. 위에 종류 탭(전체·스킨·테마·힌트), 아래에 아이템 줄(최대 7개). 줄마다 가격·보유와 구매 버튼.
+        /// 스킨·테마는 이미 가졌으면 "보유 중". 힌트는 1개 / 5개 구매
+        /// </summary>
+        public void ShowShop(IReadOnlyList<Data.ShopItem> items, int coin, string filter, Action<string> onFilter,
+            Action<Data.ShopItem, int> onBuy)
+        {
+            Popup(_popupRoot, $"상점 · 보유 코인 {coin}", new Vector2(1240, 880), out RectTransform body);
+            float x = 0;
+            foreach (var (type, label) in new (string, string)[] { (null, "전체"), (Data.ItemTypes.Skin, "스킨"), (Data.ItemTypes.Theme, "테마"), (Data.ItemTypes.Hint, "힌트") })
+            {
+                string t = type;
+                bool active = t == filter;
+                var tab = Button(body, label, () => onFilter(t), 22, active ? (Color?)Line : null);
+                Place(tab, new Vector2(0, 1), new Vector2(x, 0), new Vector2(150, 56), new Vector2(0, 1));
+                x += 160;
+            }
+            if (items.Count == 0)
+            {
+                var empty = Label(body, "판매 중인 아이템이 없습니다.", 28, TextAnchor.MiddleCenter, Muted);
+                Stretch(empty.rectTransform);
+                return;
+            }
+            float y = -76;
+            foreach (var it in items.Take(7))
+            {
+                var item = it;
+                var row = Panel(body, "Item", new Color32(0x16, 0x1e, 0x2a, 0xff), Line);
+                Place(row, new Vector2(0, 1), new Vector2(0, y), new Vector2(1160, 92), new Vector2(0, 1));
+                string owned = Data.ItemTypes.IsUnique(it.ItemType) ? (it.Owned ? " · 보유 중" : "") : (it.Quantity > 0 ? $" · {it.Quantity}개 보유" : "");
+                var name = Label(row, $"[{Data.ItemTypes.Label(it.ItemType)}] {it.Name}   {it.Price} 코인{owned}", 24, TextAnchor.UpperLeft, bold: true);
+                Stretch(name.rectTransform, 14);
+                name.rectTransform.offsetMax = new Vector2(-300, -12);
+                var desc = Label(row, it.Description ?? "", 20, TextAnchor.LowerLeft, Muted);
+                Stretch(desc.rectTransform, 14);
+                desc.rectTransform.offsetMax = new Vector2(-300, -14);
+                desc.horizontalOverflow = HorizontalWrapMode.Overflow;
+
+                if (Data.ItemTypes.IsUnique(it.ItemType))
+                {
+                    var buy = Button(row, it.Owned ? "보유 중" : "구매", () => { if (!item.Owned) onBuy(item, 1); }, 24,
+                        it.Owned ? new Color32(0x22, 0x26, 0x2e, 0xff) : (Color32?)null);
+                    buy.interactable = !it.Owned;
+                    Place(buy, new Vector2(1, 0.5f), new Vector2(-12, 0), new Vector2(170, 64), new Vector2(1, 0.5f));
+                }
+                else
+                {
+                    var buy5 = Button(row, "5개", () => onBuy(item, 5), 22);
+                    Place(buy5, new Vector2(1, 0.5f), new Vector2(-12, 0), new Vector2(120, 64), new Vector2(1, 0.5f));
+                    var buy1 = Button(row, "1개", () => onBuy(item, 1), 22);
+                    Place(buy1, new Vector2(1, 0.5f), new Vector2(-144, 0), new Vector2(120, 64), new Vector2(1, 0.5f));
+                }
+                y -= 102;
+            }
+            if (items.Count > 7)
+            {
+                var more = Label(body, $"외 {items.Count - 7}개 (종류 탭으로 나눠 보세요)", 20, TextAnchor.UpperLeft, Muted);
+                Place(more, new Vector2(0, 1), new Vector2(0, y - 4), new Vector2(1160, 32), new Vector2(0, 1));
+            }
+        }
+
+        /// <summary>프로필 화면에서 쓰는 동작. 문자열 결과는 그 줄 아래에 보여 줄 안내 (성공·실패 메시지)</summary>
+        public class ProfileActions
+        {
+            public Func<string, Task<string>> CheckNickname;
+            public Func<string, Task<string>> SaveNickname;
+            public Func<string, Task<string>> SaveComment;
+            /// <summary>(스킨 ID, 테마 ID) 장착. null이면 기본</summary>
+            public Action<long?, long?> Equip;
+        }
+
+        /// <summary>
+        /// 프로필 팝업: 정보·기록, 닉네임(중복 확인·변경), 자기소개, 스킨·테마 장착(가진 것 중에서, 기본으로 되돌리기).
+        /// </summary>
+        public void ShowProfileEditor(Data.MyProfileResponse p, Data.ProfileDetailResponse stats,
+            IReadOnlyList<Data.MyItem> items, ProfileActions actions)
+        {
+            Popup(_popupRoot, "프로필", new Vector2(1240, 920), out RectTransform body);
+            string record = stats == null ? "" : $" · 공식 스테이지 클리어 {stats.ClearedStageCount} · 별 {stats.TotalStars}";
+            int hints = items.Where(i => i.ItemType == Data.ItemTypes.Hint).Sum(i => i.Quantity);
+            var info = Label(body, $"{p.Email} · 코인 {p.Coin}{record} · 힌트 {hints}개", 22, TextAnchor.UpperLeft, Muted);
+            Place(info, new Vector2(0, 1), Vector2.zero, new Vector2(1160, 34), new Vector2(0, 1));
+
+            // 닉네임
+            Section(body, "닉네임 (2~20자)", -52);
+            var nick = Input(body, "닉네임", limit: 20, size: 26);
+            nick.text = p.Nickname ?? "";
+            Place(nick, new Vector2(0, 1), new Vector2(0, -88), new Vector2(560, 64), new Vector2(0, 1));
+            var nickStatus = Label(body, "", 20, TextAnchor.UpperLeft, Muted);
+            Place(nickStatus, new Vector2(0, 1), new Vector2(0, -158), new Vector2(1160, 30), new Vector2(0, 1));
+            var check = Button(body, "중복 확인", null, 22, new Color32(0x22, 0x26, 0x2e, 0xff));
+            Place(check, new Vector2(0, 1), new Vector2(576, -88), new Vector2(170, 64), new Vector2(0, 1));
+            var saveNick = Button(body, "변경", null, 22);
+            Place(saveNick, new Vector2(0, 1), new Vector2(762, -88), new Vector2(140, 64), new Vector2(0, 1));
+            check.onClick.AddListener(() => Run(check, nickStatus, () => actions.CheckNickname(nick.text.Trim())));
+            saveNick.onClick.AddListener(() => Run(saveNick, nickStatus, () => actions.SaveNickname(nick.text.Trim())));
+
+            // 자기소개
+            Section(body, "자기소개 (255자 이하, 비우면 지움)", -200);
+            var comment = Input(body, "자기소개", limit: 255, size: 24);
+            comment.text = p.Comment ?? "";
+            Place(comment, new Vector2(0, 1), new Vector2(0, -236), new Vector2(902, 64), new Vector2(0, 1));
+            var saveComment = Button(body, "저장", null, 22);
+            Place(saveComment, new Vector2(0, 1), new Vector2(918, -236), new Vector2(140, 64), new Vector2(0, 1));
+            var commentStatus = Label(body, "", 20, TextAnchor.UpperLeft, Muted);
+            Place(commentStatus, new Vector2(0, 1), new Vector2(0, -306), new Vector2(1160, 30), new Vector2(0, 1));
+            saveComment.onClick.AddListener(() => Run(saveComment, commentStatus, () => actions.SaveComment(comment.text)));
+
+            // 장착: 스킨, 테마
+            EquipRow(body, "스킨", Data.ItemTypes.Skin, p.EquippedSkinId, items, -350, id => actions.Equip(id, p.EquippedThemeId));
+            EquipRow(body, "테마", Data.ItemTypes.Theme, p.EquippedThemeId, items, -560, id => actions.Equip(p.EquippedSkinId, id));
+        }
+
+        private static void Section(RectTransform body, string title, float y)
+        {
+            var t = Label(body, title, 22, TextAnchor.UpperLeft, bold: true);
+            Place(t, new Vector2(0, 1), new Vector2(0, y), new Vector2(1160, 32), new Vector2(0, 1));
+        }
+
+        /// <summary>장착 줄: "기본" + 가진 아이템 버튼 (최대 6개). 지금 장착한 것은 강조</summary>
+        private static void EquipRow(RectTransform body, string label, string type, long? equipped,
+            IReadOnlyList<Data.MyItem> items, float y, Action<long?> onPick)
+        {
+            var owned = items.Where(i => i.ItemType == type).ToList();
+            string current = equipped == null ? "기본" : owned.FirstOrDefault(i => i.ItemId == equipped)?.Name ?? $"#{equipped}";
+            Section(body, $"{label} · 지금: {current}", y);
+            float x = 0;
+            var choices = new List<(long? id, string name)> { (null, "기본") };
+            choices.AddRange(owned.Take(6).Select(i => ((long?)i.ItemId, i.Name)));
+            foreach (var (id, name) in choices)
+            {
+                bool on = id == equipped;
+                long? pick = id;
+                var b = Button(body, on ? "✓ " + name : name, () => { if (!on) onPick(pick); }, 22,
+                    on ? (Color?)Line : new Color32(0x22, 0x26, 0x2e, 0xff));
+                Place(b, new Vector2(0, 1), new Vector2(x, y - 40), new Vector2(180, 64), new Vector2(0, 1));
+                x += 192;
+            }
+            if (owned.Count == 0)
+            {
+                var none = Label(body, $"가진 {label}이(가) 없습니다. 상점에서 살 수 있습니다.", 20, TextAnchor.MiddleLeft, Muted);
+                Place(none, new Vector2(0, 1), new Vector2(200, y - 40), new Vector2(900, 64), new Vector2(0, 1));
+            }
+            else if (owned.Count > 6)
+            {
+                var more = Label(body, $"외 {owned.Count - 6}개", 20, TextAnchor.MiddleLeft, Muted);
+                Place(more, new Vector2(0, 1), new Vector2(x, y - 40), new Vector2(200, 64), new Vector2(0, 1));
+            }
+        }
+
+        /// <summary>버튼 동작을 실행하고 결과 문구를 status에 보여 준다 (실행 중에는 버튼을 막는다)</summary>
+        private static async void Run(Button button, Text status, Func<Task<string>> action)
+        {
+            button.interactable = false;
+            status.text = "처리 중...";
+            status.color = Muted;
+            try
+            {
+                string message = await action();
+                if (status == null) return;
+                status.text = message;
+                status.color = message.StartsWith("✓") ? Good : Warn;
+            }
+            finally
+            {
+                if (button != null) button.interactable = true;
+            }
+        }
+
+        /// <summary>확인 팝업 (예 / 아니오)</summary>
+        public void ShowConfirm(string title, string text, Action onYes)
+        {
+            Popup(_popupRoot, title, new Vector2(760, 420), out RectTransform body);
+            var t = Label(body, text, 26, TextAnchor.MiddleCenter);
+            Stretch(t.rectTransform);
+            t.rectTransform.offsetMin = new Vector2(0, 90);
+            var yes = Button(body, "예", () => onYes(), 26);
+            Place(yes, new Vector2(1, 0), Vector2.zero, new Vector2(200, 68), new Vector2(1, 0));
+            var no = Button(body, "아니오", () => ClosePopups(), 24, new Color32(0x22, 0x26, 0x2e, 0xff));
+            Place(no, new Vector2(1, 0), new Vector2(-216, 0), new Vector2(200, 68), new Vector2(1, 0));
+        }
+
+        /// <summary>우편 자세히 팝업. 받지 않았으면 받기 버튼</summary>
+        public void ShowMail(Data.MailResponse mail, Action onClaim)
+        {
+            Popup(_popupRoot, mail.Title, new Vector2(1000, 640), out RectTransform body);
+            string expiry = mail.ExpiresAt == null ? "무기한" : $"{mail.ExpiresAt.Value.ToLocalTime():yyyy.MM.dd HH:mm}까지";
+            var meta = Label(body, $"{mail.CreatedAt.ToLocalTime():yyyy.MM.dd HH:mm} · {expiry}", 20, TextAnchor.UpperLeft, Muted);
+            Place(meta, new Vector2(0, 1), Vector2.zero, new Vector2(920, 32), new Vector2(0, 1));
+            var content = Label(body, string.IsNullOrEmpty(mail.Content) ? "(내용 없음)" : mail.Content, 24, TextAnchor.UpperLeft);
+            content.lineSpacing = 1.3f;
+            content.verticalOverflow = VerticalWrapMode.Truncate;
+            Place(content, new Vector2(0, 1), new Vector2(0, -48), new Vector2(920, 300), new Vector2(0, 1));
+            var reward = Label(body, "보상: " + mail.RewardText, 24, TextAnchor.MiddleLeft, Warn, bold: true);
+            Place(reward, new Vector2(0, 0), new Vector2(0, 88), new Vector2(920, 40), new Vector2(0, 0));
+            if (mail.Claimed)
+            {
+                var done = Label(body, "이미 받은 우편입니다.", 24, TextAnchor.MiddleRight, Muted);
+                Place(done, new Vector2(1, 0), Vector2.zero, new Vector2(400, 72), new Vector2(1, 0));
+            }
+            else
+            {
+                var claim = Button(body, "받기", () => onClaim(), 28);
+                Place(claim, new Vector2(1, 0), Vector2.zero, new Vector2(240, 72), new Vector2(1, 0));
+            }
+        }
+
+        /// <summary>공지 목록 팝업. 항목을 누르면 onOpen(공지 ID)</summary>
+        public void ShowNotices(IReadOnlyList<Data.NoticeSummary> notices, Action<long> onOpen)
+        {
+            Popup(_popupRoot, "공지사항", new Vector2(1000, 720), out RectTransform body);
+            if (notices.Count == 0)
+            {
+                var empty = Label(body, "지금 게시 중인 공지가 없습니다.", 28, TextAnchor.MiddleCenter, Muted);
+                Stretch(empty.rectTransform);
+                return;
+            }
+            float y = 0;
+            foreach (var n in notices.Take(7))
+            {
+                string pin = n.IsPinned ? "[고정] " : "";
+                string date = n.PublishedAt.ToLocalTime().ToString("MM.dd");
+                long id = n.NoticeId;
+                var b = Button(body, $"{pin}[{n.CategoryLabel}] {n.Title}   {date}", () => onOpen(id), 26);
+                var text = b.GetComponentInChildren<Text>();
+                text.alignment = TextAnchor.MiddleLeft;
+                text.rectTransform.offsetMin = new Vector2(24, 0);
+                Place(b, new Vector2(0, 1), new Vector2(0, y), new Vector2(920, 72), new Vector2(0, 1));
+                y -= 82;
+            }
+            if (notices.Count > 7)
+            {
+                var more = Label(body, $"외 {notices.Count - 7}개 (최근 7개만 표시)", 22, TextAnchor.UpperLeft, Muted);
+                Place(more, new Vector2(0, 1), new Vector2(0, y - 6), new Vector2(920, 36), new Vector2(0, 1));
+            }
+        }
+
+        /// <summary>공지 상세 팝업</summary>
+        public void ShowNoticeDetail(Data.NoticeDetail notice)
+        {
+            Popup(_popupRoot, notice.Title, new Vector2(1100, 780), out RectTransform body);
+            string updated = notice.UpdatedAt > notice.PublishedAt.AddMinutes(1)
+                ? $" · 수정 {notice.UpdatedAt.ToLocalTime():yyyy.MM.dd HH:mm}" : "";
+            var meta = Label(body, $"[{notice.CategoryLabel}] {notice.PublishedAt.ToLocalTime():yyyy.MM.dd HH:mm}{updated}",
+                22, TextAnchor.UpperLeft, Muted);
+            Place(meta, new Vector2(0, 1), Vector2.zero, new Vector2(1020, 36), new Vector2(0, 1));
+            var content = Label(body, notice.Content, 26, TextAnchor.UpperLeft);
+            content.lineSpacing = 1.3f;
+            content.verticalOverflow = VerticalWrapMode.Truncate;
+            Stretch(content.rectTransform);
+            content.rectTransform.offsetMax = new Vector2(0, -52);
+        }
+
         public void ShowList(string title, IEnumerable<string> lines)
         {
             Popup(_popupRoot, title, new Vector2(900, 620), out RectTransform body);
@@ -449,8 +798,8 @@ namespace Executor.Play
             Place(confirm, new Vector2(0, 1), new Vector2(0, -180), new Vector2(740, 72), new Vector2(0, 1));
             confirm.gameObject.SetActive(false);
 
-            var error = Label(body, "", 24, TextAnchor.MiddleLeft, Bad);
-            Place(error, new Vector2(0, 1), new Vector2(0, -270), new Vector2(740, 40), new Vector2(0, 1));
+            var error = Label(body, "", 22, TextAnchor.UpperLeft, Bad);
+            Place(error, new Vector2(0, 1), new Vector2(0, -264), new Vector2(740, 84), new Vector2(0, 1));
 
             Button submit = Button(body, "로그인", null, 28);
             Place(submit, new Vector2(0, 0), Vector2.zero, new Vector2(358, 72), new Vector2(0, 0));
@@ -466,8 +815,9 @@ namespace Executor.Play
                 confirm.gameObject.SetActive(signupMode);
                 error.text = "";
             });
-            submit.onClick.AddListener(async () =>
+            async void Submit()
             {
+                if (submit == null || !submit.interactable) return;
                 error.text = "";
                 submit.interactable = false;
                 try
@@ -490,8 +840,25 @@ namespace Executor.Play
                 {
                     if (submit != null) submit.interactable = true;
                 }
-            });
-            email.Select();
+            }
+            submit.onClick.AddListener(Submit);
+
+            // Enter: 이메일 → 비밀번호 → (회원가입이면 재입력 →) 제출
+            OnEnter(email, () => FocusLater(password));
+            OnEnter(password, () => { if (signupMode) FocusLater(confirm); else Submit(); });
+            OnEnter(confirm, Submit);
+            FocusLater(email);
+        }
+
+        /// <summary>한 프레임 뒤에 입력칸을 선택한다 (Enter로 입력을 마친 같은 프레임에는 선택이 무시될 수 있음)</summary>
+        private void FocusLater(InputField field) => StartCoroutine(FocusRoutine(field));
+
+        private static IEnumerator FocusRoutine(InputField field)
+        {
+            yield return null;
+            if (field == null || !field.gameObject.activeInHierarchy) yield break;
+            field.Select();
+            field.ActivateInputField();
         }
 
         private static Slider MakeSlider(Transform parent, float value)

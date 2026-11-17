@@ -111,8 +111,12 @@ namespace Executor.Data
     public class StageResultRequest
     {
         public bool Cleared { get; set; }
-        /// <summary>1~9999. 클리어했을 때만 기록에 반영된다</summary>
+        /// <summary>기록 = 구간 최고 기록의 합 (1~9999). 클리어했을 때만 기록에 반영된다</summary>
         public int? Moves { get; set; }
+        /// <summary>불안정 체크포인트(출구 포함) 수. 별 2 판정에 쓴다</summary>
+        public int UnstableCount { get; set; }
+        /// <summary>워프한 횟수 (통계용)</summary>
+        public int Rewinds { get; set; }
         /// <summary>클리어했을 때만 반영된다</summary>
         public bool HiddenFound { get; set; }
         /// <summary>이번 판에서 만난 이상 개체의 도감 ID (최대 50개). 클리어하지 못해도 해금된다</summary>

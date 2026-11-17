@@ -18,8 +18,22 @@ namespace Executor.Network
     /// </summary>
     public static class ApiClient
     {
-        /// <summary>다시 로그인해야 할 때 (Refresh Token 만료·무효). 로그인 화면 전환은 여기에 연결한다</summary>
+        /// <summary>다시 로그인해야 할 때 (Refresh Token 만료·무효, 계정 정지). 로그인 화면 전환은 여기에 연결한다</summary>
         public static event Action SessionExpired;
+
+        /// <summary>
+        /// 마지막으로 세션이 끝난 이유를 사용자에게 보여 줄 문구. 계정이 정지됐으면 서버 메시지(기한·사유), 그 밖에는 null.
+        /// SessionExpired 처리에서 읽고 TakeSessionEndReason으로 비운다
+        /// </summary>
+        public static string SessionEndReason { get; private set; }
+
+        /// <summary>SessionEndReason을 읽고 비운다 (한 번만 보여 주기 위해)</summary>
+        public static string TakeSessionEndReason()
+        {
+            string reason = SessionEndReason;
+            SessionEndReason = null;
+            return reason;
+        }
 
         private static Task<bool> _refreshing;
 
@@ -117,6 +131,14 @@ namespace Executor.Network
 
             if (result.Status == 401)
             {
+                ExpireSession();
+                return false;
+            }
+
+            // 로그인한 동안 계정이 정지됐다 (403 ACCOUNT_SUSPENDED). 메시지에 기한과 사유가 들어 있다
+            if (result.Status == 403 && result.ErrorCode == "ACCOUNT_SUSPENDED")
+            {
+                SessionEndReason = result.ErrorMessage;
                 ExpireSession();
                 return false;
             }

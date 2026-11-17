@@ -9,10 +9,17 @@ namespace Executor.Play
     /// <summary>스테이지 하나 (맵 JSON = 관리자 등록 형식에서 operationId만 빠진 것)</summary>
     public class StageInfo
     {
+        /// <summary>서버 스테이지 ID. 로그인해서 서버에서 받은 스테이지만 있다 (오프라인 Resources 맵은 null)</summary>
+        public long? StageId;
         public int No;
         public string Title;
-        /// <summary>턴 제한</summary>
+        /// <summary>턴 제한 (시작 구간의 턴)</summary>
         public int Par;
+        /// <summary>튜토리얼이면 별은 클리어(★1)만 있다</summary>
+        public bool Tutorial;
+        /// <summary>첫 클리어 보상 코인 (서버 스테이지만)</summary>
+        public int RewardCoin;
+        /// <summary>맵 데이터. 서버 스테이지는 잠겨 있는 동안 null이고 시작할 때 받는다 (ServerCatalog.LoadMapAsync)</summary>
         public MapData Map;
     }
 
@@ -32,7 +39,7 @@ namespace Executor.Play
         public bool IsAvailable => Stages.Count > 0;
 
         /// <summary>챕터 스토리 = 첫 스테이지의 도입 나레이션 (닉네임 입력 단계 제외)</summary>
-        public List<StoryStep> Story => Stages.FirstOrDefault()?.Map.Story?.Intro?
+        public List<StoryStep> Story => Stages.FirstOrDefault()?.Map?.Story?.Intro?
             .Where(s => !StoryTypes.IsNicknameInput(s.Type)).ToList() ?? new List<StoryStep>();
     }
 
@@ -73,6 +80,7 @@ namespace Executor.Play
                         No = json.Value<int>("stageNo"),
                         Title = json.Value<string>("title"),
                         Par = json.Value<int>("parMoves"),
+                        Tutorial = json.Value<string>("stageType") == "TUTORIAL",
                         Map = MapData.From((JObject)json["mapData"]),
                     });
                 }
@@ -84,22 +92,54 @@ namespace Executor.Play
     }
 
     /// <summary>
-    /// 스테이지 진행 기록 (계정·챕터별, PC 저장). 서버에 공식 스테이지가 등록되면 서버 기록(GET /operations)으로 바꾼다.
-    /// 키: executor.{계정}.{챕터ID}.best.{스테이지 번호} (튜토리얼은 이전 버전과 같은 키)
+    /// 스테이지 진행 기록. 로그인해서 서버에서 받은 스테이지는 서버 기록(GET /operations, SetRemote)을,
+    /// 오프라인(Resources 맵)은 PC 저장 기록을 쓴다.
+    /// PC 저장 키: executor.{계정}.{챕터ID}.best.{스테이지 번호} (튜토리얼은 이전 버전과 같은 키)
     /// </summary>
     public static class StageProgress
     {
+        /// <summary>서버 기록 (해금·클리어·최고 기록·별)</summary>
+        public class RemoteRecord
+        {
+            public bool Unlocked;
+            public bool Cleared;
+            /// <summary>최고 기록. 미클리어면 0</summary>
+            public int Best;
+            public Stars Stars;
+        }
+
+        private static readonly Dictionary<string, RemoteRecord> Remote = new Dictionary<string, RemoteRecord>();
+
+        public static void ClearRemote() => Remote.Clear();
+
+        public static void SetRemote(string chapterId, int stageNo, RemoteRecord record) => Remote[chapterId + "/" + stageNo] = record;
+
+        /// <summary>서버 기록이 있으면 그것 (로그인 중일 때만)</summary>
+        public static RemoteRecord RemoteOf(string chapterId, int stageNo) =>
+            PlayerSession.IsOnline && Remote.TryGetValue(chapterId + "/" + stageNo, out RemoteRecord r) ? r : null;
+
         private static string Key(string chapterId, int stageNo) =>
             $"executor.{PlayerSession.ProgressPrefix}.{chapterId}.best.{stageNo}";
 
-        /// <summary>클리어한 판 중 가장 적게 쓴 턴. 기록이 없으면 0</summary>
-        public static int BestMoves(string chapterId, int stageNo) => PlayerPrefs.GetInt(Key(chapterId, stageNo), 0);
+        /// <summary>클리어한 판 중 가장 적게 쓴 턴(기록). 기록이 없으면 0</summary>
+        public static int BestMoves(string chapterId, int stageNo) =>
+            RemoteOf(chapterId, stageNo)?.Best ?? PlayerPrefs.GetInt(Key(chapterId, stageNo), 0);
 
-        public static bool IsCleared(string chapterId, int stageNo) => BestMoves(chapterId, stageNo) > 0;
+        public static bool IsCleared(string chapterId, int stageNo) =>
+            RemoteOf(chapterId, stageNo)?.Cleared ?? BestMoves(chapterId, stageNo) > 0;
 
         /// <returns>최고 기록을 갱신했으면 true</returns>
         public static bool RecordClear(string chapterId, int stageNo, int moves)
         {
+            RemoteRecord remote = RemoteOf(chapterId, stageNo);
+            if (remote != null)
+            {
+                // 서버 스테이지: 서버 응답을 받기 전에 화면을 맞춰 둔다 (정확한 값은 응답·다시 불러오기로 덮어쓴다)
+                bool better = !remote.Cleared || moves < remote.Best;
+                remote.Cleared = true;
+                if (better) remote.Best = moves;
+                return better;
+            }
             int best = BestMoves(chapterId, stageNo);
             if (best != 0 && best <= moves) return false;
             PlayerPrefs.SetInt(Key(chapterId, stageNo), moves);
@@ -115,6 +155,9 @@ namespace Executor.Play
         /// <summary>첫 챕터는 처음부터, 나머지는 앞 챕터를 모두 클리어하면 열린다</summary>
         public static bool IsChapterUnlocked(IReadOnlyList<ChapterInfo> chapters, ChapterInfo chapter)
         {
+            // 서버 스테이지: 첫 스테이지가 열렸으면 챕터도 열린 것 (서버가 앞 작전 클리어로 판단)
+            RemoteRecord first = chapter.Stages.Count > 0 ? RemoteOf(chapter.Id, chapter.Stages[0].No) : null;
+            if (first != null) return first.Unlocked;
             int index = chapters.ToList().IndexOf(chapter);
             return index <= 0 || IsChapterCleared(chapters[index - 1]);
         }
@@ -122,6 +165,8 @@ namespace Executor.Play
         /// <summary>챕터 안에서: 첫 스테이지는 챕터가 열리면, 나머지는 앞 스테이지를 클리어하면 열린다</summary>
         public static bool IsStageUnlocked(ChapterInfo chapter, StageInfo stage)
         {
+            RemoteRecord remote = RemoteOf(chapter.Id, stage.No);
+            if (remote != null) return remote.Unlocked;
             int index = chapter.Stages.IndexOf(stage);
             return index <= 0 || IsCleared(chapter.Id, chapter.Stages[index - 1].No);
         }

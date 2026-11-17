@@ -1,0 +1,93 @@
+{
+  "stageNo": 1,
+  "stageType": "NORMAL",
+  "title": "체크포인트 연습 (임시)",
+  "parMoves": 6,
+  "rewardCoin": 0,
+  "mapData": {
+    "version": 1,
+    "theme": "hologram",
+    "width": 19,
+    "height": 5,
+    "tiles": [
+      "###################",
+      "#...#...###....####",
+      "#.................#",
+      "#...###.###....####",
+      "###################"
+    ],
+    "player": {
+      "x": 1,
+      "y": 1
+    },
+    "objects": [
+      {
+        "id": "checkpoint1",
+        "type": "checkpoint",
+        "x": 4,
+        "y": 2,
+        "order": 1,
+        "turns": 9
+      },
+      {
+        "id": "crate1",
+        "type": "crate",
+        "x": 7,
+        "y": 2
+      },
+      {
+        "id": "checkpoint2",
+        "type": "checkpoint",
+        "x": 10,
+        "y": 2,
+        "order": 2,
+        "turns": 10
+      },
+      {
+        "id": "key1",
+        "type": "key",
+        "x": 12,
+        "y": 3,
+        "keyId": "lab"
+      },
+      {
+        "id": "door1",
+        "type": "door",
+        "x": 15,
+        "y": 2,
+        "keyId": "lab"
+      },
+      {
+        "id": "exit1",
+        "type": "exit",
+        "x": 17,
+        "y": 2
+      }
+    ],
+    "dialogues": {},
+    "guides": [
+      {
+        "on": "start",
+        "text": "체크포인트 연습입니다. 남은 턴 안에 다음 체크포인트에 도착하면 안정, 넘기면 불안정입니다."
+      },
+      {
+        "on": "near",
+        "target": "crate1",
+        "text": "상자를 위에서 밀어 아래 홈에 넣어야 지나갈 수 있습니다. 잘못 밀었다면 Q로 체크포인트 1에 워프하세요."
+      },
+      {
+        "on": "pickup",
+        "target": "key1",
+        "text": "열쇠를 얻었습니다. 오른쪽 문을 열고 출구로 가세요."
+      }
+    ],
+    "story": {
+      "intro": [],
+      "outro": []
+    },
+    "hints": [],
+    "stars": {
+      "maxUnstable": 1
+    }
+  }
+}

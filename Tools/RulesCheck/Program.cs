@@ -69,11 +69,53 @@ public static class Program
             Check($"stage {no} 결과 제출 요청", result.Cleared && result.Moves == min);
         }
 
+        Console.WriteLine("== 체크포인트 연습 맵 (Resources/Maps/chapter1/stage-1.json)");
+        PracticeMapCheck("Assets/Resources/Maps/chapter1/stage-1.json");
+
         Console.WriteLine("== 이동 규칙");
         RuleChecks();
 
         Console.WriteLine($"결과: PASS {_pass} / FAIL {_fail}");
         return _fail == 0 ? 0 : 1;
+    }
+
+    /// <summary>체크포인트 연습 맵: 최소 풀이(구간 4·9·9)와 상자를 잘못 밀었을 때 워프로 되돌리기</summary>
+    private static void PracticeMapCheck(string path)
+    {
+        if (!File.Exists(path)) { Check("연습 맵 파일", false, path); return; }
+        var stage = JObject.Parse(File.ReadAllText(path));
+        var map = MapData.From((JObject)stage["mapData"]);
+        int par = stage.Value<int>("parMoves");
+
+        var b = new Board(map, par);
+        Replay(b, "RRDR");
+        Check("구간 1: 체크포인트 1 안정 도착 (4턴)", b.CurrentOrder == 1 && b.StabilityOf(1) == true && b.RemainingTurns == 9);
+        Replay(b, "RURRDDRRR");
+        Check("구간 2: 상자를 홈에 넣고 체크포인트 2 안정 도착 (9턴)", b.CurrentOrder == 2 && b.StabilityOf(2) == true,
+            $"남은 턴 {b.RemainingTurns}, 위치 {b.PlayerPos}");
+        Replay(b, "RRDRURRRR");
+        var req = b.ToResultRequest();
+        Check("구간 3: 열쇠·문·출구, 기록 22, 불안정 0", b.IsCleared && req.Moves == 22 && req.UnstableCount == 0 && b.MeetsStableStar,
+            $"moves {req.Moves}, unstable {req.UnstableCount}");
+
+        b = new Board(map, par);
+        Replay(b, "RRDR");
+        Replay(b, "RRRRRR");
+        var crate = b.Objects.First(o => o.Id == "crate1");
+        Check("상자를 오른쪽으로 끝까지 밀면 체크포인트 2 앞에서 막힘", crate.Pos == new GridPos(9, 2)
+            && b.Move(Direction.Right).Outcome == MoveOutcome.Blocked);
+        Check("체크포인트 1로 워프 -> 상자 원래 자리", b.WarpTo(1) && crate.Pos == new GridPos(7, 2) && b.PlayerPos == new GridPos(4, 2));
+        Replay(b, "RURRDDRRR");
+        Check("워프 후 다시 풀면 안정 도착", b.CurrentOrder == 2 && b.StabilityOf(2) == true && b.Rewinds == 1);
+    }
+
+    private static void Replay(Board b, string moves)
+    {
+        foreach (char c in moves)
+        {
+            DirectionExtensions.TryFromKey(c == 'R' ? 'D' : c == 'L' ? 'A' : c == 'U' ? 'W' : 'S', out Direction d);
+            b.Move(d);
+        }
     }
 
     private static MapData Map(string[] grid, params MapObjectData[] objects) => new MapData

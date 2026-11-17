@@ -61,7 +61,13 @@ namespace Executor.Play
             _game.Build();
             WireMenu();
             WireGame();
-            ApiClient.SessionExpired += () => { if (_mode != Mode.Title) ShowTitle(); };
+            ApiClient.SessionExpired += () =>
+            {
+                if (_mode != Mode.Title) ShowTitle();
+                // 계정이 정지돼서 끝났으면 기한과 사유를 보여 준다
+                string reason = ApiClient.TakeSessionEndReason();
+                if (reason != null) _menu.ShowMessage("계정 정지", reason);
+            };
             LoadStages();
             ShowTitle();
             RestoreLogin();
@@ -97,6 +103,7 @@ namespace Executor.Play
 
             _menu.OnProfile = ShowProfile;
             _menu.OnMail = () => _menu.ShowMessage("우편", "우편함은 준비 중입니다.\n(서버 우편 API 연동 예정)");
+            _menu.OnNotice = OpenNotices;
             _menu.OnShop = () => _menu.ShowMessage("상점", "상점은 준비 중입니다.\n(서버 상점 API 연동 예정)");
             _menu.OnStages = ShowStageSelect;
             _menu.OnMainBack = ShowTitle;
@@ -175,6 +182,37 @@ namespace Executor.Play
                 {
                     Debug.LogWarning("[WireframeGame] 프로필 갱신 실패: " + e);
                 }
+            }
+        }
+
+        /// <summary>공지 목록 (로그인 없이 조회). 서버에 닿지 못하면 안내만 한다</summary>
+        private async void OpenNotices()
+        {
+            try
+            {
+                var page = await NoticeApi.GetNoticesAsync(size: 20);
+                if (_mode != Mode.Main) return;
+                _menu.ClosePopups();
+                _menu.ShowNotices(page.Content, OpenNotice);
+            }
+            catch (ApiException e)
+            {
+                _menu.ShowMessage("공지사항", e.IsNetworkError ? "서버에 연결할 수 없어 공지를 불러오지 못했습니다." : e.Message);
+            }
+        }
+
+        private async void OpenNotice(long noticeId)
+        {
+            try
+            {
+                var notice = await NoticeApi.GetNoticeAsync(noticeId);
+                _menu.ClosePopups();
+                _menu.ShowNoticeDetail(notice);
+            }
+            catch (ApiException e)
+            {
+                _menu.ClosePopups();
+                _menu.ShowMessage("공지사항", e.Status == 404 ? "내려간 공지입니다." : e.IsNetworkError ? "서버에 연결할 수 없습니다." : e.Message);
             }
         }
 
@@ -614,7 +652,7 @@ namespace Executor.Play
                 };
                 if (hasNext) buttons.Add(("다음 (Enter)", NextStage));
                 string detail = _board.CheckpointCount == 0
-                    ? (_board.LastArrivalStable ? $"남은 턴 {_board.RemainingTurns}" : $"턴 초과 {-_board.RemainingTurns}") + $" · {record}턴 사용"
+                    ? $"남은 턴 {_board.RemainingTurns} · {record}턴 사용"
                     : $"기록 {record}턴 (구간 최고의 합) · 누른 턴 {_board.Turns} · 워프 {_board.Rewinds}회";
                 bool tutorial = _stage.Tutorial;
                 string star2 = tutorial ? "" : _board.MeetsStableStar

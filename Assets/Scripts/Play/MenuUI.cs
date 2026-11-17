@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using UnityEngine;
 using UnityEngine.UI;
@@ -149,7 +150,7 @@ namespace Executor.Play
         }
 
         // ================= 메인 화면 =================
-        public Action OnProfile, OnMail, OnShop, OnStages, OnMainBack;
+        public Action OnProfile, OnMail, OnShop, OnNotice, OnStages, OnMainBack;
 
         public void ShowMain(string nickname, string coin)
         {
@@ -177,9 +178,12 @@ namespace Executor.Play
             _profileCoin.rectTransform.offsetMax = new Vector2(-28, -16);
             SettingsButton(screen, () => OnSettings?.Invoke());
 
-            // 왼쪽 줄: 우편, 상점 (설정 버튼과 같은 120x120)
+            // 왼쪽 줄: 우편, 상점, 공지 (설정 버튼과 같은 120x120)
             float y = -(Margin + 120 + Gap);
-            foreach (var (label, action) in new (string, Action)[] { ("우편", () => OnMail?.Invoke()), ("상점", () => OnShop?.Invoke()) })
+            foreach (var (label, action) in new (string, Action)[]
+                     {
+                         ("우편", () => OnMail?.Invoke()), ("상점", () => OnShop?.Invoke()), ("공지", () => OnNotice?.Invoke())
+                     })
             {
                 var b = Button(screen, label, action, 26);
                 Place(b, new Vector2(0, 1), new Vector2(Margin, y), SettingsSize, new Vector2(0, 1));
@@ -403,6 +407,52 @@ namespace Executor.Play
             Stretch(t.rectTransform);
         }
 
+        /// <summary>공지 목록 팝업. 항목을 누르면 onOpen(공지 ID)</summary>
+        public void ShowNotices(IReadOnlyList<Data.NoticeSummary> notices, Action<long> onOpen)
+        {
+            Popup(_popupRoot, "공지사항", new Vector2(1000, 720), out RectTransform body);
+            if (notices.Count == 0)
+            {
+                var empty = Label(body, "지금 게시 중인 공지가 없습니다.", 28, TextAnchor.MiddleCenter, Muted);
+                Stretch(empty.rectTransform);
+                return;
+            }
+            float y = 0;
+            foreach (var n in notices.Take(7))
+            {
+                string pin = n.IsPinned ? "[고정] " : "";
+                string date = n.PublishedAt.ToLocalTime().ToString("MM.dd");
+                long id = n.NoticeId;
+                var b = Button(body, $"{pin}[{n.CategoryLabel}] {n.Title}   {date}", () => onOpen(id), 26);
+                var text = b.GetComponentInChildren<Text>();
+                text.alignment = TextAnchor.MiddleLeft;
+                text.rectTransform.offsetMin = new Vector2(24, 0);
+                Place(b, new Vector2(0, 1), new Vector2(0, y), new Vector2(920, 72), new Vector2(0, 1));
+                y -= 82;
+            }
+            if (notices.Count > 7)
+            {
+                var more = Label(body, $"외 {notices.Count - 7}개 (최근 7개만 표시)", 22, TextAnchor.UpperLeft, Muted);
+                Place(more, new Vector2(0, 1), new Vector2(0, y - 6), new Vector2(920, 36), new Vector2(0, 1));
+            }
+        }
+
+        /// <summary>공지 상세 팝업</summary>
+        public void ShowNoticeDetail(Data.NoticeDetail notice)
+        {
+            Popup(_popupRoot, notice.Title, new Vector2(1100, 780), out RectTransform body);
+            string updated = notice.UpdatedAt > notice.PublishedAt.AddMinutes(1)
+                ? $" · 수정 {notice.UpdatedAt.ToLocalTime():yyyy.MM.dd HH:mm}" : "";
+            var meta = Label(body, $"[{notice.CategoryLabel}] {notice.PublishedAt.ToLocalTime():yyyy.MM.dd HH:mm}{updated}",
+                22, TextAnchor.UpperLeft, Muted);
+            Place(meta, new Vector2(0, 1), Vector2.zero, new Vector2(1020, 36), new Vector2(0, 1));
+            var content = Label(body, notice.Content, 26, TextAnchor.UpperLeft);
+            content.lineSpacing = 1.3f;
+            content.verticalOverflow = VerticalWrapMode.Truncate;
+            Stretch(content.rectTransform);
+            content.rectTransform.offsetMax = new Vector2(0, -52);
+        }
+
         public void ShowList(string title, IEnumerable<string> lines)
         {
             Popup(_popupRoot, title, new Vector2(900, 620), out RectTransform body);
@@ -450,8 +500,8 @@ namespace Executor.Play
             Place(confirm, new Vector2(0, 1), new Vector2(0, -180), new Vector2(740, 72), new Vector2(0, 1));
             confirm.gameObject.SetActive(false);
 
-            var error = Label(body, "", 24, TextAnchor.MiddleLeft, Bad);
-            Place(error, new Vector2(0, 1), new Vector2(0, -270), new Vector2(740, 40), new Vector2(0, 1));
+            var error = Label(body, "", 22, TextAnchor.UpperLeft, Bad);
+            Place(error, new Vector2(0, 1), new Vector2(0, -264), new Vector2(740, 84), new Vector2(0, 1));
 
             Button submit = Button(body, "로그인", null, 28);
             Place(submit, new Vector2(0, 0), Vector2.zero, new Vector2(358, 72), new Vector2(0, 0));

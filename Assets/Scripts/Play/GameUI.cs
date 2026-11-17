@@ -104,12 +104,12 @@ namespace Executor.Play
         }
 
         /// <summary>
-        /// 지금 구간의 남은 턴. 0이면 주의 색, 넘기면 "초과 N"을 빨간색으로 (실패는 아니고 도착이 불안정이 된다).
+        /// 지금 구간의 남은 턴. 0이면 주의 색, 넘기면 -1, -2처럼 빨간색으로 (실패는 아니고 도착이 불안정이 된다).
         /// 제한이 없으면 ∞
         /// </summary>
         public void SetTurns(int? remaining, int keys)
         {
-            _turns.text = remaining == null ? "∞" : remaining < 0 ? $"초과 {-remaining}" : remaining.ToString();
+            _turns.text = remaining?.ToString() ?? "∞";
             _turns.color = remaining < 0 ? Bad : remaining == 0 ? Warn : TextColor;
             _turnsBox.color = remaining < 0 ? (Color)new Color32(0x3a, 0x14, 0x1c, 0xee) : PanelColor;
             // 열쇠는 남은 턴 옆 작은 상자에 그림과 개수로 (가지고 있을 때만)

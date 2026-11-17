@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using UnityEngine;
 using UnityEngine.UI;
 using static Executor.Play.UiKit;
@@ -102,10 +103,13 @@ namespace Executor.Play
             SetButtonText(_collect, $"수집 {collected}/{collectTotal}");
         }
 
-        /// <summary>남은 턴 표시. 0이면 주의 색, 음수면 실패 색. 제한이 없으면 ∞</summary>
+        /// <summary>
+        /// 지금 구간의 남은 턴. 0이면 주의 색, 넘기면 "초과 N"을 빨간색으로 (실패는 아니고 도착이 불안정이 된다).
+        /// 제한이 없으면 ∞
+        /// </summary>
         public void SetTurns(int? remaining, int keys)
         {
-            _turns.text = remaining?.ToString() ?? "∞";
+            _turns.text = remaining == null ? "∞" : remaining < 0 ? $"초과 {-remaining}" : remaining.ToString();
             _turns.color = remaining < 0 ? Bad : remaining == 0 ? Warn : TextColor;
             _turnsBox.color = remaining < 0 ? (Color)new Color32(0x3a, 0x14, 0x1c, 0xee) : PanelColor;
             // 열쇠는 남은 턴 옆 작은 상자에 그림과 개수로 (가지고 있을 때만)
@@ -118,9 +122,10 @@ namespace Executor.Play
         /// <summary>게임 화면 위 팝업 메뉴 (일시 정지 등). 버튼을 누르면 닫히고 동작한다</summary>
         public void ShowMenu(string title, IEnumerable<(string label, Action onClick)> buttons)
         {
-            Popup(_popupRoot, title, new Vector2(620, 520), out RectTransform body);
+            var list = buttons.ToList();
+            Popup(_popupRoot, title, new Vector2(620, Mathf.Max(520, 200 + list.Count * 92)), out RectTransform body);
             float y = 0;
-            foreach (var (label, onClick) in buttons)
+            foreach (var (label, onClick) in list)
             {
                 var b = Button(body, label, () => { ClosePopups(); onClick?.Invoke(); }, 28);
                 Place(b, new Vector2(0.5f, 1), new Vector2(0, y), new Vector2(480, 72));

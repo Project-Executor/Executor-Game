@@ -70,6 +70,16 @@ namespace Executor.Play
             }
         }
 
+        /// <summary>워프: 미끄러지지 않고 바로 그 상태로 옮긴다</summary>
+        public void SnapToBoard()
+        {
+            Sync();
+            foreach (var pair in _targets)
+            {
+                if (pair.Key != null) pair.Key.position = pair.Value;
+            }
+        }
+
         /// <summary>막힌 입력: 그 방향으로 살짝 흔들기</summary>
         public void Bump(Direction direction)
         {

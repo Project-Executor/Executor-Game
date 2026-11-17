@@ -275,13 +275,12 @@ namespace Executor.Play
         private void ShowPauseMenu()
         {
             if (_board == null || _game.HasPopup) return;
-            _game.ShowMenu("일시 정지", new (string, System.Action)[]
-            {
-                ("계속하기", null),
-                ("다시 하기 (R)", () => StartStage(_stage, false)),
-                ("스테이지 선택", ShowStageSelect),
-                ("메인으로", ShowMain),
-            });
+            var buttons = new List<(string, System.Action)> { ("계속하기", null) };
+            if (_board.CheckpointCount > 0) buttons.Add(("체크포인트로 이동 (Q)", () => ShowWarpMenu()));
+            buttons.Add(("다시 하기 (R)", () => StartStage(_stage, false)));
+            buttons.Add(("스테이지 선택", ShowStageSelect));
+            buttons.Add(("메인으로", ShowMain));
+            _game.ShowMenu("일시 정지", buttons);
         }
 
         private void StartStage(StageInfo stage, bool withIntro)
@@ -310,6 +309,10 @@ namespace Executor.Play
             Block();
             _guides = new GuideTracker(_board, PlayerSession.Nickname);
             ShowGuides(_guides.OnStart());
+            if (_board.CheckpointCount > 0)
+            {
+                _game.Toast($"체크포인트 {_board.CheckpointCount}개: 남은 턴 안에 도착하면 안정, 넘기면 불안정. Q로 도착한 체크포인트에 워프할 수 있습니다.");
+            }
         }
 
         private void ShowGuides(IReadOnlyList<string> texts)
@@ -458,6 +461,7 @@ namespace Executor.Play
                     if (k.escapeKey.wasPressedThisFrame) { ShowPauseMenu(); return; }
                     if (k.rKey.wasPressedThisFrame) { StartStage(_stage, false); return; }
                     if (k.eKey.wasPressedThisFrame) { TryTalk(); return; }
+                    if (k.qKey.wasPressedThisFrame) { ShowWarpMenu(); return; }
                     if (Pressed(k, out Direction dir)) Move(dir);
                     break;
 
@@ -510,8 +514,47 @@ namespace Executor.Play
             if (result.UsedTurn) _view.Sync(); else _view.Bump(dir);
             ShowGuides(_guides.AfterMove(result));
             if (result.Outcome == MoveOutcome.PickedUpKey) _game.Toast("열쇠를 얻었습니다.");
+            if (result.Outcome == MoveOutcome.ReachedCheckpoint)
+            {
+                _game.Toast(_board.LastArrivalStable
+                    ? $"체크포인트 {result.Target.Order} 도착 (안정). 다음 구간 {Turns(_board.SegmentLimit)}"
+                    : $"체크포인트 {result.Target.Order} 도착 (불안정: 턴 초과). Q로 앞 체크포인트에 워프해 다시 시도할 수 있습니다.");
+            }
             UpdateHud();
             if (_board.IsOver) _endAt = Time.time + EndDelay;
+        }
+
+        private static string Turns(int? limit) => limit == null ? "제한 없음" : $"{limit}턴";
+
+        /// <summary>도착한 체크포인트 목록 (Q). 고르면 그때 상태로 워프한다</summary>
+        private void ShowWarpMenu()
+        {
+            if (_board == null || _board.IsOver || _game.HasPopup) return;
+            if (_board.CheckpointCount == 0)
+            {
+                _game.Toast("이 스테이지에는 체크포인트가 없습니다.");
+                return;
+            }
+            var buttons = new List<(string, System.Action)>();
+            foreach (int order in _board.WarpPoints)
+            {
+                string name = order == Board.StartOrder ? "시작 지점" : $"체크포인트 {order}";
+                bool? stable = order == Board.StartOrder ? null : _board.StabilityOf(order);
+                string tag = stable == null ? "" : stable.Value ? " · 안정" : " · 불안정";
+                string here = order == _board.CurrentOrder ? " (지금 구간)" : "";
+                int target = order;
+                buttons.Add(($"{name}{tag}{here}", () => Warp(target)));
+            }
+            buttons.Add(("닫기", null));
+            _game.ShowMenu($"워프 · 불안정 {_board.UnstableCount}개 (별 2: {_board.Data.Stars?.MaxUnstable ?? 0}개 이하)", buttons);
+        }
+
+        private void Warp(int order)
+        {
+            if (!_board.WarpTo(order)) return;
+            _view.SnapToBoard();
+            UpdateHud();
+            _game.Toast(order == Board.StartOrder ? "시작 지점으로 돌아왔습니다." : $"체크포인트 {order}(으)로 돌아왔습니다. {Turns(_board.SegmentLimit)} 안에 다음 체크포인트로.");
         }
 
         private void TryTalk()
@@ -552,21 +595,12 @@ namespace Executor.Play
         private void FinishStage()
         {
             _endAt = -1;
-            if (_board.IsFailed)
-            {
-                _mode = Mode.Result;
-                Block();
-                _game.ShowResult($"실패\n\n{_stage.Title}\n남은 턴이 없습니다.", false, new (string, System.Action)[]
-                {
-                    ("다시 (R)", () => StartStage(_stage, false)),
-                    ("스테이지 선택 (Esc)", ShowStageSelect),
-                });
-                return;
-            }
 
             // TODO: 서버에 튜토리얼이 등록되면 StageApi.SubmitResultAsync(stageId, _board.ToResultRequest())
+            // 기록 = 구간 최고 기록의 합 (워프로 다시 통과한 구간은 좋은 쪽만). 체크포인트가 없으면 쓴 턴과 같다
+            int record = _board.RecordMoves;
             int best = StageProgress.BestMoves(_chapter.Id, _stage.No);
-            bool newBest = StageProgress.RecordClear(_chapter.Id, _stage.No, _board.Turns);
+            bool newBest = StageProgress.RecordClear(_chapter.Id, _stage.No, record);
 
             void ShowResult()
             {
@@ -579,8 +613,15 @@ namespace Executor.Play
                     ("스테이지 선택 (Esc)", ShowStageSelect),
                 };
                 if (hasNext) buttons.Add(("다음 (Enter)", NextStage));
-                _game.ShowResult($"클리어!\n\n{_stage.Title}\n남은 턴 {_board.RemainingTurns} · {_board.Turns}턴 사용" +
-                                 (newBest ? "\n최고 기록" : $"\n최고 {best}턴 사용"), true, buttons);
+                string detail = _board.CheckpointCount == 0
+                    ? (_board.LastArrivalStable ? $"남은 턴 {_board.RemainingTurns}" : $"턴 초과 {-_board.RemainingTurns}") + $" · {record}턴 사용"
+                    : $"기록 {record}턴 (구간 최고의 합) · 누른 턴 {_board.Turns} · 워프 {_board.Rewinds}회";
+                bool tutorial = _stage.Tutorial;
+                string star2 = tutorial ? "" : _board.MeetsStableStar
+                    ? $"\n★2 달성 (불안정 {_board.UnstableCount}개)"
+                    : $"\n★2 미달성 (불안정 {_board.UnstableCount}개 > 허용 {_board.Data.Stars?.MaxUnstable ?? 0}개)";
+                _game.ShowResult($"클리어!\n\n{_stage.Title}\n{detail}{star2}" +
+                                 (newBest ? "\n최고 기록" : $"\n최고 {best}턴"), true, buttons);
             }
 
             if (_stage.Map.Story?.Outro?.Count > 0) PlayStory(_stage.Map.Story.Outro, ShowResult);

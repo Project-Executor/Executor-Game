@@ -50,6 +50,7 @@ namespace Executor.Play
                 case MapObjectTypes.Key: return Pixel("objects/key", new Color32(0xff, 0xd2, 0x3f, 0xff), Shape.Small);
                 case MapObjectTypes.Door: return Pixel("objects/door", new Color32(0xc0, 0x45, 0x55, 0xff), Shape.Bar);
                 case MapObjectTypes.Npc: return Pixel("objects/npc", new Color32(0xb0, 0x7c, 0xf0, 0xff), Shape.Diamond);
+                case MapObjectTypes.Checkpoint: return Pixel("objects/checkpoint", new Color32(0x2c, 0xd5, 0xe8, 0xff), Shape.Small);
                 default: return Pixel("objects/" + type, new Color32(0xff, 0x00, 0xff, 0xff), Shape.Small);
             }
         }

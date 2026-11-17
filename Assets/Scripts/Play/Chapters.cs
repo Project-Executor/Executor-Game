@@ -11,8 +11,10 @@ namespace Executor.Play
     {
         public int No;
         public string Title;
-        /// <summary>턴 제한</summary>
+        /// <summary>턴 제한 (시작 구간의 턴)</summary>
         public int Par;
+        /// <summary>튜토리얼이면 별은 클리어(★1)만 있다</summary>
+        public bool Tutorial;
         public MapData Map;
     }
 
@@ -73,6 +75,7 @@ namespace Executor.Play
                         No = json.Value<int>("stageNo"),
                         Title = json.Value<string>("title"),
                         Par = json.Value<int>("parMoves"),
+                        Tutorial = json.Value<string>("stageType") == "TUTORIAL",
                         Map = MapData.From((JObject)json["mapData"]),
                     });
                 }

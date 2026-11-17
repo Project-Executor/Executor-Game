@@ -498,6 +498,80 @@ namespace Executor.Play
             }
         }
 
+        /// <summary>
+        /// 상점 팝업. 위에 종류 탭(전체·스킨·테마·힌트), 아래에 아이템 줄(최대 7개). 줄마다 가격·보유와 구매 버튼.
+        /// 스킨·테마는 이미 가졌으면 "보유 중". 힌트는 1개 / 5개 구매
+        /// </summary>
+        public void ShowShop(IReadOnlyList<Data.ShopItem> items, int coin, string filter, Action<string> onFilter,
+            Action<Data.ShopItem, int> onBuy)
+        {
+            Popup(_popupRoot, $"상점 · 보유 코인 {coin}", new Vector2(1240, 880), out RectTransform body);
+            float x = 0;
+            foreach (var (type, label) in new (string, string)[] { (null, "전체"), (Data.ItemTypes.Skin, "스킨"), (Data.ItemTypes.Theme, "테마"), (Data.ItemTypes.Hint, "힌트") })
+            {
+                string t = type;
+                bool active = t == filter;
+                var tab = Button(body, label, () => onFilter(t), 22, active ? (Color?)Line : null);
+                Place(tab, new Vector2(0, 1), new Vector2(x, 0), new Vector2(150, 56), new Vector2(0, 1));
+                x += 160;
+            }
+            if (items.Count == 0)
+            {
+                var empty = Label(body, "판매 중인 아이템이 없습니다.", 28, TextAnchor.MiddleCenter, Muted);
+                Stretch(empty.rectTransform);
+                return;
+            }
+            float y = -76;
+            foreach (var it in items.Take(7))
+            {
+                var item = it;
+                var row = Panel(body, "Item", new Color32(0x16, 0x1e, 0x2a, 0xff), Line);
+                Place(row, new Vector2(0, 1), new Vector2(0, y), new Vector2(1160, 92), new Vector2(0, 1));
+                string owned = Data.ItemTypes.IsUnique(it.ItemType) ? (it.Owned ? " · 보유 중" : "") : (it.Quantity > 0 ? $" · {it.Quantity}개 보유" : "");
+                var name = Label(row, $"[{Data.ItemTypes.Label(it.ItemType)}] {it.Name}   {it.Price} 코인{owned}", 24, TextAnchor.UpperLeft, bold: true);
+                Stretch(name.rectTransform, 14);
+                name.rectTransform.offsetMax = new Vector2(-300, -12);
+                var desc = Label(row, it.Description ?? "", 20, TextAnchor.LowerLeft, Muted);
+                Stretch(desc.rectTransform, 14);
+                desc.rectTransform.offsetMax = new Vector2(-300, -14);
+                desc.horizontalOverflow = HorizontalWrapMode.Overflow;
+
+                if (Data.ItemTypes.IsUnique(it.ItemType))
+                {
+                    var buy = Button(row, it.Owned ? "보유 중" : "구매", () => { if (!item.Owned) onBuy(item, 1); }, 24,
+                        it.Owned ? new Color32(0x22, 0x26, 0x2e, 0xff) : (Color32?)null);
+                    buy.interactable = !it.Owned;
+                    Place(buy, new Vector2(1, 0.5f), new Vector2(-12, 0), new Vector2(170, 64), new Vector2(1, 0.5f));
+                }
+                else
+                {
+                    var buy5 = Button(row, "5개", () => onBuy(item, 5), 22);
+                    Place(buy5, new Vector2(1, 0.5f), new Vector2(-12, 0), new Vector2(120, 64), new Vector2(1, 0.5f));
+                    var buy1 = Button(row, "1개", () => onBuy(item, 1), 22);
+                    Place(buy1, new Vector2(1, 0.5f), new Vector2(-144, 0), new Vector2(120, 64), new Vector2(1, 0.5f));
+                }
+                y -= 102;
+            }
+            if (items.Count > 7)
+            {
+                var more = Label(body, $"외 {items.Count - 7}개 (종류 탭으로 나눠 보세요)", 20, TextAnchor.UpperLeft, Muted);
+                Place(more, new Vector2(0, 1), new Vector2(0, y - 4), new Vector2(1160, 32), new Vector2(0, 1));
+            }
+        }
+
+        /// <summary>확인 팝업 (예 / 아니오)</summary>
+        public void ShowConfirm(string title, string text, Action onYes)
+        {
+            Popup(_popupRoot, title, new Vector2(760, 420), out RectTransform body);
+            var t = Label(body, text, 26, TextAnchor.MiddleCenter);
+            Stretch(t.rectTransform);
+            t.rectTransform.offsetMin = new Vector2(0, 90);
+            var yes = Button(body, "예", () => onYes(), 26);
+            Place(yes, new Vector2(1, 0), Vector2.zero, new Vector2(200, 68), new Vector2(1, 0));
+            var no = Button(body, "아니오", () => ClosePopups(), 24, new Color32(0x22, 0x26, 0x2e, 0xff));
+            Place(no, new Vector2(1, 0), new Vector2(-216, 0), new Vector2(200, 68), new Vector2(1, 0));
+        }
+
         /// <summary>우편 자세히 팝업. 받지 않았으면 받기 버튼</summary>
         public void ShowMail(Data.MailResponse mail, Action onClaim)
         {

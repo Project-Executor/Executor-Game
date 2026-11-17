@@ -144,7 +144,7 @@ namespace Executor.Play
             _menu.OnProfile = ShowProfile;
             _menu.OnMail = OpenMailbox;
             _menu.OnNotice = OpenNotices;
-            _menu.OnShop = () => _menu.ShowMessage("상점", "상점은 준비 중입니다.\n(서버 상점 API 연동 예정)");
+            _menu.OnShop = () => OpenShop(_shopFilter);
             _menu.OnStages = ShowStageSelect;
             _menu.OnMainBack = ShowTitle;
 
@@ -320,6 +320,63 @@ namespace Executor.Play
                 _menu.ShowMessage("모두 받기", e.IsNetworkError ? "서버에 연결할 수 없습니다." : e.Message);
             }
             RefreshMailCount();
+        }
+
+        // ---------------- 상점 ----------------
+        /// <summary>상점 종류 탭 (null = 전체)</summary>
+        private string _shopFilter;
+
+        private async void OpenShop(string filter)
+        {
+            if (!PlayerSession.IsOnline)
+            {
+                _menu.ShowMessage("상점", "로그인해야 상점을 쓸 수 있습니다.");
+                return;
+            }
+            _shopFilter = filter;
+            try
+            {
+                List<ShopItem> items = await ItemApi.GetShopItemsAsync(filter);
+                if (_mode != Mode.Main) return;
+                _menu.ClosePopups();
+                _menu.ShowShop(items, PlayerSession.Profile.Coin, filter, OpenShop, ConfirmPurchase);
+            }
+            catch (ApiException e)
+            {
+                _menu.ShowMessage("상점", e.IsNetworkError ? "서버에 연결할 수 없어 상점을 불러오지 못했습니다." : e.Message);
+            }
+        }
+
+        private void ConfirmPurchase(ShopItem item, int quantity)
+        {
+            int price = item.Price * quantity;
+            int coin = PlayerSession.Profile?.Coin ?? 0;
+            string count = ItemTypes.IsUnique(item.ItemType) ? "" : $" {quantity}개";
+            string text = $"{item.Name}{count}을(를) {price} 코인에 살까요?\n\n보유 코인 {coin} → {coin - price}";
+            if (price > coin)
+            {
+                _menu.ShowMessage("구매", $"코인이 모자랍니다.\n\n필요 {price} · 보유 {coin}");
+                return;
+            }
+            _menu.ShowConfirm("구매", text, () => Purchase(item, quantity));
+        }
+
+        private async void Purchase(ShopItem item, int quantity)
+        {
+            try
+            {
+                PurchaseResponse res = await ItemApi.PurchaseAsync(item.ItemId, quantity);
+                ApplyCoin(res.RemainingCoin);
+                _menu.ClosePopups();
+                OpenShop(_shopFilter);
+                string have = ItemTypes.IsUnique(item.ItemType) ? "프로필에서 장착할 수 있습니다." : $"지금 {res.Quantity}개 가지고 있습니다.";
+                _menu.ShowMessage("구매 완료", $"{item.Name}을(를) 샀습니다.\n{have}\n\n남은 코인 {res.RemainingCoin}");
+            }
+            catch (ApiException e)
+            {
+                _menu.ClosePopups();
+                _menu.ShowMessage("구매", e.IsNetworkError ? "서버에 연결할 수 없습니다." : e.Message);
+            }
         }
 
         /// <summary>보유 코인을 바꾸고 메인 화면에 반영한다</summary>

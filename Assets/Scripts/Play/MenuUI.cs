@@ -151,8 +151,9 @@ namespace Executor.Play
             _titleLogin = Button(screen, "로그인", () => OnTitleLogin?.Invoke(), 34);
             Place(_titleLogin, new Vector2(0.5f, 0.5f), new Vector2(0, -150), new Vector2(380, 96));
 
-            _titleHint = Label(screen, "화면을 클릭해 게임을 시작하세요", 32, TextAnchor.MiddleCenter, Muted);
-            Place(_titleHint, new Vector2(0.5f, 0.5f), new Vector2(0, -150), new Vector2(1000, 60));
+            // 화면 아래쪽 (배경 그림 맨 아래 "made by" 글씨보다 위). 흰색, 깜빡임은 Update에서 투명도만 바꾼다
+            _titleHint = Label(screen, "화면을 클릭해 게임을 시작하세요", 32, TextAnchor.MiddleCenter, Color.white);
+            Place(_titleHint, new Vector2(0.5f, 0), new Vector2(0, 120), new Vector2(1000, 60));
 
             SettingsButton(screen, () => OnSettings?.Invoke());
 

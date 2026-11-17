@@ -10,8 +10,8 @@ namespace Executor.Play
     /// <summary>
     /// 게임 화면 UI (와이어프레임 stage(ex) 배치, 기준 1920x1080).
     /// <list type="bullet">
-    ///   <item>왼쪽 위: 미니맵(누르면 전체 맵) / 그 아래: 남은 턴·열쇠 / 그 아래: 퀘스트(별 조건 3줄, 누르면 자세히)</item>
-    ///   <item>오른쪽 위: 수집, 채팅, 설정</item>
+    ///   <item>왼쪽 위: 미니맵(누르면 전체 맵) + 오른쪽 아이템 칸 / 그 아래: 퀘스트(별 조건 3줄, 누르면 자세히). 왼쪽 아래는 비워 둔다</item>
+    ///   <item>오른쪽 위 줄: 남은 턴 · 수집 · 채팅 · 설정</item>
     ///   <item>가운데: 게임 화면 (BoardView가 GameArea 안에 맞춰 그린다)</item>
     ///   <item>대화창 1760x300, 이름표 280x60, 선택지 600x64, 스탠딩 일러스트 높이 1000</item>
     /// </list>
@@ -325,9 +325,12 @@ namespace Executor.Play
         }
 
         // ---------------- 만들기 ----------------
-        /// <summary>왼쪽 패널 x 위치와 미니맵 크기 (기준 1920x1080). 게임 화면(GameArea)은 x 552부터</summary>
+        // 배치 (기준 1920x1080). 게임 화면(GameArea)은 x 552~1872, 위에서 144 아래부터.
+        // 왼쪽 위: 미니맵 + 오른쪽 아이템 칸, 그 아래 퀘스트. 왼쪽 아래는 비워 둔다 (모바일 방향 패드 자리).
+        // 오른쪽 위 줄: 남은 턴 · 수집 · 채팅 · 설정 (엄지가 가리지 않는 위쪽에 계속 볼 값을 둔다)
         private const float Left = 48;
-        private static readonly Vector2 MinimapSize = new Vector2(456, 320);
+        private static readonly Vector2 MinimapSize = new Vector2(360, 300);
+        private const float ItemSlot = 84;
 
         private void BuildHud()
         {
@@ -338,54 +341,54 @@ namespace Executor.Play
             // 미니맵 (왼쪽 위). 누르면 전체 맵 팝업
             var mapButton = Button(_hud.transform, "", () => OnMinimap?.Invoke(), 20, PanelColor);
             Place(mapButton, new Vector2(0, 1), new Vector2(Left, -48), MinimapSize, new Vector2(0, 1));
-            var mapLabel = Label(mapButton.transform, "미니맵 · 누르면 전체 맵", 20, TextAnchor.UpperLeft, Muted);
-            Stretch(mapLabel.rectTransform, 14);
+            var mapLabel = Label(mapButton.transform, "미니맵 · 누르면 전체 맵", 18, TextAnchor.UpperLeft, Muted);
+            Stretch(mapLabel.rectTransform, 12);
             _minimap = new GameObject("Minimap", typeof(RectTransform), typeof(RawImage)).GetComponent<RawImage>();
             _minimap.transform.SetParent(mapButton.transform, false);
             _minimap.raycastTarget = false;
             Place(_minimap, new Vector2(0.5f, 0), new Vector2(0, 12), new Vector2(MinimapSize.x - 24, MinimapSize.y - 52), new Vector2(0.5f, 0));
 
-            // 남은 턴 (미니맵 아래, 작게)
-            float turnsY = -48 - MinimapSize.y - 16;
-            var box = Panel(_hud.transform, "Turns", PanelColor, Line);
-            Place(box, new Vector2(0, 1), new Vector2(Left, turnsY), new Vector2(MinimapSize.x - 112, 104), new Vector2(0, 1));
-            _turnsBox = box.GetComponent<Image>();
-            var label = Label(box, "남은 턴", 20, TextAnchor.UpperLeft, Muted);
-            Stretch(label.rectTransform, 14);
-            _turns = Label(box, "", 52, TextAnchor.MiddleCenter, bold: true);
-            Stretch(_turns.rectTransform);
-            _turns.rectTransform.offsetMin = new Vector2(80, 0);
-
-            // 열쇠 (남은 턴 오른쪽 작은 상자, 열쇠가 있을 때만 보인다)
+            // 아이템 칸 (미니맵 오른쪽 세로 줄). 지금은 열쇠 하나, 가지고 있을 때만 보인다. 아이템이 늘면 아래로 쌓는다
+            float itemX = Left + MinimapSize.x + 12;
             var keyBox = Panel(_hud.transform, "Keys", PanelColor, Line);
-            Place(keyBox, new Vector2(0, 1), new Vector2(Left + MinimapSize.x - 96, turnsY), new Vector2(96, 104), new Vector2(0, 1));
+            Place(keyBox, new Vector2(0, 1), new Vector2(itemX, -48), new Vector2(ItemSlot, ItemSlot), new Vector2(0, 1));
             _keyBox = keyBox.gameObject;
             var keyIcon = new GameObject("Icon", typeof(RectTransform), typeof(Image)).GetComponent<Image>();
             keyIcon.transform.SetParent(keyBox, false);
             keyIcon.sprite = ArtCatalog.ForObject(Data.MapObjectTypes.Key);
             keyIcon.preserveAspect = true;
             keyIcon.raycastTarget = false;
-            Place(keyIcon, new Vector2(0.5f, 1), new Vector2(0, -10), new Vector2(56, 56), new Vector2(0.5f, 1));
-            _keys = Label(keyBox, "", 24, TextAnchor.LowerCenter, new Color32(0xff, 0xd2, 0x3f, 0xff), bold: true);
-            Stretch(_keys.rectTransform, 8);
+            Place(keyIcon, new Vector2(0.5f, 1), new Vector2(0, -6), new Vector2(48, 48), new Vector2(0.5f, 1));
+            _keys = Label(keyBox, "", 20, TextAnchor.LowerCenter, new Color32(0xff, 0xd2, 0x3f, 0xff), bold: true);
+            Stretch(_keys.rectTransform, 4);
 
-            // 퀘스트 (턴 아래): 별 조건 3줄. 누르면 자세히(목표·체크포인트·안내)
-            float questY = turnsY - 104 - 16;
+            // 퀘스트 (미니맵 아래): 별 조건 3줄. 누르면 자세히(목표·체크포인트·안내)
+            float questY = -48 - MinimapSize.y - 16;
+            float questW = MinimapSize.x + 12 + ItemSlot;
             var quest = Button(_hud.transform, "", () => OnQuest?.Invoke(), 20, PanelColor);
-            Place(quest, new Vector2(0, 1), new Vector2(Left, questY), new Vector2(MinimapSize.x, 236), new Vector2(0, 1));
-            var qTitle = Label(quest.transform, "퀘스트", 24, TextAnchor.UpperLeft, bold: true);
-            Stretch(qTitle.rectTransform, 16);
+            Place(quest, new Vector2(0, 1), new Vector2(Left, questY), new Vector2(questW, 184), new Vector2(0, 1));
+            var qTitle = Label(quest.transform, "퀘스트", 22, TextAnchor.UpperLeft, bold: true);
+            Stretch(qTitle.rectTransform, 14);
             var qMore = Label(quest.transform, "자세히 ›", 18, TextAnchor.UpperRight, Muted);
-            Stretch(qMore.rectTransform, 18);
+            Stretch(qMore.rectTransform, 16);
             for (int i = 0; i < _questRows.Length; i++)
             {
-                _questRows[i] = Label(quest.transform, "", 21, TextAnchor.UpperLeft);
-                Place(_questRows[i], new Vector2(0, 1), new Vector2(16, -58 - i * 56), new Vector2(MinimapSize.x - 32, 52), new Vector2(0, 1));
+                _questRows[i] = Label(quest.transform, "", 20, TextAnchor.UpperLeft);
+                Place(_questRows[i], new Vector2(0, 1), new Vector2(14, -50 - i * 42), new Vector2(questW - 28, 40), new Vector2(0, 1));
             }
 
-            // 스테이지 이름 (위쪽, 게임 화면 가운데)
+            // 남은 턴 (오른쪽 위 줄, 수집 버튼 왼쪽)
+            var box = Panel(_hud.transform, "Turns", PanelColor, Line);
+            Place(box, new Vector2(1, 1), new Vector2(-500, -40), new Vector2(240, 84), new Vector2(1, 1));
+            _turnsBox = box.GetComponent<Image>();
+            var label = Label(box, "남은 턴", 20, TextAnchor.MiddleLeft, Muted);
+            Stretch(label.rectTransform, 16);
+            _turns = Label(box, "", 48, TextAnchor.MiddleRight, bold: true);
+            Stretch(_turns.rectTransform, 16);
+
+            // 스테이지 이름 (위쪽, 게임 화면 왼쪽 위 ~ 남은 턴 사이 가운데)
             _stageTitle = Label(_hud.transform, "", 28, TextAnchor.MiddleCenter, Muted, bold: true);
-            Place(_stageTitle, new Vector2(0.5f, 1), new Vector2(252, -58), new Vector2(560, 40));
+            Place(_stageTitle, new Vector2(0.5f, 1), new Vector2(-94, -58), new Vector2(560, 40));
 
             // 수집 / 채팅 / 설정 (오른쪽 위)
             var settings = Button(_hud.transform, "설정", () => OnSettings?.Invoke(), 22);

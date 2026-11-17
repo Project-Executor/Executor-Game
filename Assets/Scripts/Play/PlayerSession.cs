@@ -80,6 +80,12 @@ namespace Executor.Play
             IsOffline = true;
         }
 
+        /// <summary>프로필 수정 응답으로 바꾼다 (자기소개 등)</summary>
+        public static void SetProfile(MyProfileResponse profile)
+        {
+            if (IsOnline && profile != null) Profile = profile;
+        }
+
         public static async Task RefreshProfileAsync()
         {
             if (IsOnline) Profile = await ProfileApi.GetMeAsync();

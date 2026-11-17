@@ -423,21 +423,85 @@ namespace Executor.Play
             _menu.ShowMain(PlayerSession.DisplayName, coin);
         }
 
-        private void ShowProfile()
+        /// <summary>프로필: 정보·기록, 닉네임·자기소개 수정, 스킨·테마 장착</summary>
+        private async void ShowProfile()
         {
             if (!PlayerSession.IsOnline)
             {
                 _menu.ShowList("프로필", new[] { "오프라인 테스트 중입니다.", $"닉네임: {NameOrDash(PlayerSession.Nickname)}" });
                 return;
             }
-            MyProfileResponse p = PlayerSession.Profile;
-            _menu.ShowList("프로필", new[]
+            try
             {
-                $"닉네임: {NameOrDash(p.Nickname)}",
-                $"코인: {p.Coin}",
-                $"이메일: {p.Email}",
-                $"자기소개: {NameOrDash(p.Comment)}",
-            });
+                MyProfileResponse p = PlayerSession.Profile;
+                var itemsTask = ItemApi.GetMyItemsAsync();
+                var statsTask = ProfileApi.GetProfileAsync(p.UserId);
+                List<MyItem> items = await itemsTask;
+                ProfileDetailResponse stats = null;
+                try { stats = await statsTask; } catch (ApiException) { /* 기록 줄만 빠진다 */ }
+                if (_mode != Mode.Main) return;
+                _menu.ClosePopups();
+                _menu.ShowProfileEditor(PlayerSession.Profile, stats, items, new MenuUI.ProfileActions
+                {
+                    CheckNickname = CheckNicknameForProfile,
+                    SaveNickname = SaveNicknameForProfile,
+                    SaveComment = SaveCommentForProfile,
+                    Equip = Equip,
+                });
+            }
+            catch (ApiException e)
+            {
+                _menu.ShowMessage("프로필", e.IsNetworkError ? "서버에 연결할 수 없어 프로필을 불러오지 못했습니다." : e.Message);
+            }
+        }
+
+        private static string NicknameRule(string name) =>
+            name.Length < 2 || name.Length > 20 ? "닉네임은 2~20자여야 합니다." : null;
+
+        private async Task<string> CheckNicknameForProfile(string name)
+        {
+            if (NicknameRule(name) is string rule) return rule;
+            if (name == PlayerSession.Profile.Nickname) return "✓ 지금 쓰고 있는 닉네임입니다.";
+            try { return await PlayerSession.IsNicknameAvailableAsync(name) ? "✓ 쓸 수 있는 닉네임입니다." : "이미 쓰는 닉네임입니다."; }
+            catch (ApiException e) { return e.IsNetworkError ? "서버에 연결할 수 없습니다." : e.Message; }
+        }
+
+        private async Task<string> SaveNicknameForProfile(string name)
+        {
+            if (NicknameRule(name) is string rule) return rule;
+            if (name == PlayerSession.Profile.Nickname) return "✓ 바뀐 것이 없습니다.";
+            try
+            {
+                await PlayerSession.SetNicknameAsync(name);
+                ShowMainProfile();
+                return $"✓ 닉네임을 '{name}'(으)로 바꿨습니다.";
+            }
+            catch (ApiException e) { return e.IsNetworkError ? "서버에 연결할 수 없습니다." : e.Message; }
+        }
+
+        private async Task<string> SaveCommentForProfile(string comment)
+        {
+            try
+            {
+                PlayerSession.SetProfile(await ProfileApi.UpdateCommentAsync(comment.Trim()));
+                return string.IsNullOrWhiteSpace(comment) ? "✓ 자기소개를 지웠습니다." : "✓ 자기소개를 저장했습니다.";
+            }
+            catch (ApiException e) { return e.IsNetworkError ? "서버에 연결할 수 없습니다." : e.Message; }
+        }
+
+        private async void Equip(long? skinId, long? themeId)
+        {
+            try
+            {
+                EquipmentResponse res = await ProfileApi.UpdateEquipmentAsync(skinId, themeId);
+                PlayerSession.Profile.EquippedSkinId = res.EquippedSkinId;
+                PlayerSession.Profile.EquippedThemeId = res.EquippedThemeId;
+                ShowProfile();
+            }
+            catch (ApiException e)
+            {
+                _menu.ShowMessage("장착", e.IsNetworkError ? "서버에 연결할 수 없습니다." : e.Message);
+            }
         }
 
         private static string NameOrDash(string s) => string.IsNullOrEmpty(s) ? "-" : s;

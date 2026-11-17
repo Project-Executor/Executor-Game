@@ -559,6 +559,114 @@ namespace Executor.Play
             }
         }
 
+        /// <summary>프로필 화면에서 쓰는 동작. 문자열 결과는 그 줄 아래에 보여 줄 안내 (성공·실패 메시지)</summary>
+        public class ProfileActions
+        {
+            public Func<string, Task<string>> CheckNickname;
+            public Func<string, Task<string>> SaveNickname;
+            public Func<string, Task<string>> SaveComment;
+            /// <summary>(스킨 ID, 테마 ID) 장착. null이면 기본</summary>
+            public Action<long?, long?> Equip;
+        }
+
+        /// <summary>
+        /// 프로필 팝업: 정보·기록, 닉네임(중복 확인·변경), 자기소개, 스킨·테마 장착(가진 것 중에서, 기본으로 되돌리기).
+        /// </summary>
+        public void ShowProfileEditor(Data.MyProfileResponse p, Data.ProfileDetailResponse stats,
+            IReadOnlyList<Data.MyItem> items, ProfileActions actions)
+        {
+            Popup(_popupRoot, "프로필", new Vector2(1240, 920), out RectTransform body);
+            string record = stats == null ? "" : $" · 공식 스테이지 클리어 {stats.ClearedStageCount} · 별 {stats.TotalStars}";
+            int hints = items.Where(i => i.ItemType == Data.ItemTypes.Hint).Sum(i => i.Quantity);
+            var info = Label(body, $"{p.Email} · 코인 {p.Coin}{record} · 힌트 {hints}개", 22, TextAnchor.UpperLeft, Muted);
+            Place(info, new Vector2(0, 1), Vector2.zero, new Vector2(1160, 34), new Vector2(0, 1));
+
+            // 닉네임
+            Section(body, "닉네임 (2~20자)", -52);
+            var nick = Input(body, "닉네임", limit: 20, size: 26);
+            nick.text = p.Nickname ?? "";
+            Place(nick, new Vector2(0, 1), new Vector2(0, -88), new Vector2(560, 64), new Vector2(0, 1));
+            var nickStatus = Label(body, "", 20, TextAnchor.UpperLeft, Muted);
+            Place(nickStatus, new Vector2(0, 1), new Vector2(0, -158), new Vector2(1160, 30), new Vector2(0, 1));
+            var check = Button(body, "중복 확인", null, 22, new Color32(0x22, 0x26, 0x2e, 0xff));
+            Place(check, new Vector2(0, 1), new Vector2(576, -88), new Vector2(170, 64), new Vector2(0, 1));
+            var saveNick = Button(body, "변경", null, 22);
+            Place(saveNick, new Vector2(0, 1), new Vector2(762, -88), new Vector2(140, 64), new Vector2(0, 1));
+            check.onClick.AddListener(() => Run(check, nickStatus, () => actions.CheckNickname(nick.text.Trim())));
+            saveNick.onClick.AddListener(() => Run(saveNick, nickStatus, () => actions.SaveNickname(nick.text.Trim())));
+
+            // 자기소개
+            Section(body, "자기소개 (255자 이하, 비우면 지움)", -200);
+            var comment = Input(body, "자기소개", limit: 255, size: 24);
+            comment.text = p.Comment ?? "";
+            Place(comment, new Vector2(0, 1), new Vector2(0, -236), new Vector2(902, 64), new Vector2(0, 1));
+            var saveComment = Button(body, "저장", null, 22);
+            Place(saveComment, new Vector2(0, 1), new Vector2(918, -236), new Vector2(140, 64), new Vector2(0, 1));
+            var commentStatus = Label(body, "", 20, TextAnchor.UpperLeft, Muted);
+            Place(commentStatus, new Vector2(0, 1), new Vector2(0, -306), new Vector2(1160, 30), new Vector2(0, 1));
+            saveComment.onClick.AddListener(() => Run(saveComment, commentStatus, () => actions.SaveComment(comment.text)));
+
+            // 장착: 스킨, 테마
+            EquipRow(body, "스킨", Data.ItemTypes.Skin, p.EquippedSkinId, items, -350, id => actions.Equip(id, p.EquippedThemeId));
+            EquipRow(body, "테마", Data.ItemTypes.Theme, p.EquippedThemeId, items, -560, id => actions.Equip(p.EquippedSkinId, id));
+        }
+
+        private static void Section(RectTransform body, string title, float y)
+        {
+            var t = Label(body, title, 22, TextAnchor.UpperLeft, bold: true);
+            Place(t, new Vector2(0, 1), new Vector2(0, y), new Vector2(1160, 32), new Vector2(0, 1));
+        }
+
+        /// <summary>장착 줄: "기본" + 가진 아이템 버튼 (최대 6개). 지금 장착한 것은 강조</summary>
+        private static void EquipRow(RectTransform body, string label, string type, long? equipped,
+            IReadOnlyList<Data.MyItem> items, float y, Action<long?> onPick)
+        {
+            var owned = items.Where(i => i.ItemType == type).ToList();
+            string current = equipped == null ? "기본" : owned.FirstOrDefault(i => i.ItemId == equipped)?.Name ?? $"#{equipped}";
+            Section(body, $"{label} · 지금: {current}", y);
+            float x = 0;
+            var choices = new List<(long? id, string name)> { (null, "기본") };
+            choices.AddRange(owned.Take(6).Select(i => ((long?)i.ItemId, i.Name)));
+            foreach (var (id, name) in choices)
+            {
+                bool on = id == equipped;
+                long? pick = id;
+                var b = Button(body, on ? "✓ " + name : name, () => { if (!on) onPick(pick); }, 22,
+                    on ? (Color?)Line : new Color32(0x22, 0x26, 0x2e, 0xff));
+                Place(b, new Vector2(0, 1), new Vector2(x, y - 40), new Vector2(180, 64), new Vector2(0, 1));
+                x += 192;
+            }
+            if (owned.Count == 0)
+            {
+                var none = Label(body, $"가진 {label}이(가) 없습니다. 상점에서 살 수 있습니다.", 20, TextAnchor.MiddleLeft, Muted);
+                Place(none, new Vector2(0, 1), new Vector2(200, y - 40), new Vector2(900, 64), new Vector2(0, 1));
+            }
+            else if (owned.Count > 6)
+            {
+                var more = Label(body, $"외 {owned.Count - 6}개", 20, TextAnchor.MiddleLeft, Muted);
+                Place(more, new Vector2(0, 1), new Vector2(x, y - 40), new Vector2(200, 64), new Vector2(0, 1));
+            }
+        }
+
+        /// <summary>버튼 동작을 실행하고 결과 문구를 status에 보여 준다 (실행 중에는 버튼을 막는다)</summary>
+        private static async void Run(Button button, Text status, Func<Task<string>> action)
+        {
+            button.interactable = false;
+            status.text = "처리 중...";
+            status.color = Muted;
+            try
+            {
+                string message = await action();
+                if (status == null) return;
+                status.text = message;
+                status.color = message.StartsWith("✓") ? Good : Warn;
+            }
+            finally
+            {
+                if (button != null) button.interactable = true;
+            }
+        }
+
         /// <summary>확인 팝업 (예 / 아니오)</summary>
         public void ShowConfirm(string title, string text, Action onYes)
         {

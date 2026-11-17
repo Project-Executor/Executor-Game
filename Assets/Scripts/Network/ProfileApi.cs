@@ -13,6 +13,21 @@ namespace Executor.Network
         public static Task<MyProfileResponse> UpdateNicknameAsync(string nickname) =>
             ApiClient.PatchAsync<MyProfileResponse>("/profiles/me", new { nickname });
 
+        /// <summary>자기소개 바꾸기 (255자 이하). 빈 문자열이면 지운다</summary>
+        /// <exception cref="ApiException">400 INVALID_INPUT</exception>
+        public static Task<MyProfileResponse> UpdateCommentAsync(string comment) =>
+            ApiClient.PatchAsync<MyProfileResponse>("/profiles/me", new { comment });
+
+        /// <summary>스킨·테마 장착. null이면 기본으로 (두 값을 모두 보낸다)</summary>
+        /// <exception cref="ApiException">403 FORBIDDEN(가지고 있지 않음), 400 INVALID_INPUT(종류가 다름)</exception>
+        public static Task<EquipmentResponse> UpdateEquipmentAsync(long? skinItemId, long? themeItemId) =>
+            ApiClient.PutAsync<EquipmentResponse>("/profiles/me/equipment",
+                new EquipmentRequest { SkinItemId = skinItemId, ThemeItemId = themeItemId });
+
+        /// <summary>공개 프로필 (공식 스테이지 클리어 수·별 합계)</summary>
+        public static Task<ProfileDetailResponse> GetProfileAsync(long userId) =>
+            ApiClient.GetAsync<ProfileDetailResponse>($"/profiles/{userId}");
+
         /// <summary>닉네임 중복 확인 (로그인 불필요)</summary>
         public static async Task<bool> IsNicknameAvailableAsync(string nickname)
         {

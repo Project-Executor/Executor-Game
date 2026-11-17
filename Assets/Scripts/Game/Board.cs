@@ -21,8 +21,12 @@ namespace Executor.Game
         public int Order { get; }
         /// <summary>checkpoint: 여기서 시작하는 구간의 턴. null이면 스테이지 턴 제한을 쓴다</summary>
         public int? SegmentTurns { get; }
-        /// <summary>부서진 블록, 주운 열쇠, 열린 문은 true. 더는 칸을 차지하지 않는다</summary>
+        /// <summary>anomaly: 만나면 해금되는 도감 ID</summary>
+        public long? GuidebookId { get; }
+        /// <summary>부서진 블록, 주운 열쇠, 열린 문, 모은 숨겨진 요소는 true. 더는 칸을 차지하지 않는다</summary>
         public bool IsRemoved { get; internal set; }
+        /// <summary>화면에 보이는지. 숨겨진 요소만 처음에 false이고 3x3 안에 들어오면 true (그 뒤 계속)</summary>
+        public bool IsRevealed { get; internal set; }
 
         internal BoardObject(MapObjectData data)
         {
@@ -35,6 +39,8 @@ namespace Executor.Game
             DialogueId = data.DialogueId;
             Order = data.Order ?? 0;
             SegmentTurns = data.Turns;
+            GuidebookId = data.GuidebookId;
+            IsRevealed = Type != MapObjectTypes.Hidden;
         }
     }
 
@@ -53,6 +59,8 @@ namespace Executor.Game
         OpenedDoor,
         /// <summary>다음 체크포인트에 도착했다 (Board.LastArrivalStable로 안정·불안정)</summary>
         ReachedCheckpoint,
+        /// <summary>숨겨진 요소를 모았다</summary>
+        Collected,
         Cleared
     }
 
@@ -63,7 +71,7 @@ namespace Executor.Game
         public Direction Direction { get; }
         public GridPos PlayerFrom { get; }
         public GridPos PlayerTo { get; }
-        /// <summary>영향을 받은 오브젝트 (상자·블록·열쇠·문·체크포인트·출구·막은 인물). 바닥 이동이나 벽이면 null</summary>
+        /// <summary>영향을 받은 오브젝트 (상자·블록·열쇠·문·체크포인트·숨겨진 요소·출구·막은 인물·이상 개체). 바닥 이동이나 벽이면 null</summary>
         public BoardObject Target { get; }
 
         public bool UsedTurn => Outcome != MoveOutcome.Blocked;
@@ -102,6 +110,9 @@ namespace Executor.Game
         private readonly Dictionary<int, bool> _stable = new Dictionary<int, bool>();
         /// <summary>구간(시작 체크포인트 번호)마다 통과할 때 쓴 턴의 최솟값</summary>
         private readonly Dictionary<int, int> _segmentBest = new Dictionary<int, int>();
+        /// <summary>만난 이상 개체 (오브젝트 id). 워프해도 유지</summary>
+        private readonly HashSet<string> _encountered = new HashSet<string>();
+        private readonly List<BoardObject> _lastEncounters = new List<BoardObject>();
 
         public MapData Data { get; }
         public int Width { get; }
@@ -161,6 +172,23 @@ namespace Executor.Game
         /// <summary>별 2 조건을 만족하는지 (불안정 수 &lt;= 맵의 stars.maxUnstable)</summary>
         public bool MeetsStableStar => UnstableCount <= Math.Max(0, Data.Stars?.MaxUnstable ?? 0);
 
+        /// <summary>맵의 숨겨진 요소 수</summary>
+        public int HiddenTotal => _objects.Count(o => o.Type == MapObjectTypes.Hidden);
+
+        /// <summary>모은 숨겨진 요소 수 (워프해도 유지)</summary>
+        public int HiddenCollected => _objects.Count(o => o.Type == MapObjectTypes.Hidden && o.IsRemoved);
+
+        /// <summary>숨겨진 요소를 모두 모았는지 (별 3). 맵에 없으면 false</summary>
+        public bool AllHiddenFound => HiddenTotal > 0 && HiddenCollected == HiddenTotal;
+
+        /// <summary>만난 이상 개체의 도감 ID (결과 제출의 encounteredGuidebookIds, 워프해도 유지)</summary>
+        public IReadOnlyCollection<long> EncounteredGuidebookIds => _objects
+            .Where(o => o.Type == MapObjectTypes.Anomaly && o.GuidebookId != null && _encountered.Contains(o.Id))
+            .Select(o => o.GuidebookId.Value).Distinct().ToList();
+
+        /// <summary>방금(시작·이동·워프) 처음 만난 이상 개체. 화면 알림용</summary>
+        public IReadOnlyList<BoardObject> LastEncounters => _lastEncounters;
+
         /// <param name="turnLimit">턴 제한 (스테이지 parMoves). null이면 제한 없음</param>
         public Board(MapData data, int? turnLimit = null)
         {
@@ -177,6 +205,7 @@ namespace Executor.Game
             PlayerPos = new GridPos(data.Player.X, data.Player.Y);
             _objects = data.Objects.Select(o => new BoardObject(o)).ToList();
             _snapshots[StartOrder] = Capture();
+            LookAround();
         }
 
         public bool IsInside(GridPos p) => p.X >= 0 && p.Y >= 0 && p.X < Width && p.Y < Height;
@@ -201,6 +230,7 @@ namespace Executor.Game
             MoveResult result = MoveCore(direction);
             if (result.Outcome == MoveOutcome.ReachedCheckpoint) Arrive(result.Target.Order, result.Target);
             else if (result.Outcome == MoveOutcome.Cleared) Arrive(ExitOrder, null);
+            LookAround();
             return result;
         }
 
@@ -215,6 +245,7 @@ namespace Executor.Game
             Restore(snapshot);
             StartSegment(order);
             Rewinds++;
+            LookAround();
             return true;
         }
 
@@ -232,7 +263,13 @@ namespace Executor.Game
             switch (target.Type)
             {
                 case MapObjectTypes.Npc:
+                case MapObjectTypes.Anomaly:
                     return new MoveResult(MoveOutcome.Blocked, direction, from, from, target);
+
+                case MapObjectTypes.Hidden:
+                    target.IsRemoved = true;
+                    target.IsRevealed = true;
+                    return Step(MoveOutcome.Collected, direction, from, to, target);
 
                 case MapObjectTypes.Crate:
                 {
@@ -327,8 +364,9 @@ namespace Executor.Game
         {
             Cleared = IsCleared,
             Moves = IsCleared ? Math.Max(1, RecordMoves) : (int?)null,
-            HiddenFound = false,
-            EncounteredGuidebookIds = encounteredGuidebookIds?.ToList() ?? new List<long>(),
+            HiddenFound = IsCleared && AllHiddenFound,
+            EncounteredGuidebookIds = EncounteredGuidebookIds.Concat(encounteredGuidebookIds ?? Enumerable.Empty<long>())
+                .Distinct().ToList(),
             UnstableCount = UnstableCount,
             Rewinds = Rewinds
         };
@@ -338,6 +376,18 @@ namespace Executor.Game
             PlayerPos = to;
             UseTurn();
             return new MoveResult(outcome, direction, from, to, target);
+        }
+
+        /// <summary>플레이어 주변 3x3: 숨겨진 요소를 드러내고, 처음 만난 이상 개체를 기록한다</summary>
+        private void LookAround()
+        {
+            _lastEncounters.Clear();
+            foreach (BoardObject o in _objects)
+            {
+                if (o.IsRemoved || !o.Pos.IsWithin3x3(PlayerPos)) continue;
+                if (o.Type == MapObjectTypes.Hidden) o.IsRevealed = true;
+                else if (o.Type == MapObjectTypes.Anomaly && _encountered.Add(o.Id)) _lastEncounters.Add(o);
+            }
         }
 
         private void UseTurn()
@@ -353,7 +403,7 @@ namespace Executor.Game
 
         // ---------- 워프용 상태 저장 ----------
 
-        /// <summary>워프로 되돌릴 상태: 위치, 오브젝트(위치·hp·사라짐), 열쇠, 대화로 받은 열쇠 기록</summary>
+        /// <summary>워프로 되돌릴 상태: 위치, 오브젝트(위치·hp·사라짐, 숨겨진 요소 제외), 열쇠, 대화로 받은 열쇠 기록</summary>
         private sealed class Snapshot
         {
             public GridPos Player;
@@ -375,6 +425,8 @@ namespace Executor.Game
             PlayerPos = s.Player;
             for (int i = 0; i < _objects.Count; i++)
             {
+                // 숨겨진 요소의 수집·드러남은 워프해도 유지한다
+                if (_objects[i].Type == MapObjectTypes.Hidden) continue;
                 _objects[i].Pos = s.Objects[i].Pos;
                 _objects[i].Hp = s.Objects[i].Hp;
                 _objects[i].IsRemoved = s.Objects[i].Removed;

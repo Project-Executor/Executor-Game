@@ -10,7 +10,7 @@ namespace Executor.Play
     /// <list type="bullet">
     ///   <item>도트 (16x16, Pixels Per Unit 16, Filter Point):
     ///     Resources/Pixel/tiles/floor, Resources/Pixel/tiles/wall,
-    ///     Resources/Pixel/objects/{exit|crate|breakable|key|door|npc}, Resources/Pixel/player,
+    ///     Resources/Pixel/objects/{exit|crate|breakable|key|door|npc|checkpoint|hidden|anomaly}, Resources/Pixel/player,
     ///     인물별 도트는 Resources/Pixel/npcs/{인물ID} (없으면 objects/npc)</item>
     ///   <item>스탠딩 일러스트: Resources/Portraits/{인물ID}/{표정} (예: Portraits/cassia/smile)</item>
     ///   <item>화면 일러스트: Resources/Illustrations/title (시작 화면 배경), title_logo (시작 화면 로고),
@@ -53,6 +53,8 @@ namespace Executor.Play
                 case MapObjectTypes.Door: return Pixel("objects/door", new Color32(0xc0, 0x45, 0x55, 0xff), Shape.Bar);
                 case MapObjectTypes.Npc: return Pixel("objects/npc", new Color32(0xb0, 0x7c, 0xf0, 0xff), Shape.Diamond);
                 case MapObjectTypes.Checkpoint: return Pixel("objects/checkpoint", new Color32(0x2c, 0xd5, 0xe8, 0xff), Shape.Small);
+                case MapObjectTypes.Hidden: return Pixel("objects/hidden", new Color32(0xff, 0x5f, 0xb0, 0xff), Shape.Small);
+                case MapObjectTypes.Anomaly: return Pixel("objects/anomaly", new Color32(0xe0, 0x36, 0x2c, 0xff), Shape.Diamond);
                 default: return Pixel("objects/" + type, new Color32(0xff, 0x00, 0xff, 0xff), Shape.Small);
             }
         }

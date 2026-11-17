@@ -41,7 +41,29 @@
         "x": 10,
         "y": 2,
         "order": 2,
-        "turns": 10
+        "turns": 11
+      },
+      {
+        "id": "hidden1",
+        "type": "hidden",
+        "x": 2,
+        "y": 3,
+        "name": "버그 조각"
+      },
+      {
+        "id": "hidden2",
+        "type": "hidden",
+        "x": 13,
+        "y": 1,
+        "name": "버그 조각"
+      },
+      {
+        "id": "anomaly1",
+        "type": "anomaly",
+        "x": 14,
+        "y": 1,
+        "guidebookId": 1,
+        "name": "NullPointerException"
       },
       {
         "id": "key1",
@@ -68,7 +90,7 @@
     "guides": [
       {
         "on": "start",
-        "text": "체크포인트 연습입니다. 남은 턴 안에 다음 체크포인트에 도착하면 안정, 넘기면 불안정입니다."
+        "text": "체크포인트 연습입니다. 남은 턴 안에 다음 체크포인트에 도착하면 안정, 넘기면 불안정입니다. 숨겨진 요소 2개를 모두 찾으면 별 3입니다."
       },
       {
         "on": "near",
@@ -79,6 +101,11 @@
         "on": "pickup",
         "target": "key1",
         "text": "열쇠를 얻었습니다. 오른쪽 문을 열고 출구로 가세요."
+      },
+      {
+        "on": "near",
+        "target": "anomaly1",
+        "text": "이상 개체를 만났습니다. 도감에 기록됩니다. 이상 개체는 지나갈 수 없습니다."
       }
     ],
     "story": {

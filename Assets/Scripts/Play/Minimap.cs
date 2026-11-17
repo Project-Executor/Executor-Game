@@ -25,10 +25,13 @@ namespace Executor.Play
         private static readonly Color32 CheckpointNew = new Color32(0x2c, 0x7f, 0x8c, 0xff);
         private static readonly Color32 CheckpointStable = new Color32(0x2c, 0xd5, 0xe8, 0xff);
         private static readonly Color32 CheckpointUnstable = new Color32(0xff, 0x8c, 0x3c, 0xff);
+        private static readonly Color32 Hidden = new Color32(0xff, 0x5f, 0xb0, 0xff);
+        private static readonly Color32 Anomaly = new Color32(0xe0, 0x36, 0x2c, 0xff);
 
         /// <summary>그림 설명 (전체 맵 팝업 아래에 쓴다)</summary>
         public const string Legend =
-            "흰 점: 나 · 초록: 출구 · 청록: 안정 체크포인트 · 주황: 불안정 · 흐린 청록: 아직 안 간 체크포인트 · 노랑: 열쇠 · 빨강: 문 · 갈색: 상자 · 회색: 블록 · 보라: 인물";
+            "흰 점: 나 · 초록: 출구 · 청록: 안정 체크포인트 · 주황: 불안정 · 흐린 청록: 아직 안 간 체크포인트 · 분홍: 숨겨진 요소(찾은 것만) · 진홍: 이상 개체\n"
+            + "노랑: 열쇠 · 자주: 문 · 갈색: 상자 · 회색: 블록 · 보라: 인물";
 
         /// <summary>Board를 텍스처로 그린다. reuse가 같은 크기면 다시 쓴다</summary>
         public static Texture2D Render(Board board, Texture2D reuse = null)
@@ -47,7 +50,7 @@ namespace Executor.Play
 
             foreach (BoardObject o in board.Objects)
             {
-                if (o.IsRemoved) continue;
+                if (o.IsRemoved || !o.IsRevealed) continue;
                 Fill(pixels, w, board.Height, o.Pos.X, o.Pos.Y, ColorOf(board, o), 0);
             }
 
@@ -71,6 +74,8 @@ namespace Executor.Play
                 case MapObjectTypes.Key: return Key;
                 case MapObjectTypes.Door: return Door;
                 case MapObjectTypes.Npc: return Npc;
+                case MapObjectTypes.Hidden: return Hidden;
+                case MapObjectTypes.Anomaly: return Anomaly;
                 case MapObjectTypes.Checkpoint:
                     bool? stable = board.StabilityOf(o.Order);
                     return stable == null ? CheckpointNew : stable.Value ? CheckpointStable : CheckpointUnstable;

@@ -307,7 +307,16 @@ namespace Executor.Play
             _game.OnSettings = ShowPauseMenu;
             _game.OnCheckNickname = CheckNickname;
             _game.OnChat = () => _game.ShowMessage("채팅", "채팅은 준비 중입니다.\n(친구 메시지 API 연동 예정)");
-            _game.OnCollect = () => _game.ShowMessage("수집", "이 스테이지에는 수집 요소가 없습니다.\n(숨겨진 요소는 본 스테이지에서 추가)");
+            _game.OnCollect = () =>
+            {
+                if (_board == null || _game.HasPopup) return;
+                int total = _board.HiddenTotal, found = _board.HiddenCollected;
+                _game.ShowMessage("수집", total == 0
+                    ? "이 스테이지에는 숨겨진 요소가 없습니다."
+                    : $"숨겨진 요소 {found}/{total}\n\n" + (found == total
+                        ? "모두 찾았습니다. 클리어하면 별 3을 받습니다."
+                        : "가까이(3x3) 가면 드러납니다. 모두 모으면 별 3입니다.\n워프해도 모은 것은 유지됩니다."));
+            };
             _game.OnMinimap = () =>
             {
                 if (_board == null || _game.HasPopup) return;
@@ -357,6 +366,7 @@ namespace Executor.Play
             Block();
             _guides = new GuideTracker(_board, PlayerSession.Nickname);
             ShowGuides(_guides.OnStart());
+            ToastEncounters();
             if (_board.CheckpointCount > 0)
             {
                 _game.Toast($"체크포인트 {_board.CheckpointCount}개: 남은 턴 안에 도착하면 안정, 넘기면 불안정. Q로 도착한 체크포인트에 워프할 수 있습니다.");
@@ -380,6 +390,7 @@ namespace Executor.Play
         private void UpdateHud()
         {
             _game.SetTurns(_board.RemainingTurns, _board.Keys.Values.Sum());
+            _game.SetCollect(_board.HiddenCollected, _board.HiddenTotal);
             _minimapTexture = Minimap.Render(_board, _minimapTexture);
             _game.SetMinimap(_minimapTexture);
             _game.SetQuestStars(QuestStars());
@@ -399,7 +410,8 @@ namespace Executor.Play
             rows.Add(($"★2 {limit} (불안정 {_board.UnstableCount})",
                 _board.IsCleared && _board.MeetsStableStar ? GameUI.QuestState.Done
                 : unstable > max ? GameUI.QuestState.Warn : GameUI.QuestState.Pending));
-            rows.Add(("★3 숨겨진 요소 찾기", GameUI.QuestState.Pending));
+            rows.Add((_board.HiddenTotal == 0 ? "★3 숨겨진 요소 없음" : $"★3 숨겨진 요소 모두 찾기 ({_board.HiddenCollected}/{_board.HiddenTotal})",
+                _board.IsCleared && _board.AllHiddenFound ? GameUI.QuestState.Done : GameUI.QuestState.Pending));
             return rows;
         }
 
@@ -418,7 +430,13 @@ namespace Executor.Play
             {
                 int max = _board.Data.Stars?.MaxUnstable ?? 0;
                 sb.AppendLine($"  ★2 불안정 체크포인트(출구 포함)가 {max}개 이하. 남은 턴 안에 도착하면 안정, 넘기면 불안정");
-                sb.AppendLine("  ★3 숨겨진 요소 찾기");
+                sb.AppendLine(_board.HiddenTotal == 0
+                    ? "  ★3 이 스테이지에는 숨겨진 요소가 없습니다."
+                    : $"  ★3 숨겨진 요소 {_board.HiddenTotal}개를 모두 찾기 (지금 {_board.HiddenCollected}개). 가까이 가면 드러나고, 워프해도 유지");
+                if (_board.EncounteredGuidebookIds.Count > 0)
+                {
+                    sb.AppendLine($"  만난 이상 개체 {_board.EncounteredGuidebookIds.Count}종 (클리어하지 않아도 도감에 기록)");
+                }
             }
             if (_board.CheckpointCount > 0)
             {
@@ -633,6 +651,14 @@ namespace Executor.Play
             if (result.UsedTurn) _view.Sync(); else _view.Bump(dir);
             ShowGuides(_guides.AfterMove(result));
             if (result.Outcome == MoveOutcome.PickedUpKey) _game.Toast("열쇠를 얻었습니다.");
+            if (result.Outcome == MoveOutcome.Collected)
+            {
+                string name = string.IsNullOrEmpty(result.Target.Name) ? "숨겨진 요소" : result.Target.Name;
+                _game.Toast(_board.AllHiddenFound
+                    ? $"{name} 발견! 숨겨진 요소를 모두 찾았습니다. ({_board.HiddenCollected}/{_board.HiddenTotal})"
+                    : $"{name} 발견! ({_board.HiddenCollected}/{_board.HiddenTotal})");
+            }
+            ToastEncounters();
             if (result.Outcome == MoveOutcome.ReachedCheckpoint)
             {
                 _game.Toast(_board.LastArrivalStable
@@ -644,6 +670,15 @@ namespace Executor.Play
         }
 
         private static string Turns(int? limit) => limit == null ? "제한 없음" : $"{limit}턴";
+
+        /// <summary>방금 처음 만난 이상 개체 알림 (도감 기록)</summary>
+        private void ToastEncounters()
+        {
+            foreach (BoardObject o in _board.LastEncounters)
+            {
+                _game.Toast($"이상 개체 발견: {(string.IsNullOrEmpty(o.Name) ? "알 수 없는 개체" : o.Name)} (도감에 기록)");
+            }
+        }
 
         /// <summary>도착한 체크포인트 목록 (Q). 고르면 그때 상태로 워프한다</summary>
         private void ShowWarpMenu()
@@ -673,6 +708,7 @@ namespace Executor.Play
             if (!_board.WarpTo(order)) return;
             _view.SnapToBoard();
             UpdateHud();
+            ToastEncounters();
             _game.Toast(order == Board.StartOrder ? "시작 지점으로 돌아왔습니다." : $"체크포인트 {order}(으)로 돌아왔습니다. {Turns(_board.SegmentLimit)} 안에 다음 체크포인트로.");
         }
 
@@ -739,7 +775,11 @@ namespace Executor.Play
                 string star2 = tutorial ? "" : _board.MeetsStableStar
                     ? $"\n★2 달성 (불안정 {_board.UnstableCount}개)"
                     : $"\n★2 미달성 (불안정 {_board.UnstableCount}개 > 허용 {_board.Data.Stars?.MaxUnstable ?? 0}개)";
-                _game.ShowResult($"클리어!\n\n{_stage.Title}\n{detail}{star2}" +
+                string star3 = tutorial ? "" : _board.HiddenTotal == 0 ? ""
+                    : _board.AllHiddenFound ? $"\n★3 달성 (숨겨진 요소 {_board.HiddenTotal}개)"
+                    : $"\n★3 미달성 (숨겨진 요소 {_board.HiddenCollected}/{_board.HiddenTotal})";
+                string guide = _board.EncounteredGuidebookIds.Count > 0 ? $"\n도감 기록 {_board.EncounteredGuidebookIds.Count}종" : "";
+                _game.ShowResult($"클리어!\n\n{_stage.Title}\n{detail}{star2}{star3}{guide}" +
                                  (newBest ? "\n최고 기록" : $"\n최고 {best}턴"), true, buttons);
             }
 

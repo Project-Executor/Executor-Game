@@ -52,6 +52,8 @@ namespace Executor.Data
         public int? Order { get; set; }
         /// <summary>checkpoint: 여기서 시작하는 구간의 턴</summary>
         public int? Turns { get; set; }
+        /// <summary>anomaly: 만나면 해금되는 도감 ID</summary>
+        public long? GuidebookId { get; set; }
     }
 
     /// <summary>별 조건 (docs/map-data.md 3.4)</summary>
@@ -70,6 +72,10 @@ namespace Executor.Data
         public const string Door = "door";
         public const string Npc = "npc";
         public const string Checkpoint = "checkpoint";
+        /// <summary>숨겨진 요소 (버그·피스). 모두 모으면 별 3</summary>
+        public const string Hidden = "hidden";
+        /// <summary>이상 개체. 만나면 도감 해금</summary>
+        public const string Anomaly = "anomaly";
     }
 
     public class DialogueData

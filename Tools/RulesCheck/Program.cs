@@ -97,6 +97,24 @@ public static class Program
         var req = b.ToResultRequest();
         Check("구간 3: 열쇠·문·출구, 기록 22, 불안정 0", b.IsCleared && req.Moves == 22 && req.UnstableCount == 0 && b.MeetsStableStar,
             $"moves {req.Moves}, unstable {req.UnstableCount}");
+        Check("숨겨진 요소를 안 모으면 별 3 없음, 이상 개체는 지나가며 만남", !req.HiddenFound && b.HiddenCollected == 0
+            && req.EncounteredGuidebookIds.SequenceEqual(new long[] { 1 }), $"hidden {b.HiddenCollected}/{b.HiddenTotal}");
+
+        // 숨겨진 요소 2개를 모두 모으는 풀이 (구간 1: 6턴, 구간 3: 11턴 = 둘 다 턴 안)
+        b = new Board(map, par);
+        var hidden1 = b.Objects.First(o => o.Id == "hidden1");
+        Check("숨겨진 요소는 처음엔 안 보임", !hidden1.IsRevealed && b.HiddenTotal == 2);
+        Replay(b, "D");
+        Check("3x3 안에 들어오면 드러남", hidden1.IsRevealed && !hidden1.IsRemoved);
+        Replay(b, "DR");
+        Check("들어가면 수집 (1/2)", hidden1.IsRemoved && b.HiddenCollected == 1);
+        Replay(b, "RUR");
+        Check("구간 1 안정 (6턴)", b.CurrentOrder == 1 && b.StabilityOf(1) == true);
+        Replay(b, "RURRDDRRR");
+        Replay(b, "RRDRUUDRRRR");
+        req = b.ToResultRequest();
+        Check("숨겨진 요소 2/2 + 클리어 -> 별 3, 모두 안정", b.IsCleared && req.HiddenFound && b.HiddenCollected == 2
+            && req.UnstableCount == 0, $"hidden {b.HiddenCollected}/2, unstable {req.UnstableCount}, moves {req.Moves}");
 
         b = new Board(map, par);
         Replay(b, "RRDR");
@@ -300,6 +318,30 @@ public static class Program
         b.WarpTo(0);
         Check("시작으로 워프 -> 열쇠 없음, 열쇠가 다시 놓임", b.KeyCount("a") == 0 && b.ObjectAt(new GridPos(2, 1))?.Id == "k"
             && b.PlayerPos == new GridPos(1, 1));
+
+        // 숨겨진 요소와 이상 개체 (docs/map-data.md 3.6)
+        b = new Board(Map(new[] { "########", "#......#", "#......#", "########" },
+            Cp("cp1", 2, 1, order: 1, turns: 10),
+            Obj("h", MapObjectTypes.Hidden, 4, 1),
+            new MapObjectData { Id = "npe", Type = MapObjectTypes.Anomaly, X = 6, Y = 2, GuidebookId = 3, Name = "NPE" }), 10);
+        var hid = b.Objects.First(o => o.Id == "h");
+        Check("시작: 멀리 있는 숨겨진 요소는 안 보임, 만난 개체 없음", !hid.IsRevealed && b.LastEncounters.Count == 0);
+        b.Move(Direction.Right);
+        Check("체크포인트 도착", b.CurrentOrder == 1);
+        b.Move(Direction.Right);
+        Check("3x3 안 -> 드러남", hid.IsRevealed);
+        r = b.Move(Direction.Right);
+        Check("숨겨진 요소 칸 -> 수집, 턴 1", r.Outcome == MoveOutcome.Collected && hid.IsRemoved && b.HiddenCollected == 1 && b.AllHiddenFound);
+        r = b.Move(Direction.Right);
+        Check("이상 개체 3x3 -> 처음 만남 기록", b.LastEncounters.Count == 1 && b.LastEncounters[0].Id == "npe"
+            && b.EncounteredGuidebookIds.SequenceEqual(new long[] { 3 }));
+        b.Move(Direction.Down);
+        Check("이상 개체 칸 -> 막힘, 다시 만남 알림 없음", b.Move(Direction.Right).Outcome == MoveOutcome.Blocked && b.LastEncounters.Count == 0);
+        Check("워프해도 수집·만남 유지", b.WarpTo(1) && hid.IsRemoved && b.HiddenCollected == 1 && b.EncounteredGuidebookIds.Count == 1
+            && b.PlayerPos == new GridPos(2, 1));
+        req = b.ToResultRequest();
+        Check("클리어 전 결과: 별 3 아님, 도감 ID는 보냄", !req.Cleared && !req.HiddenFound && req.EncounteredGuidebookIds.SequenceEqual(new long[] { 3 }));
+        Check("숨겨진 요소 없는 맵은 별 3 불가", !new Board(Map(new[] { "###", "#.#", "###" })).AllHiddenFound);
 
         // 모르는 type은 지나간다
         b = new Board(Map(new[] { "####", "#..#", "####" }, Obj("x", "bot", 2, 1)));

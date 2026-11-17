@@ -78,7 +78,7 @@ namespace Executor.Play
             {
                 BoardObject obj = pair.Key;
                 SpriteRenderer sr = pair.Value;
-                sr.gameObject.SetActive(!obj.IsRemoved);
+                sr.gameObject.SetActive(!obj.IsRemoved && obj.IsRevealed);
                 _targets[sr.transform] = ToWorld(obj.Pos);
                 // 블록은 남은 내구도만큼 진하게
                 if (obj.Type == MapObjectTypes.Breakable)

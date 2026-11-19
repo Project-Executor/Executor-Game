@@ -1037,6 +1037,11 @@ namespace Executor.Play
                     break;
 
                 case Mode.Result:
+                    if (_game.HasPopup)
+                    {
+                        if (k.escapeKey.wasPressedThisFrame) _game.ClosePopups();
+                        return;
+                    }
                     if (k.rKey.wasPressedThisFrame) StartStage(_stage, false);
                     else if (k.escapeKey.wasPressedThisFrame) ShowStageSelect();
                     else if (enter && _board != null && _board.IsCleared) NextStage();
@@ -1323,10 +1328,42 @@ namespace Executor.Play
                 string guide = _board.EncounteredGuidebookIds.Count > 0 ? $"\n도감 기록 {_board.EncounteredGuidebookIds.Count}종" : "";
                 _game.ShowResult($"클리어!\n\n{_stage.Title}\n{detail}{star2}{star3}{guide}" +
                                  (newBest ? "\n최고 기록" : $"\n최고 {best}턴") + serverLine, true, buttons);
+                if (submit != null && submit.Status == TaskStatus.RanToCompletion) LoadResultRank(stage);
             }
 
             if (_stage.Map.Story?.Outro?.Count > 0) PlayStory(_stage.Map.Story.Outro, ShowResult);
             else ShowResult();
+        }
+
+        // ---------------- 순위 ----------------
+        /// <summary>결과 화면의 순위 버튼에 내 전체 순위를 붙인다 (결과를 저장한 뒤라 이번 기록이 들어 있다)</summary>
+        private async void LoadResultRank(StageInfo stage)
+        {
+            try
+            {
+                RankingResponse res = await StageApi.GetRankingsAsync(stage.StageId.Value, RankingScope.All, 10);
+                if (_mode != Mode.Result || _stage != stage) return;
+                _game.SetResultRank(res.Me == null ? "순위 보기" : $"순위 {res.Me.Rank}위 ▸", () => OpenRanking(stage, false));
+            }
+            catch (ApiException e)
+            {
+                Debug.LogWarning("[WireframeGame] 순위를 불러오지 못했습니다: " + e.Message);
+            }
+        }
+
+        private async void OpenRanking(StageInfo stage, bool friends)
+        {
+            try
+            {
+                RankingResponse res = await StageApi.GetRankingsAsync(stage.StageId.Value, friends ? RankingScope.Friends : RankingScope.All, 10);
+                if (_mode != Mode.Result || _stage != stage) return;
+                _game.ShowRanking($"{stage.No}. {stage.Title} · 최소 턴 순위", res, friends, PlayerSession.Profile?.UserId ?? 0,
+                    f => OpenRanking(stage, f));
+            }
+            catch (ApiException e)
+            {
+                _game.ShowMessage("순위", e.IsNetworkError ? "서버에 연결할 수 없어 순위를 불러오지 못했습니다." : e.Message);
+            }
         }
 
         /// <summary>서버 응답을 화면 기록에 반영한다: 코인, 최고 기록·별, 다음 스테이지 해금. 새로 열린 맵은 뒤에서 다시 불러온다</summary>

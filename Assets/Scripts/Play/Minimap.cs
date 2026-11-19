@@ -28,13 +28,15 @@ namespace Executor.Play
         private static readonly Color32 Hidden = new Color32(0xff, 0x5f, 0xb0, 0xff);
         private static readonly Color32 Anomaly = new Color32(0xe0, 0x36, 0x2c, 0xff);
         private static readonly Color32 FakeWall = new Color32(0x3a, 0x45, 0x55, 0xff);
+        private static readonly Color32 ComputerInfected = new Color32(0xc2, 0x36, 0x5a, 0xff);
+        private static readonly Color32 ComputerRestored = new Color32(0x5f, 0xd1, 0xb0, 0xff);
         /// <summary>아직 밝혀지지 않은 칸</summary>
         private static readonly Color32 Fog = new Color32(0x0b, 0x0e, 0x13, 0xff);
 
         /// <summary>그림 설명 (전체 맵 팝업 아래에 쓴다)</summary>
         public const string Legend =
             "흰 점: 나 · 초록: 출구 · 청록: 안정 체크포인트 · 주황: 불안정 · 흐린 청록: 아직 안 간 체크포인트 · 분홍: 숨겨진 요소(찾은 것만) · 진홍: 이상 개체\n"
-            + "노랑: 열쇠 · 자주: 문 · 갈색: 상자 · 회색: 블록 · 보라: 인물 · 어두운 회색: 찾은 가짜 벽 · 검정: 아직 안 가 본 곳";
+            + "노랑: 열쇠 · 자주: 문 · 갈색: 상자 · 회색: 블록 · 보라: 인물 · 어두운 회색: 찾은 가짜 벽 · 빨강/민트: 감염/복구된 컴퓨터 · 검정: 아직 안 가 본 곳";
 
         /// <summary>Board를 텍스처로 그린다. reuse가 같은 크기면 다시 쓴다</summary>
         public static Texture2D Render(Board board, Texture2D reuse = null)
@@ -89,6 +91,7 @@ namespace Executor.Play
                 case MapObjectTypes.Hidden: return Hidden;
                 case MapObjectTypes.Anomaly: return Anomaly;
                 case MapObjectTypes.FakeWall: return FakeWall;
+                case MapObjectTypes.Computer: return o.IsRestored ? ComputerRestored : ComputerInfected;
                 case MapObjectTypes.Checkpoint:
                     bool? stable = board.StabilityOf(o.Order);
                     return stable == null ? CheckpointNew : stable.Value ? CheckpointStable : CheckpointUnstable;

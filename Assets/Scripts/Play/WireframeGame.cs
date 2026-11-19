@@ -25,7 +25,12 @@ namespace Executor.Play
         private const float EndDelay = 0.35f;
         private const string DefaultQuest = "목표: 출구(문 아이콘)에 도착하기";
 
-        private enum Mode { Title, Main, StageSelect, Story, Playing, Dialogue, Result }
+        private enum Mode { Title, Main, StageSelect, Story, Playing, Dialogue, Hacking, Result }
+
+        // 타자 해킹 (감염된 컴퓨터)
+        private TypingChallenge _hacking;
+        private BoardObject _hackTarget;
+        private int _hackStartFrame;
 
         private List<ChapterInfo> _chapters = new List<ChapterInfo>();
         private ChapterInfo _chapter;
@@ -649,6 +654,8 @@ namespace Executor.Play
             _game.HideAll();
             _view.gameObject.SetActive(true);
             _view.Build(_board);
+            WordBank.Prefetch(_board.Objects.Where(o => o.Type == MapObjectTypes.Computer && o.WordListId != null)
+                .Select(o => o.WordListId.Value).Distinct());
             _game.ShowHud($"{stage.No}. {stage.Title}", DefaultQuest, 0, 0);
             UpdateHud();
 
@@ -944,7 +951,7 @@ namespace Executor.Play
                     }
                     if (k.escapeKey.wasPressedThisFrame) { ShowPauseMenu(); return; }
                     if (k.rKey.wasPressedThisFrame) { StartStage(_stage, false); return; }
-                    if (k.eKey.wasPressedThisFrame) { TryTalk(); return; }
+                    if (k.eKey.wasPressedThisFrame) { TryInteract(); return; }
                     if (k.qKey.wasPressedThisFrame) { ShowWarpMenu(); return; }
                     if (k.mKey.wasPressedThisFrame)
                     {
@@ -977,6 +984,10 @@ namespace Executor.Play
                         if (_game.IsTyping) _game.CompleteLine();
                         else { _dialogue.Advance(); ShowDialogueNode(); }
                     }
+                    break;
+
+                case Mode.Hacking:
+                    UpdateHacking(k);
                     break;
 
                 case Mode.Result:
@@ -1066,9 +1077,94 @@ namespace Executor.Play
             _game.Toast(order == Board.StartOrder ? "시작 지점으로 돌아왔습니다." : $"체크포인트 {order}(으)로 돌아왔습니다. {Turns(_board.SegmentLimit)} 안에 다음 체크포인트로.");
         }
 
-        private void TryTalk()
+        /// <summary>E: 3x3 안의 가장 가까운 인물과 대화하거나 컴퓨터를 해킹한다</summary>
+        private void TryInteract()
         {
-            BoardObject npc = _board.TalkableNpc;
+            BoardObject target = _board.Interactable;
+            if (target == null) return;
+            if (target.Type == MapObjectTypes.Computer) StartHack(target);
+            else TryTalk(target);
+        }
+
+        // ---------------- 타자 해킹 ----------------
+        private void StartHack(BoardObject computer)
+        {
+            if (computer.IsRestored) { _game.Toast("이미 복구된 컴퓨터입니다."); return; }
+            if (!_board.BeginHack(computer)) return;
+            _hackTarget = computer;
+            _hacking = new TypingChallenge(WordBank.Get(computer.WordListId), computer.WordCount, computer.TimeLimit);
+            _hackStartFrame = Time.frameCount;
+            _mode = Mode.Hacking;
+            Block();
+            _game.ShowHack(string.IsNullOrEmpty(computer.Name) ? "감염된 컴퓨터" : computer.Name);
+            _game.UpdateHack(HackWordsText(), _hacking.TimeLeft, _hacking.TimeLimit, "", true);
+            UpdateHud();
+        }
+
+        private void UpdateHacking(Keyboard k)
+        {
+            // 해킹을 연 E 키가 입력칸에 들어가지 않게 처음 두 프레임은 비운다
+            if (Time.frameCount <= _hackStartFrame + 1 && _game.HackInput.Length > 0) _game.ClearHackInput();
+            _hacking.Tick(Time.deltaTime);
+            string status = null;
+            bool good = true;
+            if (k.escapeKey.wasPressedThisFrame) { EndHack(false, "해킹을 포기했습니다. 다시 E로 도전할 수 있습니다 (1턴)."); return; }
+            if (_hacking.IsTimedOut) { EndHack(false, "시간 초과! 해킹에 실패했습니다. 다시 E로 도전할 수 있습니다 (1턴)."); return; }
+            if (k.enterKey.wasPressedThisFrame || k.numpadEnterKey.wasPressedThisFrame)
+            {
+                string input = _game.HackInput;
+                if (_hacking.Submit(input))
+                {
+                    if (_hacking.IsSucceeded) { EndHack(true, null); return; }
+                    status = "정상 처리";
+                }
+                else if (input.Trim().Length > 0)
+                {
+                    status = $"'{input.Trim()}' 은(는) 틀렸습니다";
+                    good = false;
+                }
+                _game.ClearHackInput();
+            }
+            _game.UpdateHack(HackWordsText(), _hacking.TimeLeft, _hacking.TimeLimit, status, good);
+        }
+
+        /// <summary>단어 줄: 친 단어는 초록, 지금 단어는 노랑 굵게, 남은 단어는 흐리게</summary>
+        private string HackWordsText()
+        {
+            var parts = new List<string>();
+            for (int i = 0; i < _hacking.Words.Count; i++)
+            {
+                string w = _hacking.Words[i];
+                parts.Add(i < _hacking.Index ? $"<color=#3ccf7a>{w}</color>"
+                        : i == _hacking.Index ? $"<color=#ffd23f><b>[{w}]</b></color>"
+                        : $"<color=#8c9bad>{w}</color>");
+            }
+            return string.Join("   ", parts) + $"\n<size=22><color=#8c9bad>{_hacking.Index} / {_hacking.Words.Count}</color></size>";
+        }
+
+        private void EndHack(bool success, string failMessage)
+        {
+            _game.HideHack();
+            _mode = Mode.Playing;
+            Block();
+            if (success)
+            {
+                var applied = _board.CompleteHack(_hackTarget);
+                _view.Sync();
+                int removed = applied.Count(e => e.Type == "remove");
+                int keys = applied.Count(e => e.Type == "giveKey");
+                string effect = removed > 0 && keys > 0 ? " 장치가 작동하고 열쇠를 받았습니다."
+                              : removed > 0 ? " 장치가 작동했습니다." : keys > 0 ? " 열쇠를 받았습니다." : "";
+                _game.Toast("컴퓨터를 복구했습니다." + effect);
+            }
+            else _game.Toast(failMessage);
+            _hacking = null;
+            _hackTarget = null;
+            UpdateHud();
+        }
+
+        private void TryTalk(BoardObject npc)
+        {
             if (npc == null) return;
             _dialogue = new DialogueSession(_board, npc, PlayerSession.Nickname);
             _mode = Mode.Dialogue;

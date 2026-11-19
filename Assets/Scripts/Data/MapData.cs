@@ -58,6 +58,14 @@ namespace Executor.Data
         public int? Turns { get; set; }
         /// <summary>anomaly: 만나면 해금되는 도감 ID</summary>
         public long? GuidebookId { get; set; }
+        /// <summary>computer: 칠 단어 목록 ID (GET /word-lists/{id})</summary>
+        public long? WordListId { get; set; }
+        /// <summary>computer: 칠 단어 수 (기본 5)</summary>
+        public int? WordCount { get; set; }
+        /// <summary>computer: 제한 시간 초 (기본 30)</summary>
+        public int? TimeLimit { get; set; }
+        /// <summary>computer: 복구하면 실행할 장치 동작 (remove, giveKey)</summary>
+        public List<DialogueEffect> Effects { get; set; }
     }
 
     /// <summary>별 조건 (docs/map-data.md 3.4)</summary>
@@ -95,6 +103,8 @@ namespace Executor.Data
         public const string Anomaly = "anomaly";
         /// <summary>가짜 벽. 벽처럼 보이지만 지나갈 수 있고, 처음 들어가면 드러난다</summary>
         public const string FakeWall = "fakeWall";
+        /// <summary>감염된 컴퓨터. E로 타자 해킹, 복구하면 장치 동작</summary>
+        public const string Computer = "computer";
     }
 
     public class DialogueData
@@ -128,9 +138,11 @@ namespace Executor.Data
 
     public class DialogueEffect
     {
-        /// <summary>giveKey</summary>
+        /// <summary>giveKey (대화·컴퓨터), remove (컴퓨터)</summary>
         public string Type { get; set; }
         public string KeyId { get; set; }
+        /// <summary>remove: 없앨 오브젝트 id</summary>
+        public string Target { get; set; }
     }
 
     /// <summary>안내 문구. On: start / near / pickup</summary>

@@ -85,6 +85,11 @@ namespace Executor.Play
                     sr.sprite = ArtCatalog.Wall;
                 }
                 else sr.gameObject.SetActive(!obj.IsRemoved && obj.IsRevealed);
+                // 컴퓨터: 감염 / 복구
+                if (obj.Type == MapObjectTypes.Computer)
+                {
+                    sr.sprite = obj.IsRestored ? ArtCatalog.ComputerRestored : ArtCatalog.ForObject(obj.Type);
+                }
                 _targets[sr.transform] = ToWorld(obj.Pos);
                 // 블록은 남은 내구도만큼 진하게
                 if (obj.Type == MapObjectTypes.Breakable)

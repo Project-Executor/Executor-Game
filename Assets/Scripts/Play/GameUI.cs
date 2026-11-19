@@ -85,6 +85,7 @@ namespace Executor.Play
             BuildDialogue();
             BuildNarration();
             BuildResult();
+            BuildHack();
             _popupRoot = new GameObject("Popups", typeof(RectTransform)).GetComponent<RectTransform>();
             _popupRoot.SetParent(_root, false);
             Stretch(_popupRoot);
@@ -99,6 +100,7 @@ namespace Executor.Play
             _dialogue.SetActive(false);
             _narration.SetActive(false);
             _result.SetActive(false);
+            _hack.SetActive(false);
             ClosePopups();
         }
 
@@ -418,7 +420,7 @@ namespace Executor.Play
             _collect = Button(_hud.transform, "수집 0/0", () => OnCollect?.Invoke(), 22);
             Place(_collect, new Vector2(1, 1), new Vector2(-316, -48), new Vector2(170, 60), new Vector2(1, 1));
 
-            var help = Label(_hud.transform, "W A S D 이동 · E 대화 · Q 워프 · M 전체 맵 · R 다시 · Esc 메뉴", 22, TextAnchor.MiddleLeft, Muted);
+            var help = Label(_hud.transform, "W A S D 이동 · E 대화·해킹 · Q 워프 · M 전체 맵 · R 다시 · Esc 메뉴", 22, TextAnchor.MiddleLeft, Muted);
             Place(help, new Vector2(0, 0), new Vector2(48, 20), new Vector2(900, 36), new Vector2(0, 0));
         }
 
@@ -493,6 +495,83 @@ namespace Executor.Play
             Place(_nameCheck, new Vector2(0.5f, 0.5f), new Vector2(290, -160), new Vector2(200, 80));
             _nameStatus = Label(panel, "", 26, TextAnchor.MiddleCenter, Good);
             Place(_nameStatus, new Vector2(0.5f, 0.5f), new Vector2(0, -235), new Vector2(800, 40));
+        }
+
+        // ---------------- 타자 해킹 (감염된 컴퓨터) ----------------
+        private GameObject _hack;
+        private Text _hackTitle, _hackTimer, _hackWords, _hackStatus;
+        private Image _hackBar;
+        private InputField _hackInput;
+
+        /// <summary>해킹 창 입력값</summary>
+        public string HackInput => _hackInput.text;
+
+        public void ShowHack(string title)
+        {
+            _hack.SetActive(true);
+            _hackTitle.text = title;
+            _hackStatus.text = "";
+            ClearHackInput();
+        }
+
+        /// <summary>입력칸을 비우고 다시 입력할 수 있게 한다</summary>
+        public void ClearHackInput()
+        {
+            _hackInput.text = "";
+            _hackInput.Select();
+            _hackInput.ActivateInputField();
+        }
+
+        /// <param name="words">단어 줄 (리치 텍스트)</param>
+        public void UpdateHack(string words, float timeLeft, float timeLimit, string status, bool statusGood)
+        {
+            _hackWords.text = words;
+            _hackTimer.text = $"{Mathf.CeilToInt(timeLeft)}초";
+            float t = timeLimit <= 0 ? 0 : Mathf.Clamp01(timeLeft / timeLimit);
+            _hackBar.rectTransform.anchorMax = new Vector2(t, 1);
+            _hackBar.color = t > 0.5f ? Good : t > 0.2f ? Warn : Bad;
+            _hackTimer.color = t > 0.2f ? TextColor : Bad;
+            if (status != null)
+            {
+                _hackStatus.text = status;
+                _hackStatus.color = statusGood ? Good : Bad;
+            }
+        }
+
+        public void HideHack()
+        {
+            _hackInput.DeactivateInputField();
+            _hack.SetActive(false);
+        }
+
+        private void BuildHack()
+        {
+            var dim = Panel(_root, "Hack", new Color(0, 0, 0, 0.6f));
+            Stretch(dim);
+            _hack = dim.gameObject;
+            var panel = Panel(dim, "HackPanel", PanelColor, Bad);
+            Place(panel, new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(1100, 560));
+            _hackTitle = Label(panel, "", 34, TextAnchor.MiddleLeft, Bad, bold: true);
+            Place(_hackTitle, new Vector2(0, 1), new Vector2(40, -30), new Vector2(800, 50), new Vector2(0, 1));
+            _hackTimer = Label(panel, "", 34, TextAnchor.MiddleRight, bold: true);
+            Place(_hackTimer, new Vector2(1, 1), new Vector2(-40, -30), new Vector2(200, 50), new Vector2(1, 1));
+            var barBack = Panel(panel, "TimeBar", new Color32(0x22, 0x26, 0x2e, 0xff));
+            Place(barBack, new Vector2(0.5f, 1), new Vector2(0, -95), new Vector2(1020, 12), new Vector2(0.5f, 1));
+            _hackBar = Panel(barBack, "Fill", Good).GetComponent<Image>();
+            Stretch(_hackBar.rectTransform);
+            _hackBar.rectTransform.pivot = new Vector2(0, 0.5f);
+            _hackWords = Label(panel, "", 34, TextAnchor.MiddleCenter);
+            _hackWords.supportRichText = true;
+            _hackWords.lineSpacing = 1.4f;
+            Place(_hackWords, new Vector2(0.5f, 1), new Vector2(0, -130), new Vector2(1020, 170), new Vector2(0.5f, 1));
+            _hackInput = Input(panel, "보이는 단어를 입력하고 Enter", limit: 50, size: 36);
+            _hackInput.textComponent.alignment = TextAnchor.MiddleCenter;
+            ((Text)_hackInput.placeholder).alignment = TextAnchor.MiddleCenter;
+            Place(_hackInput, new Vector2(0.5f, 0), new Vector2(0, 150), new Vector2(700, 80), new Vector2(0.5f, 0));
+            _hackStatus = Label(panel, "", 24, TextAnchor.MiddleCenter, Good);
+            Place(_hackStatus, new Vector2(0.5f, 0), new Vector2(0, 95), new Vector2(1000, 40), new Vector2(0.5f, 0));
+            var hint = Label(panel, "Enter: 입력 · Esc: 포기 (다시 도전할 때마다 1턴)", 22, TextAnchor.MiddleCenter, Muted);
+            Place(hint, new Vector2(0.5f, 0), new Vector2(0, 40), new Vector2(1000, 36), new Vector2(0.5f, 0));
         }
 
         private void BuildResult()

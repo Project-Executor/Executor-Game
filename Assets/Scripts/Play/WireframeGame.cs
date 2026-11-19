@@ -511,8 +511,9 @@ namespace Executor.Play
             _mode = Mode.StageSelect;
             Block();
             HideGame();
-            if (_chapter == null) { _menu.ShowStageSelect("", "챕터 없음", new List<MenuUI.StageNode>()); return; }
-            _menu.ShowStageSelect(_chapter.Id, $"{_chapter.Title} · {_chapter.Subtitle}", _chapter.Stages.Select(s => new MenuUI.StageNode
+            if (_chapter == null) { _menu.ShowStageSelect("", "Operation 없음", new List<MenuUI.StageNode>()); return; }
+            string subtitle = string.IsNullOrEmpty(_chapter.Subtitle) ? "" : $" · {_chapter.Subtitle}";
+            _menu.ShowStageSelect(_chapter.Id, $"{_chapter.LayerLabel} › {_chapter.Title}{subtitle}", _chapter.Stages.Select(s => new MenuUI.StageNode
             {
                 No = s.No,
                 Title = s.Title.Replace("시뮬레이션 ", ""),
@@ -537,13 +538,16 @@ namespace Executor.Play
             {
                 bool unlocked = StageProgress.IsChapterUnlocked(_chapters, c);
                 string status = !c.IsAvailable ? "준비 중"
-                              : !unlocked ? "잠김 · 앞 챕터를 모두 클리어하면 열립니다"
+                              : !unlocked ? "잠김 · 앞 Operation을 모두 클리어하면 열립니다"
                               : $"클리어 {StageProgress.ClearedCount(c)} / {c.Stages.Count}";
                 return new MenuUI.ChapterEntry
                 {
                     Id = c.Id,
                     Title = c.Title,
                     Subtitle = c.Subtitle,
+                    LayerId = c.LayerId,
+                    LayerLabel = c.LayerLabel,
+                    LayerDescription = c.LayerDescription,
                     Status = status,
                     Selectable = c.IsAvailable && unlocked,
                     HasStory = unlocked && c.Story.Count > 0,
@@ -554,7 +558,7 @@ namespace Executor.Play
 
         private void ShowProgress()
         {
-            if (_chapter == null || !_chapter.IsAvailable) { _menu.ShowMessage("진행 상황", "준비 중인 챕터입니다."); return; }
+            if (_chapter == null || !_chapter.IsAvailable) { _menu.ShowMessage("진행 상황", "준비 중인 Operation입니다."); return; }
             int cleared = StageProgress.ClearedCount(_chapter);
             var lines = new List<string> { $"{_chapter.Title} · 클리어 {cleared} / {_chapter.Stages.Count}", "" };
             foreach (StageInfo s in _chapter.Stages)

@@ -10,7 +10,7 @@ namespace Executor.Play
 {
     /// <summary>
     /// 로그인했을 때 챕터·스테이지를 서버에서 만든다 (GET /operations = 작전 순서, 스테이지 번호 순).
-    /// 작전 하나 = 챕터 하나 (id "op{operationId}"). 해금·클리어·최고 기록은 서버 값을 StageProgress에 넣는다.
+    /// 작전 하나 = 챕터 하나 (id "op{operationId}"), 작전마다 소속 레이어(대주제)를 담는다. 해금·클리어·최고 기록은 서버 값을 StageProgress에 넣는다.
     /// 맵 데이터는 스테이지 상세(GET /stages/{id})에서 받는다. 잠긴 스테이지는 서버가 상세를 막으므로(403) 열린 것만 미리 받고,
     /// 나머지는 시작할 때 받는다 (LoadMapAsync).
     /// </summary>
@@ -32,6 +32,10 @@ namespace Executor.Play
                     Id = ChapterId(op.OperationId),
                     Title = op.Name,
                     Subtitle = op.Description ?? "",
+                    LayerId = op.Layer == null ? "" : "layer" + op.Layer.LayerId,
+                    LayerName = op.Layer?.Name ?? "",
+                    LayerDescription = op.Layer?.Description ?? "",
+                    LayerOrder = op.Layer?.SortOrder ?? 0,
                 };
                 foreach (StageSummary s in op.Stages.OrderBy(s => s.StageNo ?? 0))
                 {

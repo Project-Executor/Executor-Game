@@ -258,6 +258,10 @@ namespace Executor.Play
             public string Id;
             public string Title;
             public string Subtitle;
+            /// <summary>소속 레이어. 같은 값끼리 한 폴더로 묶는다 (목록 순서대로)</summary>
+            public string LayerId;
+            public string LayerLabel;
+            public string LayerDescription;
             public string Status;
             public bool Selectable;
             public bool HasStory;
@@ -282,7 +286,7 @@ namespace Executor.Play
 
             if (nodes.Count == 0)
             {
-                var empty = Label(_stageMap, "준비 중인 챕터입니다.\n시나리오에서 다른 챕터를 고를 수 있습니다.", 30, TextAnchor.MiddleCenter, Muted);
+                var empty = Label(_stageMap, "준비 중인 Operation입니다.\n시나리오에서 다른 Operation을 고를 수 있습니다.", 30, TextAnchor.MiddleCenter, Muted);
                 Stretch(empty.rectTransform);
                 return;
             }
@@ -360,7 +364,13 @@ namespace Executor.Play
             return screen.gameObject;
         }
 
-        // ---------------- 챕터 내비게이터 ----------------
+        // ---------------- 시나리오 내비게이터 (레이어 폴더 > Operation 파일 트리) ----------------
+        /// <summary>접어 둔 레이어 (이번 실행 동안 유지)</summary>
+        private readonly HashSet<string> _collapsedLayers = new HashSet<string>();
+        private IReadOnlyList<ChapterEntry> _navEntries;
+
+        private static readonly Color FolderColor = new Color32(0xe8, 0xb3, 0x3c, 0xff);
+        private static readonly Color TreeLine = new Color32(0x3a, 0x48, 0x5a, 0xff);
         private void BuildNavigator(Transform screen)
         {
             var dim = Panel(screen, "NavDim", new Color(0, 0, 0, 0.45f));
@@ -376,7 +386,7 @@ namespace Executor.Play
             _nav.pivot = new Vector2(1, 0.5f);
             _nav.sizeDelta = new Vector2(NavWidth, 0);
             _nav.anchoredPosition = new Vector2(NavWidth + 20, 0);
-            var title = Label(_nav, "챕터", 36, TextAnchor.MiddleLeft, bold: true);
+            var title = Label(_nav, "Operation", 36, TextAnchor.MiddleLeft, bold: true);
             Place(title, new Vector2(0, 1), new Vector2(40, -Margin), new Vector2(300, 60), new Vector2(0, 1));
             var close = Button(_nav, "닫기", () => CloseNavigator(), 24);
             Place(close, new Vector2(1, 1), new Vector2(-32, -Margin), new Vector2(120, 60), new Vector2(1, 1));
@@ -388,38 +398,143 @@ namespace Executor.Play
             _navDim.SetActive(false);
         }
 
-        /// <summary>오른쪽에서 챕터 내비게이터를 밀어 넣는다</summary>
+        /// <summary>
+        /// 오른쪽에서 시나리오 내비게이터를 밀어 넣는다. 파일 탐색기처럼 레이어(폴더) 아래 Operation(파일)이 들어간 트리.
+        /// 레이어 줄을 누르면 접고 편다. 지금 Operation이 든 레이어는 처음에 펼쳐 둔다
+        /// </summary>
         public void ShowNavigator(IReadOnlyList<ChapterEntry> chapters)
         {
-            Clear(_navList);
-            float y = 0;
+            _navEntries = chapters;
             foreach (ChapterEntry c in chapters)
             {
-                Color color = c.Current ? new Color32(0x1c, 0x3a, 0x52, 0xff)
-                            : c.Selectable ? ButtonColor : new Color32(0x22, 0x26, 0x2e, 0xff);
-                string id = c.Id;
-                var row = Button(_navList, "", () => { CloseNavigator(); OnChapterSelected?.Invoke(id); }, 24, color);
-                row.interactable = c.Selectable;
-                Place(row, new Vector2(0.5f, 1), new Vector2(0, y), new Vector2(NavWidth - 80, 140));
-                var rowText = row.GetComponentInChildren<Text>();
-                rowText.alignment = TextAnchor.UpperLeft;
-                rowText.fontSize = 30;
-                rowText.text = c.Title + (c.Current ? "  · 현재" : "");
-                rowText.rectTransform.offsetMin = new Vector2(24, 16);
-                rowText.rectTransform.offsetMax = new Vector2(-24, -18);
-                var sub = Label(row.transform, c.Subtitle + "\n" + c.Status, 22, TextAnchor.LowerLeft, Muted);
-                Stretch(sub.rectTransform);
-                sub.rectTransform.offsetMin = new Vector2(24, 16);
-                sub.rectTransform.offsetMax = new Vector2(-150, -16);
-                if (c.HasStory)
-                {
-                    var story = Button(row.transform, "스토리", () => { CloseNavigator(); OnChapterStory?.Invoke(id); }, 22);
-                    Place(story, new Vector2(1, 0), new Vector2(-16, 16), new Vector2(120, 52), new Vector2(1, 0));
-                }
-                y -= 140 + Gap;
+                if (c.Current) _collapsedLayers.Remove(c.LayerId ?? "");
             }
+            RenderNavigator();
             _navDim.SetActive(true);
             _navOpen = true;
+        }
+
+        private const float LayerRowHeight = 72, OpRowHeight = 112, TreeIndent = 56;
+
+        private void RenderNavigator()
+        {
+            Clear(_navList);
+            float width = NavWidth - 80;
+            float y = 0;
+            // 목록 순서를 지키며 레이어별로 묶는다
+            var groups = new List<(string id, List<ChapterEntry> entries)>();
+            foreach (ChapterEntry c in _navEntries)
+            {
+                string key = c.LayerId ?? "";
+                if (groups.Count == 0 || groups[groups.Count - 1].id != key) groups.Add((key, new List<ChapterEntry>()));
+                groups[groups.Count - 1].entries.Add(c);
+            }
+
+            foreach (var (layerId, entries) in groups)
+            {
+                bool collapsed = _collapsedLayers.Contains(layerId);
+                ChapterEntry first = entries[0];
+                int open = entries.Count(e => e.Selectable);
+
+                // 레이어 줄 (폴더)
+                string key = layerId;
+                var folder = Button(_navList, "", () =>
+                {
+                    if (!_collapsedLayers.Remove(key)) _collapsedLayers.Add(key);
+                    RenderNavigator();
+                }, 24, new Color32(0x14, 0x1c, 0x28, 0xff));
+                Place(folder, new Vector2(0, 1), new Vector2(0, y), new Vector2(width, LayerRowHeight), new Vector2(0, 1));
+                var toggle = Label(folder.transform, collapsed ? "+" : "−", 30, TextAnchor.MiddleCenter, Muted, bold: true);
+                Place(toggle, new Vector2(0, 0.5f), new Vector2(8, 0), new Vector2(32, 40), new Vector2(0, 0.5f));
+                FolderIcon(folder.transform, new Vector2(46, 0));
+                var name = Label(folder.transform, string.IsNullOrEmpty(first.LayerLabel) ? "Layer" : first.LayerLabel, 26,
+                    TextAnchor.MiddleLeft, bold: true);
+                Stretch(name.rectTransform);
+                name.rectTransform.offsetMin = new Vector2(96, 0);
+                name.rectTransform.offsetMax = new Vector2(-150, 0);
+                var count = Label(folder.transform, $"Operation {entries.Count}" + (open < entries.Count ? $" · 열림 {open}" : ""),
+                    18, TextAnchor.MiddleRight, Muted);
+                Stretch(count.rectTransform);
+                count.rectTransform.offsetMax = new Vector2(-16, 0);
+                y -= LayerRowHeight + 6;
+
+                if (collapsed) { y -= Gap - 6; continue; }
+
+                if (!string.IsNullOrEmpty(first.LayerDescription))
+                {
+                    var desc = Label(_navList, first.LayerDescription, 18, TextAnchor.UpperLeft, Muted);
+                    Place(desc, new Vector2(0, 1), new Vector2(TreeIndent, y), new Vector2(width - TreeIndent, 28), new Vector2(0, 1));
+                    y -= 32;
+                }
+
+                // Operation 줄 (파일) + 트리 선
+                float lineTop = y + 6;
+                float lastMid = y;
+                foreach (ChapterEntry c in entries)
+                {
+                    float mid = y - OpRowHeight / 2;
+                    lastMid = mid;
+                    var branch = Panel(_navList, "Branch", TreeLine);
+                    Place(branch, new Vector2(0, 1), new Vector2(22, mid + 1), new Vector2(TreeIndent - 26, 2), new Vector2(0, 1));
+                    OperationRow(c, new Vector2(TreeIndent, y), width - TreeIndent);
+                    y -= OpRowHeight + 8;
+                }
+                var trunk = Panel(_navList, "Trunk", TreeLine);
+                Place(trunk, new Vector2(0, 1), new Vector2(22, lineTop), new Vector2(2, lineTop - lastMid), new Vector2(0, 1));
+                y -= Gap;
+            }
+        }
+
+        private void OperationRow(ChapterEntry c, Vector2 pos, float width)
+        {
+            Color color = c.Current ? new Color32(0x1c, 0x3a, 0x52, 0xff)
+                        : c.Selectable ? ButtonColor : new Color32(0x22, 0x26, 0x2e, 0xff);
+            string id = c.Id;
+            var row = Button(_navList, "", () => { CloseNavigator(); OnChapterSelected?.Invoke(id); }, 24, color);
+            row.interactable = c.Selectable;
+            Place(row, new Vector2(0, 1), pos, new Vector2(width, OpRowHeight), new Vector2(0, 1));
+            FileIcon(row.transform, new Vector2(16, -18), c.Selectable);
+            var rowText = row.GetComponentInChildren<Text>();
+            rowText.alignment = TextAnchor.UpperLeft;
+            rowText.fontSize = 26;
+            rowText.text = c.Title + (c.Current ? "  · 현재" : "");
+            rowText.rectTransform.offsetMin = new Vector2(56, 12);
+            rowText.rectTransform.offsetMax = new Vector2(-16, -14);
+            var sub = Label(row.transform, (string.IsNullOrEmpty(c.Subtitle) ? "" : c.Subtitle + "\n") + c.Status, 19,
+                TextAnchor.LowerLeft, Muted);
+            Stretch(sub.rectTransform);
+            sub.rectTransform.offsetMin = new Vector2(56, 12);
+            sub.rectTransform.offsetMax = new Vector2(-140, -12);
+            if (c.HasStory)
+            {
+                var story = Button(row.transform, "스토리", () => { CloseNavigator(); OnChapterStory?.Invoke(id); }, 20);
+                Place(story, new Vector2(1, 0), new Vector2(-12, 12), new Vector2(110, 48), new Vector2(1, 0));
+            }
+        }
+
+        /// <summary>폴더 아이콘 (탭이 있는 노란 상자). 글꼴과 상관없이 보이게 UI 상자로 그린다</summary>
+        private static void FolderIcon(Transform parent, Vector2 leftCenter)
+        {
+            var tab = Panel(parent, "FolderTab", FolderColor);
+            Place(tab, new Vector2(0, 0.5f), leftCenter + new Vector2(0, 12), new Vector2(16, 8), new Vector2(0, 0.5f));
+            tab.GetComponent<Image>().raycastTarget = false;
+            var body = Panel(parent, "Folder", FolderColor);
+            Place(body, new Vector2(0, 0.5f), leftCenter + new Vector2(0, -2), new Vector2(38, 26), new Vector2(0, 0.5f));
+            body.GetComponent<Image>().raycastTarget = false;
+        }
+
+        /// <summary>파일 아이콘 (테두리 문서). 열려 있으면 밝게</summary>
+        private static void FileIcon(Transform parent, Vector2 topLeft, bool active)
+        {
+            var page = Panel(parent, "File", active ? new Color32(0xe6, 0xee, 0xf6, 0xff) : new Color32(0x6b, 0x76, 0x86, 0xff));
+            Place(page, new Vector2(0, 1), topLeft, new Vector2(26, 32), new Vector2(0, 1));
+            page.GetComponent<Image>().raycastTarget = false;
+            for (int i = 0; i < 3; i++)
+            {
+                var line = Panel(page, "Line", new Color32(0x4a, 0x56, 0x68, 0xff));
+                Place(line, new Vector2(0, 1), new Vector2(5, -8 - i * 7), new Vector2(16, 2), new Vector2(0, 1));
+                line.GetComponent<Image>().raycastTarget = false;
+            }
         }
 
         public void CloseNavigator(bool immediate = false)

@@ -33,10 +33,10 @@ namespace Executor.Game
         public IReadOnlyList<DialogueEffect> Effects { get; }
         /// <summary>computer: 해킹으로 복구했는지 (맵 상태라 워프하면 되돌아간다)</summary>
         public bool IsRestored { get; internal set; }
-        /// <summary>부서진 블록, 주운 열쇠, 열린 문, 모은 숨겨진 요소는 true. 더는 칸을 차지하지 않는다</summary>
+        /// <summary>부서진 블록, 주운 열쇠, 열린 문, 모은 데이터 파편은 true. 더는 칸을 차지하지 않는다</summary>
         public bool IsRemoved { get; internal set; }
         /// <summary>
-        /// 정체가 드러났는지. 숨겨진 요소는 처음에 false이고 3x3 안에 들어오면 true,
+        /// 정체가 드러났는지. 데이터 파편은 처음에 false이고 3x3 안에 들어오면 true,
         /// 가짜 벽은 처음에 false(벽으로 보임)이고 들어가면 true. 한 번 true가 되면 워프해도 유지한다
         /// </summary>
         public bool IsRevealed { get; internal set; }
@@ -76,7 +76,7 @@ namespace Executor.Game
         OpenedDoor,
         /// <summary>다음 체크포인트에 도착했다 (Board.LastArrivalStable로 안정·불안정)</summary>
         ReachedCheckpoint,
-        /// <summary>숨겨진 요소를 모았다</summary>
+        /// <summary>데이터 파편을 모았다</summary>
         Collected,
         /// <summary>가짜 벽을 처음 지나갔다 (드러남). 이미 드러난 가짜 벽은 Moved</summary>
         FoundFakeWall,
@@ -90,7 +90,7 @@ namespace Executor.Game
         public Direction Direction { get; }
         public GridPos PlayerFrom { get; }
         public GridPos PlayerTo { get; }
-        /// <summary>영향을 받은 오브젝트 (상자·블록·열쇠·문·체크포인트·숨겨진 요소·출구·막은 인물·이상 개체). 바닥 이동이나 벽이면 null</summary>
+        /// <summary>영향을 받은 오브젝트 (상자·블록·열쇠·문·체크포인트·데이터 파편·출구·막은 인물·이상 개체). 바닥 이동이나 벽이면 null</summary>
         public BoardObject Target { get; }
 
         public bool UsedTurn => Outcome != MoveOutcome.Blocked;
@@ -199,39 +199,96 @@ namespace Executor.Game
         /// <summary>기록 = 구간 최고 기록의 합 (결과 제출의 moves). 탐색하다 워프로 돌아가 다시 통과하면 좋은 쪽만 남는다</summary>
         public int RecordMoves => _segmentBest.Values.Sum();
 
-        /// <summary>별 2 조건을 만족하는지 (불안정 수 &lt;= 맵의 stars.maxUnstable)</summary>
-        public bool MeetsStableStar => UnstableCount <= Math.Max(0, Data.Stars?.MaxUnstable ?? 0);
-
-        /// <summary>맵의 숨겨진 요소 수</summary>
+        /// <summary>맵의 데이터 파편 수 (type hidden)</summary>
         public int HiddenTotal => _objects.Count(o => o.Type == MapObjectTypes.Hidden);
 
-        /// <summary>모은 숨겨진 요소 수 (워프해도 유지)</summary>
+        /// <summary>모은 데이터 파편 수 (워프해도 유지)</summary>
         public int HiddenCollected => _objects.Count(o => o.Type == MapObjectTypes.Hidden && o.IsRemoved);
 
-        /// <summary>숨겨진 요소를 모두 모았는지. 맵에 없으면 false</summary>
+        /// <summary>데이터 파편을 모두 모았는지. 맵에 없으면 false</summary>
         public bool AllHiddenFound => HiddenTotal > 0 && HiddenCollected == HiddenTotal;
 
-        // ---------- 별 3 조건 (맵의 stars.bonus) ----------
+        /// <summary>맵의 이상 개체 수</summary>
+        public int AnomalyTotal => _objects.Count(o => o.Type == MapObjectTypes.Anomaly);
 
-        public const string BonusHidden = "hidden", BonusHack = "hack";
+        /// <summary>만난 이상 개체 수 (워프해도 유지)</summary>
+        public int AnomalyMet => _objects.Count(o => o.Type == MapObjectTypes.Anomaly && _encountered.Contains(o.Id));
 
-        /// <summary>별 3 조건 종류: hidden(숨겨진 요소 모두 찾기, 기본) / hack(지정한 컴퓨터를 시간 안에 복구)</summary>
-        public string BonusType => Data.Stars?.Bonus?.Type == BonusHack ? BonusHack : BonusHidden;
+        // ---------- 별 조건 (맵의 stars, docs/map-data.md 3.4) ----------
 
-        /// <summary>hack: 시간을 재는 컴퓨터 (없는 id면 null)</summary>
-        public BoardObject BonusComputer => BonusType != BonusHack ? null
-            : _objects.FirstOrDefault(o => o.Type == MapObjectTypes.Computer && o.Id == Data.Stars.Bonus.Target);
+        /// <summary>이 맵의 별 수 (stars.count 1~3, 없으면 3). 튜토리얼이 1개인 것은 화면이 따로 정한다</summary>
+        public int StarCount => Data.Stars?.Count is int c && c >= 1 && c <= 3 ? c : 3;
 
-        /// <summary>hack: 목표 시간(초)</summary>
-        public float BonusSeconds => Math.Max(0f, Data.Stars?.Bonus?.Seconds ?? 0f);
+        /// <summary>별 n(1~3)의 조건. 별 1은 항상 클리어. 예전 형식(maxUnstable, bonus)도 읽는다</summary>
+        public StarCondition StarConditionOf(int star)
+        {
+            StarsData s = Data.Stars;
+            switch (star)
+            {
+                case 1:
+                    return new StarCondition { Type = StarTypes.Clear, Text = s?.Star1?.Text };
+                case 2:
+                    return s?.Star2 ?? new StarCondition { Type = StarTypes.Stable, Value = Math.Max(0, s?.MaxUnstable ?? 0) };
+                default:
+                    if (s?.Star3 != null) return s.Star3;
+                    if (s?.Bonus?.Type == StarTypes.Hack)
+                        return new StarCondition { Type = StarTypes.Hack, Target = s.Bonus.Target, Seconds = s.Bonus.Seconds };
+                    return new StarCondition { Type = StarTypes.Fragments };
+            }
+        }
 
-        /// <summary>별 3을 받을 수 있는 맵인지 (hidden: 숨겨진 요소가 있음, hack: 컴퓨터와 목표 시간이 있음)</summary>
-        public bool BonusAvailable => BonusType == BonusHack ? BonusComputer != null && BonusSeconds > 0 : HiddenTotal > 0;
+        /// <summary>별 n을 받을 수 있는 맵인지 (별 수 안이고, 조건이 이 맵에서 가능)</summary>
+        public bool IsStarAvailable(int star)
+        {
+            if (star < 1 || star > StarCount) return false;
+            StarCondition c = StarConditionOf(star);
+            switch (StarTypes.Normalize(c.Type))
+            {
+                case StarTypes.Fragments: return HiddenTotal > 0;
+                case StarTypes.Anomalies: return AnomalyTotal > 0;
+                case StarTypes.Hack: return ComputerOf(c) != null && (c.Seconds ?? 0) > 0;
+                case StarTypes.Moves: return (c.Value ?? 0) > 0;
+                default: return true; // clear, stable, rewinds, 모르는 type(항상 가능, 판정은 false)
+            }
+        }
 
-        /// <summary>별 3 조건을 채웠는지 (클리어 여부는 따로)</summary>
-        public bool BonusAchieved => BonusType == BonusHack
-            ? BonusAvailable && BestHackSeconds(BonusComputer.Id) is float best && best <= BonusSeconds
-            : AllHiddenFound;
+        /// <summary>
+        /// 별 n의 조건을 지금 채웠는지 (클리어 여부는 별 1에서만 본다).
+        /// moves는 기록이 클리어해야 정해지므로 클리어 뒤에만 true
+        /// </summary>
+        public bool IsStarMet(int star)
+        {
+            if (!IsStarAvailable(star)) return false;
+            StarCondition c = StarConditionOf(star);
+            switch (StarTypes.Normalize(c.Type))
+            {
+                case StarTypes.Clear: return IsCleared;
+                case StarTypes.Stable: return UnstableCount <= Math.Max(0, c.Value ?? 0);
+                case StarTypes.Moves: return IsCleared && RecordMoves <= (c.Value ?? 0);
+                case StarTypes.Rewinds: return Rewinds <= Math.Max(0, c.Value ?? 0);
+                case StarTypes.Fragments: return AllHiddenFound;
+                case StarTypes.Anomalies: return AnomalyMet == AnomalyTotal;
+                case StarTypes.Hack:
+                    BoardObject pc = ComputerOf(c);
+                    return BestHackSeconds(pc.Id) is float best && best <= (c.Seconds ?? 0);
+                default: return false;
+            }
+        }
+
+        /// <summary>hack 조건의 컴퓨터 (없는 id면 null)</summary>
+        public BoardObject ComputerOf(StarCondition c) => c == null || c.Target == null ? null
+            : _objects.FirstOrDefault(o => o.Type == MapObjectTypes.Computer && o.Id == c.Target);
+
+        /// <summary>별 2 조건을 채웠는지 (예전 이름. IsStarMet(2))</summary>
+        public bool MeetsStableStar => IsStarMet(2);
+
+        // 별 3이 컴퓨터 시간일 때 쓰는 이름들 (화면 알림·점검용)
+        public const string BonusHidden = StarTypes.Fragments, BonusHack = StarTypes.Hack;
+        public string BonusType => StarTypes.Normalize(StarConditionOf(3).Type);
+        public BoardObject BonusComputer => BonusType == BonusHack ? ComputerOf(StarConditionOf(3)) : null;
+        public float BonusSeconds => BonusType == BonusHack ? Math.Max(0f, StarConditionOf(3).Seconds ?? 0f) : 0f;
+        public bool BonusAvailable => IsStarAvailable(3);
+        public bool BonusAchieved => IsStarMet(3);
 
         /// <summary>컴퓨터별 가장 빨리 복구한 시간(초). 워프해도 유지 (한 번이라도 해낸 기록)</summary>
         private readonly Dictionary<string, float> _bestHack = new Dictionary<string, float>();
@@ -485,8 +542,9 @@ namespace Executor.Game
         {
             Cleared = IsCleared,
             Moves = IsCleared ? Math.Max(1, RecordMoves) : (int?)null,
-            // 서버 필드 이름은 hiddenFound지만 뜻은 "별 3 조건 달성" (맵의 stars.bonus에 따라 숨겨진 요소 또는 컴퓨터 시간)
-            HiddenFound = IsCleared && BonusAchieved,
+            // 서버 필드 이름은 parAchieved·hiddenFound지만 뜻은 "별 2·별 3 조건 달성" (조건은 맵의 stars)
+            ParAchieved = IsCleared && IsStarMet(2),
+            HiddenFound = IsCleared && IsStarMet(3),
             EncounteredGuidebookIds = EncounteredGuidebookIds.Concat(encounteredGuidebookIds ?? Enumerable.Empty<long>())
                 .Distinct().ToList(),
             UnstableCount = UnstableCount,
@@ -500,7 +558,7 @@ namespace Executor.Game
             return new MoveResult(outcome, direction, from, to, target);
         }
 
-        /// <summary>플레이어 주변 3x3: 숨겨진 요소를 드러내고, 처음 만난 이상 개체를 기록한다. 미니맵도 RevealRadius만큼 밝힌다</summary>
+        /// <summary>플레이어 주변 3x3: 데이터 파편을 드러내고, 처음 만난 이상 개체를 기록한다. 미니맵도 RevealRadius만큼 밝힌다</summary>
         private void LookAround()
         {
             int radius = RevealRadius;
@@ -532,7 +590,7 @@ namespace Executor.Game
 
         // ---------- 워프용 상태 저장 ----------
 
-        /// <summary>워프로 되돌릴 상태: 위치, 오브젝트(위치·hp·사라짐·컴퓨터 복구, 숨겨진 요소 제외), 열쇠, 대화로 받은 열쇠 기록</summary>
+        /// <summary>워프로 되돌릴 상태: 위치, 오브젝트(위치·hp·사라짐·컴퓨터 복구, 데이터 파편 제외), 열쇠, 대화로 받은 열쇠 기록</summary>
         private sealed class Snapshot
         {
             public GridPos Player;
@@ -554,7 +612,7 @@ namespace Executor.Game
             PlayerPos = s.Player;
             for (int i = 0; i < _objects.Count; i++)
             {
-                // 숨겨진 요소의 수집·드러남은 워프해도 유지한다
+                // 데이터 파편의 수집·드러남은 워프해도 유지한다
                 if (_objects[i].Type == MapObjectTypes.Hidden) continue;
                 _objects[i].Pos = s.Objects[i].Pos;
                 _objects[i].Hp = s.Objects[i].Hp;

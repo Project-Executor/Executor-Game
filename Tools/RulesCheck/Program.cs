@@ -97,13 +97,13 @@ public static class Program
         var req = b.ToResultRequest();
         Check("구간 3: 열쇠·문·출구, 기록 22, 불안정 0", b.IsCleared && req.Moves == 22 && req.UnstableCount == 0 && b.MeetsStableStar,
             $"moves {req.Moves}, unstable {req.UnstableCount}");
-        Check("숨겨진 요소를 안 모으면 별 3 없음, 이상 개체는 지나가며 만남", !req.HiddenFound && b.HiddenCollected == 0
+        Check("데이터 파편을 안 모으면 별 3 없음, 이상 개체는 지나가며 만남", !req.HiddenFound && b.HiddenCollected == 0
             && req.EncounteredGuidebookIds.SequenceEqual(new long[] { 1 }), $"hidden {b.HiddenCollected}/{b.HiddenTotal}");
 
-        // 숨겨진 요소 2개를 모두 모으는 풀이 (구간 1: 6턴, 구간 3: 11턴 = 둘 다 턴 안)
+        // 데이터 파편 2개를 모두 모으는 풀이 (구간 1: 6턴, 구간 3: 11턴 = 둘 다 턴 안)
         b = new Board(map, par);
         var hidden1 = b.Objects.First(o => o.Id == "hidden1");
-        Check("숨겨진 요소는 처음엔 안 보임", !hidden1.IsRevealed && b.HiddenTotal == 2);
+        Check("데이터 파편은 처음엔 안 보임", !hidden1.IsRevealed && b.HiddenTotal == 2);
         Replay(b, "D");
         Check("3x3 안에 들어오면 드러남", hidden1.IsRevealed && !hidden1.IsRemoved);
         Replay(b, "DR");
@@ -113,7 +113,7 @@ public static class Program
         Replay(b, "RURRDDRRR");
         Replay(b, "RRDRUUDRRRR");
         req = b.ToResultRequest();
-        Check("숨겨진 요소 2/2 + 클리어 -> 별 3, 모두 안정", b.IsCleared && req.HiddenFound && b.HiddenCollected == 2
+        Check("데이터 파편 2/2 + 클리어 -> 별 3, 모두 안정", b.IsCleared && req.HiddenFound && b.HiddenCollected == 2
             && req.UnstableCount == 0, $"hidden {b.HiddenCollected}/2, unstable {req.UnstableCount}, moves {req.Moves}");
 
         b = new Board(map, par);
@@ -319,19 +319,19 @@ public static class Program
         Check("시작으로 워프 -> 열쇠 없음, 열쇠가 다시 놓임", b.KeyCount("a") == 0 && b.ObjectAt(new GridPos(2, 1))?.Id == "k"
             && b.PlayerPos == new GridPos(1, 1));
 
-        // 숨겨진 요소와 이상 개체 (docs/map-data.md 3.6)
+        // 데이터 파편과 이상 개체 (docs/map-data.md 3.6)
         b = new Board(Map(new[] { "########", "#......#", "#......#", "########" },
             Cp("cp1", 2, 1, order: 1, turns: 10),
             Obj("h", MapObjectTypes.Hidden, 4, 1),
             new MapObjectData { Id = "npe", Type = MapObjectTypes.Anomaly, X = 6, Y = 2, GuidebookId = 3, Name = "NPE" }), 10);
         var hid = b.Objects.First(o => o.Id == "h");
-        Check("시작: 멀리 있는 숨겨진 요소는 안 보임, 만난 개체 없음", !hid.IsRevealed && b.LastEncounters.Count == 0);
+        Check("시작: 멀리 있는 데이터 파편은 안 보임, 만난 개체 없음", !hid.IsRevealed && b.LastEncounters.Count == 0);
         b.Move(Direction.Right);
         Check("체크포인트 도착", b.CurrentOrder == 1);
         b.Move(Direction.Right);
         Check("3x3 안 -> 드러남", hid.IsRevealed);
         r = b.Move(Direction.Right);
-        Check("숨겨진 요소 칸 -> 수집, 턴 1", r.Outcome == MoveOutcome.Collected && hid.IsRemoved && b.HiddenCollected == 1 && b.AllHiddenFound);
+        Check("데이터 파편 칸 -> 수집, 턴 1", r.Outcome == MoveOutcome.Collected && hid.IsRemoved && b.HiddenCollected == 1 && b.AllHiddenFound);
         r = b.Move(Direction.Right);
         Check("이상 개체 3x3 -> 처음 만남 기록", b.LastEncounters.Count == 1 && b.LastEncounters[0].Id == "npe"
             && b.EncounteredGuidebookIds.SequenceEqual(new long[] { 3 }));
@@ -341,7 +341,7 @@ public static class Program
             && b.PlayerPos == new GridPos(2, 1));
         req = b.ToResultRequest();
         Check("클리어 전 결과: 별 3 아님, 도감 ID는 보냄", !req.Cleared && !req.HiddenFound && req.EncounteredGuidebookIds.SequenceEqual(new long[] { 3 }));
-        Check("숨겨진 요소 없는 맵은 별 3 불가", !new Board(Map(new[] { "###", "#.#", "###" })).AllHiddenFound);
+        Check("데이터 파편 없는 맵은 별 3 불가", !new Board(Map(new[] { "###", "#.#", "###" })).AllHiddenFound);
 
         // 가짜 벽 (docs/map-data.md 3.7)
         b = new Board(Map(new[] { "#######", "#.....#", "#######" },
@@ -405,11 +405,45 @@ public static class Program
         Check("9.2초 -> 달성, 느린 기록은 무시", b.BonusAchieved && b.BestHackSeconds("pc") == 9.2f);
         b.Move(Direction.Right); b.Move(Direction.Right); b.Move(Direction.Right); b.Move(Direction.Right);
         var bonusReq = b.ToResultRequest();
-        Check("클리어 결과: 별 3(hiddenFound=true), 숨겨진 요소는 안 모아도 됨", b.IsCleared && bonusReq.HiddenFound && b.HiddenCollected == 0,
+        Check("클리어 결과: 별 3(hiddenFound=true), 데이터 파편은 안 모아도 됨", b.IsCleared && bonusReq.HiddenFound && b.HiddenCollected == 0,
             $"cleared={b.IsCleared}");
         var noBonus = MapData.From(Newtonsoft.Json.Linq.JObject.Parse(bonusMap.Replace("\"target\":\"pc\"", "\"target\":\"nope\"")));
         Check("없는 컴퓨터를 지정하면 별 3 불가", !new Board(noBonus).BonusAvailable);
-        Check("bonus가 없으면 숨겨진 요소 기준 (기본)", new Board(Map(new[] { "###", "#.#", "###" })).BonusType == Board.BonusHidden);
+        Check("bonus가 없으면 데이터 파편 기준 (기본)", new Board(Map(new[] { "###", "#.#", "###" })).BonusType == Board.BonusHidden);
+
+        // 별 설정 (stars.count, star1~3: 조건 종류·문구). 시작 (1,1), 이상 개체 (3,2), 출구 (5,1), 데이터 파편 없음
+        const string starMap = "{\"width\":7,\"height\":4,\"tiles\":[\"#######\",\"#.....#\",\"#.....#\",\"#######\"],\"player\":{\"x\":1,\"y\":1},"
+            + "\"objects\":[{\"id\":\"npe\",\"type\":\"anomaly\",\"x\":3,\"y\":2,\"guidebookId\":1},{\"id\":\"exit1\",\"type\":\"exit\",\"x\":5,\"y\":1}],"
+            + "\"stars\":{\"count\":3,\"star1\":{\"text\":\"탈출!\"},\"star2\":{\"type\":\"moves\",\"value\":4,\"text\":\"4턴 컷\"},\"star3\":{\"type\":\"anomalies\"}}}";
+        b = new Board(MapData.From(Newtonsoft.Json.Linq.JObject.Parse(starMap)), 10);
+        Check("별 문구: 관리자가 쓴 문구, 없으면 기본 문구", StarTypes.Text(b, 1) == "탈출!" && StarTypes.Text(b, 2) == "4턴 컷"
+            && StarTypes.Text(b, 3) == "이상 개체 모두 만나기", $"{StarTypes.Text(b, 1)} / {StarTypes.Text(b, 2)} / {StarTypes.Text(b, 3)}");
+        Check("별 2 기록 조건: 클리어 전에는 미달성", !b.IsStarMet(2) && b.IsStarAvailable(2));
+        Check("별 3 이상 개체: 아직 못 만남 (0/1)", !b.IsStarMet(3) && StarTypes.Progress(b, 3) == "0/1");
+        b.Move(Direction.Right); b.Move(Direction.Right); b.Move(Direction.Right); b.Move(Direction.Right);
+        var starReq = b.ToResultRequest();
+        Check("4턴 클리어 -> 별 2 달성, 지나가며 이상 개체 만남 -> 별 3 달성", b.IsCleared && b.IsStarMet(2) && b.IsStarMet(3)
+            && starReq.ParAchieved && starReq.HiddenFound, $"moves {b.RecordMoves}");
+        var slow = MapData.From(Newtonsoft.Json.Linq.JObject.Parse(starMap.Replace("\"value\":4", "\"value\":3")));
+        b = new Board(slow, 10);
+        b.Move(Direction.Right); b.Move(Direction.Right); b.Move(Direction.Right); b.Move(Direction.Right);
+        Check("3턴 기준인데 4턴 -> 별 2 미달성 (parAchieved=false)", b.IsCleared && !b.ToResultRequest().ParAchieved);
+        var twoStars = MapData.From(Newtonsoft.Json.Linq.JObject.Parse(starMap.Replace("\"count\":3", "\"count\":2")));
+        b = new Board(twoStars, 10);
+        Check("별 수 2 -> 별 3은 받을 수 없음", b.StarCount == 2 && !b.IsStarAvailable(3));
+        b.Move(Direction.Right); b.Move(Direction.Right); b.Move(Direction.Right); b.Move(Direction.Right);
+        Check("별 수 2: 별 3 조건을 채워도 hiddenFound=false", !b.ToResultRequest().HiddenFound && b.ToResultRequest().ParAchieved);
+        var rew = MapData.From(Newtonsoft.Json.Linq.JObject.Parse(
+            "{\"width\":5,\"height\":3,\"tiles\":[\"#####\",\"#...#\",\"#####\"],\"player\":{\"x\":1,\"y\":1},\"objects\":[{\"id\":\"cp1\",\"type\":\"checkpoint\",\"x\":2,\"y\":1,\"order\":1,\"turns\":5},{\"id\":\"exit1\",\"type\":\"exit\",\"x\":3,\"y\":1}],"
+            + "\"stars\":{\"star2\":{\"type\":\"rewinds\",\"value\":0},\"star3\":{\"type\":\"hidden\"}}}"));
+        b = new Board(rew, 10);
+        Check("워프 0번 조건: 기본 문구, 데이터 파편 없는 맵의 별 3은 불가 (hidden = fragments)", StarTypes.Text(b, 2) == "워프 없이 클리어"
+            && !b.IsStarAvailable(3) && StarTypes.Unavailable(b, 3).Contains("데이터 파편"));
+        b.Move(Direction.Right); b.WarpTo(1);
+        Check("워프하면 별 2 조건 깨짐", !b.IsStarMet(2) && b.Rewinds == 1);
+        var legacy = new Board(MapData.From(Newtonsoft.Json.Linq.JObject.Parse("{\"width\":3,\"height\":3,\"tiles\":[\"###\",\"#.#\",\"###\"],\"player\":{\"x\":1,\"y\":1},\"stars\":{\"maxUnstable\":2}}")));
+        Check("예전 형식 maxUnstable -> 별 2 = 불안정 2개 이하", StarTypes.Normalize(legacy.StarConditionOf(2).Type) == StarTypes.Stable
+            && legacy.StarConditionOf(2).Value == 2 && StarTypes.Text(legacy, 2) == "불안정 2개 이하");
 
         // 감염된 컴퓨터 (docs/map-data.md 3.9): 시작 (1,1), 체크포인트 (2,1), 컴퓨터 (3,2), 문 (5,1)
         var pcMap = Executor.Network.Json.Deserialize<MapData>(

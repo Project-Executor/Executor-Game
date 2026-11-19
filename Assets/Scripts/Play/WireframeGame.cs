@@ -656,13 +656,14 @@ namespace Executor.Play
             {
                 if (_board == null || _game.HasPopup) return;
                 int total = _board.HiddenTotal, found = _board.HiddenCollected;
-                bool hiddenStar = _board.BonusType == Board.BonusHidden;
-                string star = hiddenStar ? "" : $"\n\n이 스테이지의 별 3: {Star3Goal()}";
-                _game.ShowMessage("수집", (total == 0
-                    ? "이 스테이지에는 숨겨진 요소가 없습니다."
-                    : $"숨겨진 요소 {found}/{total}\n\n" + (found == total
-                        ? (hiddenStar ? "모두 찾았습니다. 클리어하면 별 3을 받습니다." : "모두 찾았습니다.")
-                        : (hiddenStar ? "가까이(3x3) 가면 드러납니다. 모두 모으면 별 3입니다.\n워프해도 모은 것은 유지됩니다." : "가까이(3x3) 가면 드러납니다."))) + star);
+                // 데이터 파편이 별 조건이면 몇 번째 별인지
+                int fragmentStar = _stage.Tutorial ? 0 : Enumerable.Range(2, 2)
+                    .FirstOrDefault(n => n <= StarCountShown() && StarTypes.Normalize(_board.StarConditionOf(n).Type) == StarTypes.Fragments);
+                string body = total == 0
+                    ? "이 스테이지에는 데이터 파편이 없습니다."
+                    : $"데이터 파편 {found}/{total}\n\n" + (found == total ? "모두 찾았습니다." : "가까이(3x3) 가면 드러납니다. 워프해도 모은 것은 유지됩니다.");
+                if (fragmentStar > 0 && total > 0) body += $"\n모두 모으면 ★{fragmentStar}입니다.";
+                _game.ShowMessage("수집", body + "\n\n" + StarLines("", "\n"));
             };
             _game.OnMinimap = () =>
             {
@@ -817,46 +818,40 @@ namespace Executor.Play
             _game.SetQuestStars(QuestStars());
         }
 
-        /// <summary>퀘스트 칸의 별 조건 3줄 (튜토리얼은 ★1만)</summary>
+        /// <summary>화면에 보일 별 수: 튜토리얼 1, 그 밖에는 맵의 stars.count (기본 3)</summary>
+        private int StarCountShown() => _stage.Tutorial ? 1 : _board.StarCount;
+
+        /// <summary>별 한 줄: "★2 불안정 1개 이하 (불안정 0)" / 받을 수 없는 조건이면 이유</summary>
+        private string StarLine(int star)
+        {
+            if (!_board.IsStarAvailable(star)) return $"★{star} {StarTypes.Unavailable(_board, star)}";
+            string progress = StarTypes.Progress(_board, star);
+            return $"★{star} {StarTypes.Text(_board, star)}" + (progress.Length > 0 ? $" ({progress})" : "");
+        }
+
+        /// <summary>별 줄 전체 (앞에 붙일 말, 줄 사이)</summary>
+        private string StarLines(string indent, string separator) =>
+            string.Join(separator, Enumerable.Range(1, StarCountShown()).Select(n => indent + StarLine(n)));
+
+        /// <summary>퀘스트 칸의 별 조건 (맵의 별 수만큼, 튜토리얼은 ★1만)</summary>
         private List<(string, GameUI.QuestState)> QuestStars()
         {
-            var rows = new List<(string, GameUI.QuestState)>
+            var rows = new List<(string, GameUI.QuestState)>();
+            for (int n = 1; n <= StarCountShown(); n++)
             {
-                ("★1 출구에 도착", _board.IsCleared ? GameUI.QuestState.Done : GameUI.QuestState.Pending)
-            };
-            if (_stage.Tutorial) return rows;
-            int max = _board.Data.Stars?.MaxUnstable ?? 0;
-            int unstable = _board.UnstableCount + (_board.IsOverLimit ? 1 : 0); // 이대로 도착하면 하나 더
-            string limit = max == 0 ? "모든 구간을 턴 안에" : $"불안정 {max}개 이하";
-            rows.Add(($"★2 {limit} (불안정 {_board.UnstableCount})",
-                _board.IsCleared && _board.MeetsStableStar ? GameUI.QuestState.Done
-                : unstable > max ? GameUI.QuestState.Warn : GameUI.QuestState.Pending));
-            rows.Add(($"★3 {Star3Short()}",
-                _board.BonusAchieved ? GameUI.QuestState.Done : GameUI.QuestState.Pending));
+                string type = StarTypes.Normalize(_board.StarConditionOf(n).Type);
+                int limit = _board.StarConditionOf(n).Value ?? 0;
+                // 불안정·워프·기록은 "끝까지 지켜야" 하는 조건이라 클리어해야 완료로 표시한다
+                bool untilClear = n == 1 || type == StarTypes.Stable || type == StarTypes.Rewinds || type == StarTypes.Moves;
+                GameUI.QuestState state = _board.IsStarMet(n) && (!untilClear || _board.IsCleared)
+                    ? GameUI.QuestState.Done : GameUI.QuestState.Pending;
+                // 이미 넘쳤거나(이대로 도착하면 불안정이 하나 더) 넘칠 것이 확실하면 경고
+                if (!_board.IsCleared && type == StarTypes.Stable && _board.UnstableCount + (_board.IsOverLimit ? 1 : 0) > limit)
+                    state = GameUI.QuestState.Warn;
+                if (!_board.IsCleared && type == StarTypes.Rewinds && _board.Rewinds > limit) state = GameUI.QuestState.Warn;
+                rows.Add((StarLine(n), state));
+            }
             return rows;
-        }
-
-        /// <summary>별 3 조건 한 줄 (퀘스트 패널): "숨겨진 요소 모두 찾기 (1/2)", "보안 서버 15초 안에 복구 (최고 12.4초)"</summary>
-        private string Star3Short()
-        {
-            if (!_board.BonusAvailable)
-                return _board.BonusType == Board.BonusHack ? "조건 설정 오류 (관리자 웹에서 확인)" : "숨겨진 요소 없음";
-            if (_board.BonusType == Board.BonusHidden)
-                return $"숨겨진 요소 모두 찾기 ({_board.HiddenCollected}/{_board.HiddenTotal})";
-            float? best = _board.BestHackSeconds(_board.BonusComputer.Id);
-            return $"{ComputerName(_board.BonusComputer)} {_board.BonusSeconds:0.#}초 안에 복구" + (best != null ? $" (최고 {best:0.0}초)" : "");
-        }
-
-        /// <summary>별 3 조건 설명 (퀘스트 자세히·수집 팝업)</summary>
-        private string Star3Goal()
-        {
-            if (!_board.BonusAvailable)
-                return _board.BonusType == Board.BonusHack ? "조건이 잘못 설정되어 받을 수 없습니다." : "이 스테이지에는 숨겨진 요소가 없습니다.";
-            if (_board.BonusType == Board.BonusHidden)
-                return $"숨겨진 요소 {_board.HiddenTotal}개를 모두 찾기 (지금 {_board.HiddenCollected}개). 가까이 가면 드러나고, 워프해도 유지";
-            float? best = _board.BestHackSeconds(_board.BonusComputer.Id);
-            return $"{ComputerName(_board.BonusComputer)}을(를) {_board.BonusSeconds:0.#}초 안에 복구하기 (E로 해킹, 한 번이라도 성공하면 인정, 워프해도 유지)"
-                   + (best != null ? $". 지금 최고 {best:0.0}초" : "");
         }
 
         private static string ComputerName(BoardObject computer) =>
@@ -868,16 +863,14 @@ namespace Executor.Play
             var sb = new System.Text.StringBuilder();
             sb.AppendLine(DefaultQuest).AppendLine();
             sb.AppendLine("별 조건");
-            sb.AppendLine("  ★1 출구에 도착하면 클리어");
+            sb.AppendLine(StarLines("  ", "\n"));
             if (_stage.Tutorial)
             {
                 sb.AppendLine("  튜토리얼은 ★1만 있습니다.");
             }
             else
             {
-                int max = _board.Data.Stars?.MaxUnstable ?? 0;
-                sb.AppendLine($"  ★2 불안정 체크포인트(출구 포함)가 {max}개 이하. 남은 턴 안에 도착하면 안정, 넘기면 불안정");
-                sb.AppendLine("  ★3 " + Star3Goal());
+                sb.AppendLine("  불안정: 구간의 남은 턴을 넘겨 도착한 체크포인트(출구 포함). 데이터 파편·이상 개체 기록과 컴퓨터 최고 기록은 워프해도 유지");
                 if (_board.EncounteredGuidebookIds.Count > 0)
                 {
                     sb.AppendLine($"  만난 이상 개체 {_board.EncounteredGuidebookIds.Count}종 (클리어하지 않아도 도감에 기록)");
@@ -1129,9 +1122,9 @@ namespace Executor.Play
             if (result.Outcome == MoveOutcome.FoundFakeWall) _game.Toast("가짜 벽이었습니다. 지나갈 수 있습니다.");
             if (result.Outcome == MoveOutcome.Collected)
             {
-                string name = string.IsNullOrEmpty(result.Target.Name) ? "숨겨진 요소" : result.Target.Name;
+                string name = string.IsNullOrEmpty(result.Target.Name) ? "데이터 파편" : result.Target.Name;
                 _game.Toast(_board.AllHiddenFound
-                    ? $"{name} 발견! 숨겨진 요소를 모두 찾았습니다. ({_board.HiddenCollected}/{_board.HiddenTotal})"
+                    ? $"{name} 발견! 데이터 파편을 모두 찾았습니다. ({_board.HiddenCollected}/{_board.HiddenTotal})"
                     : $"{name} 발견! ({_board.HiddenCollected}/{_board.HiddenTotal})");
             }
             ToastEncounters();
@@ -1176,7 +1169,7 @@ namespace Executor.Play
                 buttons.Add(($"{name}{tag}{here}", () => Warp(target)));
             }
             buttons.Add(("닫기", null));
-            _game.ShowMenu($"워프 · 불안정 {_board.UnstableCount}개 (별 2: {_board.Data.Stars?.MaxUnstable ?? 0}개 이하)", buttons);
+            _game.ShowMenu($"워프 · 불안정 {_board.UnstableCount}개 · 워프 {_board.Rewinds}번", buttons);
         }
 
         private void Warp(int order)
@@ -1264,7 +1257,9 @@ namespace Executor.Play
             if (success)
             {
                 float elapsed = _hacking.TimeLimit - _hacking.TimeLeft;
-                bool wasAchieved = _board.BonusAchieved;
+                int hackStar = _stage.Tutorial ? 0 : Enumerable.Range(2, 2).FirstOrDefault(n => n <= StarCountShown()
+                    && StarTypes.Normalize(_board.StarConditionOf(n).Type) == StarTypes.Hack && _board.ComputerOf(_board.StarConditionOf(n)) == _hackTarget);
+                bool wasAchieved = hackStar > 0 && _board.IsStarMet(hackStar);
                 _board.RecordHackTime(_hackTarget, elapsed);
                 var applied = _board.CompleteHack(_hackTarget);
                 _view.Sync();
@@ -1273,11 +1268,12 @@ namespace Executor.Play
                 string effect = removed > 0 && keys > 0 ? " 장치가 작동하고 열쇠를 받았습니다."
                               : removed > 0 ? " 장치가 작동했습니다." : keys > 0 ? " 열쇠를 받았습니다." : "";
                 _game.Toast($"컴퓨터를 복구했습니다. ({elapsed:0.0}초)" + effect);
-                if (_hackTarget == _board.BonusComputer && !_stage.Tutorial)
+                if (hackStar > 0)
                 {
-                    _game.Toast(_board.BonusAchieved
-                        ? (wasAchieved ? "★3 조건은 이미 달성했습니다." : $"★3 조건 달성! {_board.BonusSeconds:0.#}초 안에 복구했습니다.")
-                        : $"★3은 {_board.BonusSeconds:0.#}초 안에 복구해야 합니다. 워프로 돌아가 다시 도전할 수 있습니다.");
+                    float goal = _board.StarConditionOf(hackStar).Seconds ?? 0;
+                    _game.Toast(_board.IsStarMet(hackStar)
+                        ? (wasAchieved ? $"★{hackStar} 조건은 이미 달성했습니다." : $"★{hackStar} 조건 달성! {goal:0.#}초 안에 복구했습니다.")
+                        : $"★{hackStar}은 {goal:0.#}초 안에 복구해야 합니다. 워프로 돌아가 다시 도전할 수 있습니다.");
                 }
             }
             else _game.Toast(failMessage);
@@ -1390,14 +1386,11 @@ namespace Executor.Play
                 string detail = _board.CheckpointCount == 0
                     ? $"남은 턴 {_board.RemainingTurns} · {record}턴 사용"
                     : $"기록 {record}턴 (구간 최고의 합) · 누른 턴 {_board.Turns} · 워프 {_board.Rewinds}회";
-                bool tutorial = _stage.Tutorial;
-                string star2 = tutorial ? "" : _board.MeetsStableStar
-                    ? $"\n★2 달성 (불안정 {_board.UnstableCount}개)"
-                    : $"\n★2 미달성 (불안정 {_board.UnstableCount}개 > 허용 {_board.Data.Stars?.MaxUnstable ?? 0}개)";
-                string star3 = tutorial || !_board.BonusAvailable ? ""
-                    : $"\n★3 {(_board.BonusAchieved ? "달성" : "미달성")} ({Star3Short()})";
+                // 별 2·3: 달성 여부와 조건 (별 1은 클리어)
+                string stars = string.Concat(Enumerable.Range(2, System.Math.Max(0, StarCountShown() - 1))
+                    .Select(n => $"\n{(_board.IsStarMet(n) ? "달성" : "미달성")} · {StarLine(n)}"));
                 string guide = _board.EncounteredGuidebookIds.Count > 0 ? $"\n도감 기록 {_board.EncounteredGuidebookIds.Count}종" : "";
-                _game.ShowResult($"클리어!\n\n{_stage.Title}\n{detail}{star2}{star3}{guide}" +
+                _game.ShowResult($"클리어!\n\n{_stage.Title}\n{detail}{stars}{guide}" +
                                  (newBest ? "\n최고 기록" : $"\n최고 {best}턴") + serverLine, true, buttons);
                 if (submit != null && submit.Status == TaskStatus.RanToCompletion) LoadResultRank(stage);
             }

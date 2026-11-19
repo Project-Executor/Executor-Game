@@ -72,15 +72,36 @@ namespace Executor.Data
     /// <summary>별 조건 (docs/map-data.md 3.4)</summary>
     public class StarsData
     {
-        /// <summary>별 2: 허용하는 불안정 체크포인트 수 (출구 포함). 기본 0</summary>
+        /// <summary>이 스테이지의 별 수 (1~3). 없으면 3. 튜토리얼은 항상 1</summary>
+        public int? Count { get; set; }
+        /// <summary>별 1 (항상 클리어). Text만 쓴다</summary>
+        public StarCondition Star1 { get; set; }
+        /// <summary>별 2 조건. 없으면 maxUnstable(예전 형식)로 "불안정 n개 이하"</summary>
+        public StarCondition Star2 { get; set; }
+        /// <summary>별 3 조건. 없으면 bonus(예전 형식), 그것도 없으면 데이터 파편 모두</summary>
+        public StarCondition Star3 { get; set; }
+
+        /// <summary>예전 형식: 별 2 허용 불안정 수. star2가 없을 때만 쓴다</summary>
         public int MaxUnstable { get; set; }
-        /// <summary>별 3 조건. 없으면 숨겨진 요소 모두 찾기 (docs/map-data.md 3.4)</summary>
+        /// <summary>예전 형식: 별 3 조건. star3이 없을 때만 쓴다</summary>
         public StarBonus Bonus { get; set; }
     }
 
     /// <summary>
-    /// 별 3 조건. Type: hidden (숨겨진 요소 모두 찾기, 기본) / hack (Target 컴퓨터를 Seconds초 안에 복구)
+    /// 별 하나의 조건 (docs/map-data.md 3.4). Type: StarTypes 상수.
+    /// Value: stable(불안정 허용 수)·moves(기록 턴)·rewinds(워프 횟수)의 기준값. Target·Seconds: hack.
+    /// Text: 화면에 보일 문구 (없으면 조건으로 만든 기본 문구)
     /// </summary>
+    public class StarCondition
+    {
+        public string Type { get; set; }
+        public int? Value { get; set; }
+        public string Target { get; set; }
+        public float? Seconds { get; set; }
+        public string Text { get; set; }
+    }
+
+    /// <summary>예전 형식의 별 3 조건. Type: hidden / hack (Target 컴퓨터를 Seconds초 안에 복구)</summary>
     public class StarBonus
     {
         public string Type { get; set; }
@@ -112,7 +133,7 @@ namespace Executor.Data
         public const string Door = "door";
         public const string Npc = "npc";
         public const string Checkpoint = "checkpoint";
-        /// <summary>숨겨진 요소 (버그·피스). 모두 모으면 별 3</summary>
+        /// <summary>데이터 파편. 모두 모으면 별 3</summary>
         public const string Hidden = "hidden";
         /// <summary>이상 개체. 만나면 도감 해금</summary>
         public const string Anomaly = "anomaly";

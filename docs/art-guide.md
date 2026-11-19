@@ -52,7 +52,7 @@
 | `Pixel/objects/npc.png` | 인물 (공통) | 인물별 도트가 없을 때 쓴다 |
 | `Pixel/npcs/{인물ID}.png` | 인물별 도트 | 예: `Pixel/npcs/cassia.png`. 인물ID는 [4장](#4-인물-id) |
 | `Pixel/objects/checkpoint.png` | 체크포인트 | |
-| `Pixel/objects/hidden.png` | 숨겨진 요소 (버그·피스) | 가까이 가야 나타난다 |
+| `Pixel/objects/hidden.png` | 데이터 파편 | 가까이 가야 나타난다 |
 | `Pixel/objects/anomaly.png` | 이상 개체 | |
 | `Pixel/objects/computer.png` | 감염된 컴퓨터 | |
 | `Pixel/objects/computerRestored.png` | 복구된 컴퓨터 | 해킹에 성공하면 이 그림으로 바뀐다 |

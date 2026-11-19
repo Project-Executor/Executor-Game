@@ -534,6 +534,8 @@ namespace Executor.Play
         /// <summary>시나리오 버튼: 오른쪽 챕터 내비게이터</summary>
         private void ShowNavigator()
         {
+            // 가장 멀리 진행한 Operation = 열린 Operation 중 (진행 순서로) 마지막
+            ChapterInfo frontier = _chapters.LastOrDefault(c => c.IsAvailable && StageProgress.IsChapterUnlocked(_chapters, c));
             _menu.ShowNavigator(_chapters.Select(c =>
             {
                 bool unlocked = StageProgress.IsChapterUnlocked(_chapters, c);
@@ -552,6 +554,7 @@ namespace Executor.Play
                     Selectable = c.IsAvailable && unlocked,
                     HasStory = unlocked && c.Story.Count > 0,
                     Current = c == _chapter,
+                    Frontier = c == frontier,
                 };
             }).ToList());
         }

@@ -45,7 +45,8 @@ namespace Executor.Play
         // 챕터 내비게이터 (오른쪽에서 밀려 나옴)
         private const float NavWidth = 620;
         private GameObject _navDim;
-        private RectTransform _nav, _navList;
+        private RectTransform _nav, _navList, _navViewport;
+        private ScrollRect _navScroll;
         private bool _navOpen;
 
         public bool HasPopup => _popupRoot.childCount > 0;
@@ -266,6 +267,8 @@ namespace Executor.Play
             public bool Selectable;
             public bool HasStory;
             public bool Current;
+            /// <summary>플레이어가 가장 멀리 연 스테이지가 있는 Operation (열린 것 중 마지막). 시나리오 창을 열면 이 줄이 보이게 한다</summary>
+            public bool Frontier;
         }
 
         public Action<string> OnChapterSelected, OnChapterStory;
@@ -390,37 +393,72 @@ namespace Executor.Play
             Place(title, new Vector2(0, 1), new Vector2(40, -Margin), new Vector2(300, 60), new Vector2(0, 1));
             var close = Button(_nav, "닫기", () => CloseNavigator(), 24);
             Place(close, new Vector2(1, 1), new Vector2(-32, -Margin), new Vector2(120, 60), new Vector2(1, 1));
+            // 목록은 스크롤된다 (마우스 휠·끌기). Viewport 밖은 잘라 낸다
+            _navViewport = new GameObject("Viewport", typeof(RectTransform), typeof(RectMask2D), typeof(Image)).GetComponent<RectTransform>();
+            _navViewport.SetParent(_nav, false);
+            Stretch(_navViewport);
+            _navViewport.offsetMin = new Vector2(40, 40);
+            _navViewport.offsetMax = new Vector2(-40, -(Margin + 90));
+            _navViewport.GetComponent<Image>().color = new Color(0, 0, 0, 0); // 빈 곳에서도 휠·끌기를 받게
             _navList = new GameObject("List", typeof(RectTransform)).GetComponent<RectTransform>();
-            _navList.SetParent(_nav, false);
-            Stretch(_navList);
-            _navList.offsetMin = new Vector2(40, 40);
-            _navList.offsetMax = new Vector2(-40, -(Margin + 90));
+            _navList.SetParent(_navViewport, false);
+            _navList.anchorMin = new Vector2(0, 1);
+            _navList.anchorMax = new Vector2(1, 1);
+            _navList.pivot = new Vector2(0.5f, 1);
+            _navList.sizeDelta = Vector2.zero;
+            _navList.anchoredPosition = Vector2.zero;
+            _navScroll = _nav.gameObject.AddComponent<ScrollRect>();
+            _navScroll.content = _navList;
+            _navScroll.viewport = _navViewport;
+            _navScroll.horizontal = false;
+            _navScroll.movementType = ScrollRect.MovementType.Clamped;
+            _navScroll.scrollSensitivity = 40;
             _navDim.SetActive(false);
         }
 
         /// <summary>
         /// 오른쪽에서 시나리오 내비게이터를 밀어 넣는다. 파일 탐색기처럼 레이어(폴더) 아래 Operation(파일)이 들어간 트리.
-        /// 레이어 줄을 누르면 접고 편다. 지금 Operation이 든 레이어는 처음에 펼쳐 둔다
+        /// 레이어 줄을 누르면 접고 편다. 열 때마다 가장 멀리 진행한 Operation(Frontier)이 든 레이어만 펼치고
+        /// 그 줄이 보이게 스크롤한다
         /// </summary>
         public void ShowNavigator(IReadOnlyList<ChapterEntry> chapters)
         {
             _navEntries = chapters;
-            foreach (ChapterEntry c in chapters)
+            ChapterEntry frontier = chapters.LastOrDefault(c => c.Frontier) ?? chapters.FirstOrDefault(c => c.Current);
+            if (frontier != null)
             {
-                if (c.Current) _collapsedLayers.Remove(c.LayerId ?? "");
+                _collapsedLayers.Clear();
+                foreach (ChapterEntry c in chapters)
+                {
+                    string layer = c.LayerId ?? "";
+                    if (layer != (frontier.LayerId ?? "")) _collapsedLayers.Add(layer);
+                }
             }
             RenderNavigator();
+            ScrollNavigatorTo(_frontierRowTop);
             _navDim.SetActive(true);
             _navOpen = true;
         }
 
         private const float LayerRowHeight = 72, OpRowHeight = 112, TreeIndent = 56;
 
+        /// <summary>마지막 RenderNavigator에서 Frontier 줄의 위쪽 y (목록 맨 위 = 0, 아래로 음수). 없으면 0</summary>
+        private float _frontierRowTop;
+
+        /// <summary>목록 안의 y(위쪽, 음수)가 보이게 스크롤한다. 위에 레이어 줄이 조금 보이도록 여유를 둔다</summary>
+        private void ScrollNavigatorTo(float rowTop)
+        {
+            float max = Mathf.Max(0, _navList.sizeDelta.y - _navViewport.rect.height);
+            _navScroll.StopMovement();
+            _navList.anchoredPosition = new Vector2(0, Mathf.Clamp(-rowTop - (LayerRowHeight + 40), 0, max));
+        }
+
         private void RenderNavigator()
         {
             Clear(_navList);
             float width = NavWidth - 80;
             float y = 0;
+            _frontierRowTop = 0;
             // 목록 순서를 지키며 레이어별로 묶는다
             var groups = new List<(string id, List<ChapterEntry> entries)>();
             foreach (ChapterEntry c in _navEntries)
@@ -476,6 +514,7 @@ namespace Executor.Play
                     lastMid = mid;
                     var branch = Panel(_navList, "Branch", TreeLine);
                     Place(branch, new Vector2(0, 1), new Vector2(22, mid + 1), new Vector2(TreeIndent - 26, 2), new Vector2(0, 1));
+                    if (c.Frontier) _frontierRowTop = y;
                     OperationRow(c, new Vector2(TreeIndent, y), width - TreeIndent);
                     y -= OpRowHeight + 8;
                 }
@@ -483,6 +522,8 @@ namespace Executor.Play
                 Place(trunk, new Vector2(0, 1), new Vector2(22, lineTop), new Vector2(2, lineTop - lastMid), new Vector2(0, 1));
                 y -= Gap;
             }
+            // 스크롤 길이 = 목록 전체 높이
+            _navList.sizeDelta = new Vector2(0, -y);
         }
 
         private void OperationRow(ChapterEntry c, Vector2 pos, float width)
@@ -497,7 +538,7 @@ namespace Executor.Play
             var rowText = row.GetComponentInChildren<Text>();
             rowText.alignment = TextAnchor.UpperLeft;
             rowText.fontSize = 26;
-            rowText.text = c.Title + (c.Current ? "  · 현재" : "");
+            rowText.text = c.Title + (c.Current ? "  · 현재" : "") + (c.Frontier ? "  · 진행 중" : "");
             rowText.rectTransform.offsetMin = new Vector2(56, 12);
             rowText.rectTransform.offsetMax = new Vector2(-16, -14);
             var sub = Label(row.transform, (string.IsNullOrEmpty(c.Subtitle) ? "" : c.Subtitle + "\n") + c.Status, 19,

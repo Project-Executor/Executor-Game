@@ -655,11 +655,13 @@ namespace Executor.Play
             {
                 if (_board == null || _game.HasPopup) return;
                 int total = _board.HiddenTotal, found = _board.HiddenCollected;
-                _game.ShowMessage("수집", total == 0
+                bool hiddenStar = _board.BonusType == Board.BonusHidden;
+                string star = hiddenStar ? "" : $"\n\n이 스테이지의 별 3: {Star3Goal()}";
+                _game.ShowMessage("수집", (total == 0
                     ? "이 스테이지에는 숨겨진 요소가 없습니다."
                     : $"숨겨진 요소 {found}/{total}\n\n" + (found == total
-                        ? "모두 찾았습니다. 클리어하면 별 3을 받습니다."
-                        : "가까이(3x3) 가면 드러납니다. 모두 모으면 별 3입니다.\n워프해도 모은 것은 유지됩니다."));
+                        ? (hiddenStar ? "모두 찾았습니다. 클리어하면 별 3을 받습니다." : "모두 찾았습니다.")
+                        : (hiddenStar ? "가까이(3x3) 가면 드러납니다. 모두 모으면 별 3입니다.\n워프해도 모은 것은 유지됩니다." : "가까이(3x3) 가면 드러납니다."))) + star);
             };
             _game.OnMinimap = () =>
             {
@@ -828,10 +830,36 @@ namespace Executor.Play
             rows.Add(($"★2 {limit} (불안정 {_board.UnstableCount})",
                 _board.IsCleared && _board.MeetsStableStar ? GameUI.QuestState.Done
                 : unstable > max ? GameUI.QuestState.Warn : GameUI.QuestState.Pending));
-            rows.Add((_board.HiddenTotal == 0 ? "★3 숨겨진 요소 없음" : $"★3 숨겨진 요소 모두 찾기 ({_board.HiddenCollected}/{_board.HiddenTotal})",
-                _board.IsCleared && _board.AllHiddenFound ? GameUI.QuestState.Done : GameUI.QuestState.Pending));
+            rows.Add(($"★3 {Star3Short()}",
+                _board.BonusAchieved ? GameUI.QuestState.Done : GameUI.QuestState.Pending));
             return rows;
         }
+
+        /// <summary>별 3 조건 한 줄 (퀘스트 패널): "숨겨진 요소 모두 찾기 (1/2)", "보안 서버 15초 안에 복구 (최고 12.4초)"</summary>
+        private string Star3Short()
+        {
+            if (!_board.BonusAvailable)
+                return _board.BonusType == Board.BonusHack ? "조건 설정 오류 (관리자 웹에서 확인)" : "숨겨진 요소 없음";
+            if (_board.BonusType == Board.BonusHidden)
+                return $"숨겨진 요소 모두 찾기 ({_board.HiddenCollected}/{_board.HiddenTotal})";
+            float? best = _board.BestHackSeconds(_board.BonusComputer.Id);
+            return $"{ComputerName(_board.BonusComputer)} {_board.BonusSeconds:0.#}초 안에 복구" + (best != null ? $" (최고 {best:0.0}초)" : "");
+        }
+
+        /// <summary>별 3 조건 설명 (퀘스트 자세히·수집 팝업)</summary>
+        private string Star3Goal()
+        {
+            if (!_board.BonusAvailable)
+                return _board.BonusType == Board.BonusHack ? "조건이 잘못 설정되어 받을 수 없습니다." : "이 스테이지에는 숨겨진 요소가 없습니다.";
+            if (_board.BonusType == Board.BonusHidden)
+                return $"숨겨진 요소 {_board.HiddenTotal}개를 모두 찾기 (지금 {_board.HiddenCollected}개). 가까이 가면 드러나고, 워프해도 유지";
+            float? best = _board.BestHackSeconds(_board.BonusComputer.Id);
+            return $"{ComputerName(_board.BonusComputer)}을(를) {_board.BonusSeconds:0.#}초 안에 복구하기 (E로 해킹, 한 번이라도 성공하면 인정, 워프해도 유지)"
+                   + (best != null ? $". 지금 최고 {best:0.0}초" : "");
+        }
+
+        private static string ComputerName(BoardObject computer) =>
+            string.IsNullOrEmpty(computer?.Name) ? "감염된 컴퓨터" : computer.Name;
 
         /// <summary>퀘스트 자세히: 목표, 별 조건, 체크포인트 상태, 지금까지 나온 안내</summary>
         private string QuestDetail()
@@ -848,9 +876,7 @@ namespace Executor.Play
             {
                 int max = _board.Data.Stars?.MaxUnstable ?? 0;
                 sb.AppendLine($"  ★2 불안정 체크포인트(출구 포함)가 {max}개 이하. 남은 턴 안에 도착하면 안정, 넘기면 불안정");
-                sb.AppendLine(_board.HiddenTotal == 0
-                    ? "  ★3 이 스테이지에는 숨겨진 요소가 없습니다."
-                    : $"  ★3 숨겨진 요소 {_board.HiddenTotal}개를 모두 찾기 (지금 {_board.HiddenCollected}개). 가까이 가면 드러나고, 워프해도 유지");
+                sb.AppendLine("  ★3 " + Star3Goal());
                 if (_board.EncounteredGuidebookIds.Count > 0)
                 {
                     sb.AppendLine($"  만난 이상 개체 {_board.EncounteredGuidebookIds.Count}종 (클리어하지 않아도 도감에 기록)");
@@ -1236,13 +1262,22 @@ namespace Executor.Play
             Block();
             if (success)
             {
+                float elapsed = _hacking.TimeLimit - _hacking.TimeLeft;
+                bool wasAchieved = _board.BonusAchieved;
+                _board.RecordHackTime(_hackTarget, elapsed);
                 var applied = _board.CompleteHack(_hackTarget);
                 _view.Sync();
                 int removed = applied.Count(e => e.Type == "remove");
                 int keys = applied.Count(e => e.Type == "giveKey");
                 string effect = removed > 0 && keys > 0 ? " 장치가 작동하고 열쇠를 받았습니다."
                               : removed > 0 ? " 장치가 작동했습니다." : keys > 0 ? " 열쇠를 받았습니다." : "";
-                _game.Toast("컴퓨터를 복구했습니다." + effect);
+                _game.Toast($"컴퓨터를 복구했습니다. ({elapsed:0.0}초)" + effect);
+                if (_hackTarget == _board.BonusComputer && !_stage.Tutorial)
+                {
+                    _game.Toast(_board.BonusAchieved
+                        ? (wasAchieved ? "★3 조건은 이미 달성했습니다." : $"★3 조건 달성! {_board.BonusSeconds:0.#}초 안에 복구했습니다.")
+                        : $"★3은 {_board.BonusSeconds:0.#}초 안에 복구해야 합니다. 워프로 돌아가 다시 도전할 수 있습니다.");
+                }
             }
             else _game.Toast(failMessage);
             _hacking = null;
@@ -1358,9 +1393,8 @@ namespace Executor.Play
                 string star2 = tutorial ? "" : _board.MeetsStableStar
                     ? $"\n★2 달성 (불안정 {_board.UnstableCount}개)"
                     : $"\n★2 미달성 (불안정 {_board.UnstableCount}개 > 허용 {_board.Data.Stars?.MaxUnstable ?? 0}개)";
-                string star3 = tutorial ? "" : _board.HiddenTotal == 0 ? ""
-                    : _board.AllHiddenFound ? $"\n★3 달성 (숨겨진 요소 {_board.HiddenTotal}개)"
-                    : $"\n★3 미달성 (숨겨진 요소 {_board.HiddenCollected}/{_board.HiddenTotal})";
+                string star3 = tutorial || !_board.BonusAvailable ? ""
+                    : $"\n★3 {(_board.BonusAchieved ? "달성" : "미달성")} ({Star3Short()})";
                 string guide = _board.EncounteredGuidebookIds.Count > 0 ? $"\n도감 기록 {_board.EncounteredGuidebookIds.Count}종" : "";
                 _game.ShowResult($"클리어!\n\n{_stage.Title}\n{detail}{star2}{star3}{guide}" +
                                  (newBest ? "\n최고 기록" : $"\n최고 {best}턴") + serverLine, true, buttons);

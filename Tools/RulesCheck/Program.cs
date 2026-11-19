@@ -386,6 +386,31 @@ public static class Program
         var normal = MapData.From(Newtonsoft.Json.Linq.JObject.Parse("{\"guides\":[{\"on\":\"start\",\"text\":\"a\"},{\"on\":\"near\",\"target\":\"x\",\"text\":\"b\"}]}"));
         Check("guides 배열은 그대로", normal.Guides.Count == 2 && normal.Guides[1].Target == "x");
 
+        // 별 3 조건 (docs/map-data.md 3.4): 컴퓨터를 시간 안에 복구. 시작 (1,1), 컴퓨터 (2,2), 체크포인트 (3,1), 출구 (5,1)
+        const string bonusMap = "{\"width\":7,\"height\":4,\"tiles\":[\"#######\",\"#.....#\",\"#.....#\",\"#######\"],\"player\":{\"x\":1,\"y\":1},"
+            + "\"objects\":[{\"id\":\"pc\",\"type\":\"computer\",\"x\":2,\"y\":2,\"timeLimit\":30},{\"id\":\"cp1\",\"type\":\"checkpoint\",\"x\":3,\"y\":1,\"order\":1,\"turns\":10},"
+            + "{\"id\":\"h\",\"type\":\"hidden\",\"x\":1,\"y\":2},{\"id\":\"exit1\",\"type\":\"exit\",\"x\":5,\"y\":1}],"
+            + "\"stars\":{\"bonus\":{\"type\":\"hack\",\"target\":\"pc\",\"seconds\":10}}}";
+        b = new Board(MapData.From(Newtonsoft.Json.Linq.JObject.Parse(bonusMap)), 10);
+        var bpc = b.Objects.First(o => o.Id == "pc");
+        Check("별 3 = 컴퓨터 시간: 조건 읽기", b.BonusType == Board.BonusHack && b.BonusComputer == bpc && b.BonusSeconds == 10 && b.BonusAvailable && !b.BonusAchieved);
+        b.BeginHack(bpc); b.RecordHackTime(bpc, 12.5f); b.CompleteHack(bpc);
+        Check("12.5초 -> 아직", !b.BonusAchieved && b.BestHackSeconds("pc") == 12.5f);
+        b.Move(Direction.Right); b.Move(Direction.Right);
+        Check("체크포인트 1 도착", b.CurrentOrder == 1);
+        b.WarpTo(0);
+        Check("시작으로 워프 -> 컴퓨터 다시 감염, 최고 기록은 유지", !bpc.IsRestored && b.BestHackSeconds("pc") == 12.5f);
+        b.BeginHack(bpc); b.RecordHackTime(bpc, 9.2f); b.CompleteHack(bpc);
+        b.RecordHackTime(bpc, 11f);
+        Check("9.2초 -> 달성, 느린 기록은 무시", b.BonusAchieved && b.BestHackSeconds("pc") == 9.2f);
+        b.Move(Direction.Right); b.Move(Direction.Right); b.Move(Direction.Right); b.Move(Direction.Right);
+        var bonusReq = b.ToResultRequest();
+        Check("클리어 결과: 별 3(hiddenFound=true), 숨겨진 요소는 안 모아도 됨", b.IsCleared && bonusReq.HiddenFound && b.HiddenCollected == 0,
+            $"cleared={b.IsCleared}");
+        var noBonus = MapData.From(Newtonsoft.Json.Linq.JObject.Parse(bonusMap.Replace("\"target\":\"pc\"", "\"target\":\"nope\"")));
+        Check("없는 컴퓨터를 지정하면 별 3 불가", !new Board(noBonus).BonusAvailable);
+        Check("bonus가 없으면 숨겨진 요소 기준 (기본)", new Board(Map(new[] { "###", "#.#", "###" })).BonusType == Board.BonusHidden);
+
         // 감염된 컴퓨터 (docs/map-data.md 3.9): 시작 (1,1), 체크포인트 (2,1), 컴퓨터 (3,2), 문 (5,1)
         var pcMap = Executor.Network.Json.Deserialize<MapData>(
             "{\"width\":8,\"height\":4,\"tiles\":[\"########\",\"#......#\",\"#......#\",\"########\"],\"player\":{\"x\":1,\"y\":1},"

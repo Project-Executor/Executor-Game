@@ -812,10 +812,18 @@ namespace Executor.Play
             if (_storyIndex >= _story.Count)
             {
                 _game.HideNarration();
+                _game.HideDialogue();
                 _afterStory?.Invoke();
                 return;
             }
             StoryStep step = _story[_storyIndex];
+            if (step.Type == StoryTypes.Line)
+            {
+                _game.HideNarration();
+                ShowSpeech(step.Speaker, step.Portrait, TextFormat.Apply(step.Text, PlayerSession.Nickname));
+                return;
+            }
+            _game.HideDialogue();
             _game.ShowNarration(TextFormat.Apply(step.Text, PlayerSession.Nickname),
                 StoryTypes.IsNicknameInput(step.Type), PlayerSession.Nickname);
         }
@@ -905,7 +913,11 @@ namespace Executor.Play
 
                 case Mode.Story:
                     if (AskingName) { if (enter) SubmitName(); }
-                    else if (next) NextStoryStep();
+                    else if (next)
+                    {
+                        if (_game.IsTyping) _game.CompleteLine();
+                        else NextStoryStep();
+                    }
                     break;
 
                 case Mode.Playing:
@@ -1072,9 +1084,25 @@ namespace Executor.Play
                 return;
             }
             _choicesShown = false;
-            Sprite portrait = ArtCatalog.Portrait(_dialogue.Current.Portrait, _dialogue.Speaker, out string characterId);
-            _game.ShowLine(_dialogue.Speaker, _dialogue.Text, portrait, characterId == "player", _dialogue.Speaker);
+            ShowSpeech(_dialogue.Current.Speaker ?? _dialogue.Npc.Name, _dialogue.Current.Portrait, _dialogue.Text);
             UpdateHud();
+        }
+
+        /// <summary>
+        /// 대화창에 대사 한 줄. 주인공은 왼쪽, 다른 인물은 오른쪽에 일러스트를 둔다.
+        /// 주인공: portrait가 player이거나, 이름표가 {nickname}·"집행자"이거나, 내 닉네임과 같을 때
+        /// </summary>
+        /// <param name="rawSpeaker">{nickname} 치환 전 이름표</param>
+        private void ShowSpeech(string rawSpeaker, string portraitKey, string text)
+        {
+            string speaker = TextFormat.Apply(rawSpeaker, PlayerSession.Nickname);
+            bool protagonist = rawSpeaker != null && (rawSpeaker.Contains("{nickname}") || rawSpeaker == "집행자"
+                               || (!string.IsNullOrEmpty(PlayerSession.Nickname) && rawSpeaker == PlayerSession.Nickname));
+            // 주인공 대사는 portrait가 없어도 주인공 일러스트를 쓴다
+            if (string.IsNullOrEmpty(portraitKey) && protagonist) portraitKey = "player";
+            Sprite portrait = ArtCatalog.Portrait(portraitKey, speaker, out string characterId);
+            protagonist |= characterId == "player";
+            _game.ShowLine(speaker, text, portrait, !protagonist, speaker);
         }
 
         // ---------------- 끝 ----------------

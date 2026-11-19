@@ -150,10 +150,17 @@ namespace Executor.Data
         public List<StoryStep> Outro { get; set; } = new List<StoryStep>();
     }
 
-    /// <summary>Type: narration (나레이션 한 줄) / inputNickname (닉네임 입력 + 중복 확인, 이미 있으면 건너뜀)</summary>
+    /// <summary>
+    /// Type: narration (나레이션 한 줄) / line (인물 대사: 대화창에 이름표·일러스트와 함께) /
+    /// inputNickname (닉네임 입력 + 중복 확인, 이미 있으면 건너뜀)
+    /// </summary>
     public class StoryStep
     {
         public string Type { get; set; }
         public string Text { get; set; }
+        /// <summary>line: 이름표 ({nickname} 치환). 대화 노드의 speaker와 같다</summary>
+        public string Speaker { get; set; }
+        /// <summary>line: 스탠딩 일러스트 "인물ID/표정" (선택). 대화 노드의 portrait와 같다</summary>
+        public string Portrait { get; set; }
     }
 }

@@ -57,6 +57,9 @@ namespace Executor.Play
     {
         /// <summary>닉네임 입력 단계인지 (예전 맵의 inputCharacterName도 같은 단계로 본다)</summary>
         public static bool IsNicknameInput(string type) => type == "inputNickname" || type == "inputCharacterName";
+
+        /// <summary>인물 대사 단계 (나레이션 화면 대신 대화창에 보여 준다)</summary>
+        public const string Line = "line";
     }
 
     public static class ChapterCatalog

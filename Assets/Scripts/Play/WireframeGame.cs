@@ -742,6 +742,11 @@ namespace Executor.Play
             {
                 _menu.ShowMessage("스테이지", e.IsNetworkError ? "서버에 연결할 수 없어 스테이지를 불러오지 못했습니다." : e.Message);
             }
+            catch (Newtonsoft.Json.JsonException e)
+            {
+                Debug.LogError($"[WireframeGame] 스테이지 {stage.StageId} 맵 데이터 형식 오류: {e}");
+                _menu.ShowMessage("스테이지", $"이 스테이지의 맵 데이터 형식이 잘못되어 열 수 없습니다.\n관리자 웹에서 맵을 확인해 주세요.\n\n{e.Message}");
+            }
             finally
             {
                 _loadingStage = false;

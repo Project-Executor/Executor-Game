@@ -378,6 +378,14 @@ public static class Program
         var json = Executor.Network.Json.Deserialize<MapData>("{\"width\":3,\"height\":3,\"camera\":{\"width\":15},\"minimap\":{\"revealRadius\":3}}");
         Check("camera·minimap JSON 읽기", json.Camera?.Width == 15 && json.Camera.Height == null && json.Minimap?.RevealRadius == 3);
 
+        // 대괄호를 빠뜨린 guides·story도 읽는다 (운영 이방인 Stage 2에서 실제로 생긴 형식)
+        var loose = MapData.From(Newtonsoft.Json.Linq.JObject.Parse(
+            "{\"width\":3,\"height\":3,\"guides\":{\"on\":\"start\",\"text\":\"E로 복구\"},\"story\":{\"intro\":{\"type\":\"narration\",\"text\":\"a\"},\"outro\":null}}"));
+        Check("guides가 객체 하나여도 목록으로", loose.Guides.Count == 1 && loose.Guides[0].On == "start" && loose.Guides[0].Text == "E로 복구");
+        Check("story.intro가 객체 하나여도, outro가 null이어도", loose.Story.Intro.Count == 1 && loose.Story.Outro != null && loose.Story.Outro.Count == 0);
+        var normal = MapData.From(Newtonsoft.Json.Linq.JObject.Parse("{\"guides\":[{\"on\":\"start\",\"text\":\"a\"},{\"on\":\"near\",\"target\":\"x\",\"text\":\"b\"}]}"));
+        Check("guides 배열은 그대로", normal.Guides.Count == 2 && normal.Guides[1].Target == "x");
+
         // 감염된 컴퓨터 (docs/map-data.md 3.9): 시작 (1,1), 체크포인트 (2,1), 컴퓨터 (3,2), 문 (5,1)
         var pcMap = Executor.Network.Json.Deserialize<MapData>(
             "{\"width\":8,\"height\":4,\"tiles\":[\"########\",\"#......#\",\"#......#\",\"########\"],\"player\":{\"x\":1,\"y\":1},"

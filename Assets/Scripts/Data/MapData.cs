@@ -17,6 +17,7 @@ namespace Executor.Data
         public GridPoint Player { get; set; }
         public List<MapObjectData> Objects { get; set; } = new List<MapObjectData>();
         public Dictionary<string, DialogueData> Dialogues { get; set; } = new Dictionary<string, DialogueData>();
+        [Newtonsoft.Json.JsonConverter(typeof(SingleOrArrayConverter<GuideData>))]
         public List<GuideData> Guides { get; set; } = new List<GuideData>();
         public StoryData Story { get; set; } = new StoryData();
         /// <summary>별 조건 설정. 없으면 기본값 (docs/map-data.md 3.4)</summary>
@@ -157,8 +158,10 @@ namespace Executor.Data
     public class StoryData
     {
         /// <summary>플레이 전</summary>
+        [Newtonsoft.Json.JsonConverter(typeof(SingleOrArrayConverter<StoryStep>))]
         public List<StoryStep> Intro { get; set; } = new List<StoryStep>();
         /// <summary>클리어 후 결과 화면 전</summary>
+        [Newtonsoft.Json.JsonConverter(typeof(SingleOrArrayConverter<StoryStep>))]
         public List<StoryStep> Outro { get; set; } = new List<StoryStep>();
     }
 

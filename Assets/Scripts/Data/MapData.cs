@@ -76,6 +76,8 @@ namespace Executor.Data
         public const string Hidden = "hidden";
         /// <summary>이상 개체. 만나면 도감 해금</summary>
         public const string Anomaly = "anomaly";
+        /// <summary>가짜 벽. 벽처럼 보이지만 지나갈 수 있고, 처음 들어가면 드러난다</summary>
+        public const string FakeWall = "fakeWall";
     }
 
     public class DialogueData

@@ -55,6 +55,8 @@ namespace Executor.Play
                 case MapObjectTypes.Checkpoint: return Pixel("objects/checkpoint", new Color32(0x2c, 0xd5, 0xe8, 0xff), Shape.Small);
                 case MapObjectTypes.Hidden: return Pixel("objects/hidden", new Color32(0xff, 0x5f, 0xb0, 0xff), Shape.Small);
                 case MapObjectTypes.Anomaly: return Pixel("objects/anomaly", new Color32(0xe0, 0x36, 0x2c, 0xff), Shape.Diamond);
+                // 가짜 벽은 드러난 뒤에도 벽 그림을 쓴다 (따로 그림 없음)
+                case MapObjectTypes.FakeWall: return Wall;
                 default: return Pixel("objects/" + type, new Color32(0xff, 0x00, 0xff, 0xff), Shape.Small);
             }
         }

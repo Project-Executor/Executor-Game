@@ -981,6 +981,7 @@ namespace Executor.Play
             if (result.UsedTurn) _view.Sync(); else _view.Bump(dir);
             ShowGuides(_guides.AfterMove(result));
             if (result.Outcome == MoveOutcome.PickedUpKey) _game.Toast("열쇠를 얻었습니다.");
+            if (result.Outcome == MoveOutcome.FoundFakeWall) _game.Toast("가짜 벽이었습니다. 지나갈 수 있습니다.");
             if (result.Outcome == MoveOutcome.Collected)
             {
                 string name = string.IsNullOrEmpty(result.Target.Name) ? "숨겨진 요소" : result.Target.Name;

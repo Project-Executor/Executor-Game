@@ -78,7 +78,13 @@ namespace Executor.Play
             {
                 BoardObject obj = pair.Key;
                 SpriteRenderer sr = pair.Value;
-                sr.gameObject.SetActive(!obj.IsRemoved && obj.IsRevealed);
+                if (obj.Type == MapObjectTypes.FakeWall)
+                {
+                    // 가짜 벽: 드러난 뒤에도 화면에서는 계속 진짜 벽과 똑같이 그린다 (드러남은 미니맵에만 표시)
+                    sr.gameObject.SetActive(!obj.IsRemoved);
+                    sr.sprite = ArtCatalog.Wall;
+                }
+                else sr.gameObject.SetActive(!obj.IsRemoved && obj.IsRevealed);
                 _targets[sr.transform] = ToWorld(obj.Pos);
                 // 블록은 남은 내구도만큼 진하게
                 if (obj.Type == MapObjectTypes.Breakable)

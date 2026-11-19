@@ -25,7 +25,10 @@ namespace Executor.Game
         public long? GuidebookId { get; }
         /// <summary>부서진 블록, 주운 열쇠, 열린 문, 모은 숨겨진 요소는 true. 더는 칸을 차지하지 않는다</summary>
         public bool IsRemoved { get; internal set; }
-        /// <summary>화면에 보이는지. 숨겨진 요소만 처음에 false이고 3x3 안에 들어오면 true (그 뒤 계속)</summary>
+        /// <summary>
+        /// 정체가 드러났는지. 숨겨진 요소는 처음에 false이고 3x3 안에 들어오면 true,
+        /// 가짜 벽은 처음에 false(벽으로 보임)이고 들어가면 true. 한 번 true가 되면 워프해도 유지한다
+        /// </summary>
         public bool IsRevealed { get; internal set; }
 
         internal BoardObject(MapObjectData data)
@@ -40,7 +43,7 @@ namespace Executor.Game
             Order = data.Order ?? 0;
             SegmentTurns = data.Turns;
             GuidebookId = data.GuidebookId;
-            IsRevealed = Type != MapObjectTypes.Hidden;
+            IsRevealed = Type != MapObjectTypes.Hidden && Type != MapObjectTypes.FakeWall;
         }
     }
 
@@ -61,6 +64,8 @@ namespace Executor.Game
         ReachedCheckpoint,
         /// <summary>숨겨진 요소를 모았다</summary>
         Collected,
+        /// <summary>가짜 벽을 처음 지나갔다 (드러남). 이미 드러난 가짜 벽은 Moved</summary>
+        FoundFakeWall,
         Cleared
     }
 
@@ -271,9 +276,17 @@ namespace Executor.Game
                     target.IsRevealed = true;
                     return Step(MoveOutcome.Collected, direction, from, to, target);
 
+                case MapObjectTypes.FakeWall:
+                {
+                    bool first = !target.IsRevealed;
+                    target.IsRevealed = true;
+                    return Step(first ? MoveOutcome.FoundFakeWall : MoveOutcome.Moved, direction, from, to, target);
+                }
+
                 case MapObjectTypes.Crate:
                 {
                     GridPos beyond = to + direction.Delta();
+                    // 가짜 벽도 오브젝트라 상자는 밀어 넣을 수 없다 (벽처럼 보이므로)
                     if (IsWall(beyond) || ObjectAt(beyond) != null)
                     {
                         return new MoveResult(MoveOutcome.Blocked, direction, from, from, target);

@@ -343,6 +343,26 @@ public static class Program
         Check("클리어 전 결과: 별 3 아님, 도감 ID는 보냄", !req.Cleared && !req.HiddenFound && req.EncounteredGuidebookIds.SequenceEqual(new long[] { 3 }));
         Check("숨겨진 요소 없는 맵은 별 3 불가", !new Board(Map(new[] { "###", "#.#", "###" })).AllHiddenFound);
 
+        // 가짜 벽 (docs/map-data.md 3.7)
+        b = new Board(Map(new[] { "#######", "#.....#", "#######" },
+            Obj("c", MapObjectTypes.Crate, 2, 1), Obj("f", MapObjectTypes.FakeWall, 3, 1)));
+        var fake = b.Objects.First(o => o.Id == "f");
+        Check("가짜 벽: 처음엔 드러나지 않음", !fake.IsRevealed);
+        Check("가짜 벽 쪽으로 상자 -> 밀리지 않음, 턴 0", b.Move(Direction.Right).Outcome == MoveOutcome.Blocked && b.Turns == 0);
+        b = new Board(Map(new[] { "#######", "#.....#", "#######" },
+            Cp("cp1", 2, 1, order: 1, turns: 10), Obj("f", MapObjectTypes.FakeWall, 3, 1)), 10);
+        fake = b.Objects.First(o => o.Id == "f");
+        b.Move(Direction.Right);
+        Check("가짜 벽 바로 옆(3x3 안)이어도 드러나지 않음", !fake.IsRevealed && b.CurrentOrder == 1);
+        r = b.Move(Direction.Right);
+        Check("가짜 벽 칸 -> 지나감, 드러남, 턴 1", r.Outcome == MoveOutcome.FoundFakeWall && fake.IsRevealed
+            && b.PlayerPos == new GridPos(3, 1) && b.SegmentTurns == 1);
+        r = b.Move(Direction.Right);
+        Check("가짜 벽 너머로 이동", r.Outcome == MoveOutcome.Moved && b.PlayerPos == new GridPos(4, 1));
+        Check("워프해도 드러난 채 유지", b.WarpTo(1) && fake.IsRevealed && b.PlayerPos == new GridPos(2, 1));
+        r = b.Move(Direction.Right);
+        Check("드러난 가짜 벽 -> 그냥 이동", r.Outcome == MoveOutcome.Moved && b.PlayerPos == new GridPos(3, 1));
+
         // 모르는 type은 지나간다
         b = new Board(Map(new[] { "####", "#..#", "####" }, Obj("x", "bot", 2, 1)));
         Check("모르는 type -> 바닥처럼 이동", b.Move(Direction.Right).Outcome == MoveOutcome.Moved);

@@ -77,6 +77,20 @@ namespace Executor.Play
 
         public bool HasPopup => _popupRoot.childCount > 0;
 
+        /// <summary>팝업을 붙이는 자리 (친구·메시지 팝업이 쓴다)</summary>
+        public Transform PopupRoot => _popupRoot;
+
+        private Button _chatButton;
+
+        /// <summary>채팅 버튼에 안 읽은 메시지 + 받은 친구 요청 수를 표시한다</summary>
+        public void SetChatCount(int count)
+        {
+            if (_chatButton == null) return;
+            SetButtonText(_chatButton, count > 0 ? $"채팅 {count}" : "채팅");
+            var label = _chatButton.GetComponentInChildren<Text>();
+            if (label != null) label.color = count > 0 ? Warn : TextColor;
+        }
+
         public void Build()
         {
             _root = Canvas(transform, "GameCanvas", 10);
@@ -475,6 +489,7 @@ namespace Executor.Play
             var settings = Button(_hud.transform, "설정", () => OnSettings?.Invoke(), 22);
             Place(settings, new Vector2(1, 1), new Vector2(-48, -48), new Vector2(110, 60), new Vector2(1, 1));
             var chat = Button(_hud.transform, "채팅", () => OnChat?.Invoke(), 22);
+            _chatButton = chat;
             Place(chat, new Vector2(1, 1), new Vector2(-182, -48), new Vector2(110, 60), new Vector2(1, 1));
             _collect = Button(_hud.transform, "수집 0/0", () => OnCollect?.Invoke(), 22);
             Place(_collect, new Vector2(1, 1), new Vector2(-316, -48), new Vector2(170, 60), new Vector2(1, 1));

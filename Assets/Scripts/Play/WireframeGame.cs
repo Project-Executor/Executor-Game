@@ -150,6 +150,7 @@ namespace Executor.Play
             _menu.OnMail = OpenMailbox;
             _menu.OnNotice = OpenNotices;
             _menu.OnGuidebook = () => OpenGuidebook(null, 0);
+            _menu.OnFriends = () => Social.Open(SocialPanel.TabMessages);
             _menu.OnShop = () => OpenShop(_shopFilter);
             // 메인의 스테이지 버튼: 가장 멀리 진행한 Operation의 스테이지 화면으로
             _menu.OnStages = () =>
@@ -231,6 +232,7 @@ namespace Executor.Play
                     await PlayerSession.RefreshProfileAsync();
                     if (_mode == Mode.Main) ShowMainProfile();
                     RefreshMailCount();
+                    Social.RefreshBadge();
                 }
                 catch (ApiException e)
                 {
@@ -646,7 +648,7 @@ namespace Executor.Play
         {
             _game.OnSettings = ShowPauseMenu;
             _game.OnCheckNickname = CheckNickname;
-            _game.OnChat = () => _game.ShowMessage("채팅", "채팅은 준비 중입니다.\n(친구 메시지 API 연동 예정)");
+            _game.OnChat = () => Social.Open(SocialPanel.TabMessages);
             _game.OnCollect = () =>
             {
                 if (_board == null || _game.HasPopup) return;
@@ -935,8 +937,17 @@ namespace Executor.Play
         }
 
         // ---------------- 입력 ----------------
+        // ---------------- 친구·메시지 ----------------
+        private SocialPanel _social;
+
+        /// <summary>친구·메시지 팝업. 메인 화면에서는 메뉴 위에, 플레이 중에는 게임 화면 위에 연다</summary>
+        private SocialPanel Social => _social ??= new SocialPanel(
+            () => _mode == Mode.Main ? _menu.PopupRoot : _game.PopupRoot,
+            count => { _menu.SetFriendCount(count); _game.SetChatCount(count); });
+
         private void Update()
         {
+            _social?.Tick(Time.deltaTime);
             Keyboard k = Keyboard.current;
             if (k == null || Time.frameCount == _blockInputFrame) return;
             bool enter = k.enterKey.wasPressedThisFrame || k.numpadEnterKey.wasPressedThisFrame;

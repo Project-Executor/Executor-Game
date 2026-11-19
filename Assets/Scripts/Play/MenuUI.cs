@@ -51,6 +51,9 @@ namespace Executor.Play
 
         public bool HasPopup => _popupRoot.childCount > 0;
 
+        /// <summary>팝업을 붙이는 자리 (친구·메시지 팝업이 쓴다)</summary>
+        public Transform PopupRoot => _popupRoot;
+
         public void Build()
         {
             _root = Canvas(transform, "MenuCanvas", 0);
@@ -188,7 +191,8 @@ namespace Executor.Play
         }
 
         // ================= 메인 화면 =================
-        public Action OnProfile, OnMail, OnShop, OnNotice, OnGuidebook, OnStages, OnMainBack;
+        public Action OnProfile, OnMail, OnShop, OnNotice, OnGuidebook, OnFriends, OnStages, OnMainBack;
+        private Button _friendButton;
 
         public void ShowMain(string nickname, string coin)
         {
@@ -215,6 +219,9 @@ namespace Executor.Play
             _profileCoin.rectTransform.offsetMin = new Vector2(28, 18);
             _profileCoin.rectTransform.offsetMax = new Vector2(-28, -16);
             SettingsButton(screen, () => OnSettings?.Invoke());
+            // 프로필 옆: 친구·메시지 (안 읽은 메시지 + 받은 요청 수를 표시)
+            _friendButton = Button(screen, "친구", () => OnFriends?.Invoke(), 26);
+            Place(_friendButton, new Vector2(0, 1), new Vector2(Margin + 440 + Gap, -Margin), new Vector2(200, 120), new Vector2(0, 1));
 
             // 왼쪽 줄: 우편, 상점, 공지, 도감 (설정 버튼과 같은 120x120)
             float y = -(Margin + 120 + Gap);
@@ -606,6 +613,15 @@ namespace Executor.Play
             Popup(_popupRoot, title, new Vector2(760, 360), out RectTransform body);
             var t = Label(body, text, 28, TextAnchor.MiddleCenter);
             Stretch(t.rectTransform);
+        }
+
+        /// <summary>메인 화면 친구 버튼에 안 읽은 메시지 + 받은 친구 요청 수를 표시한다</summary>
+        public void SetFriendCount(int count)
+        {
+            if (_friendButton == null) return;
+            SetButtonText(_friendButton, count > 0 ? $"친구\n({count})" : "친구");
+            var label = _friendButton.GetComponentInChildren<Text>();
+            if (label != null) label.color = count > 0 ? Warn : TextColor;
         }
 
         /// <summary>메인 화면 우편 버튼에 받지 않은 우편 수를 표시한다 (0이면 "우편"만)</summary>

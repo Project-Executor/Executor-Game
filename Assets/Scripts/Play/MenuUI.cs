@@ -51,6 +51,9 @@ namespace Executor.Play
 
         public bool HasPopup => _popupRoot.childCount > 0;
 
+        /// <summary>팝업을 붙이는 자리 (친구·메시지 팝업이 쓴다)</summary>
+        public Transform PopupRoot => _popupRoot;
+
         public void Build()
         {
             _root = Canvas(transform, "MenuCanvas", 0);
@@ -188,7 +191,8 @@ namespace Executor.Play
         }
 
         // ================= 메인 화면 =================
-        public Action OnProfile, OnMail, OnShop, OnNotice, OnStages, OnMainBack;
+        public Action OnProfile, OnMail, OnShop, OnNotice, OnGuidebook, OnFriends, OnStages, OnMainBack;
+        private Button _friendButton;
 
         public void ShowMain(string nickname, string coin)
         {
@@ -215,12 +219,16 @@ namespace Executor.Play
             _profileCoin.rectTransform.offsetMin = new Vector2(28, 18);
             _profileCoin.rectTransform.offsetMax = new Vector2(-28, -16);
             SettingsButton(screen, () => OnSettings?.Invoke());
+            // 프로필 옆: 친구·메시지 (안 읽은 메시지 + 받은 요청 수를 표시)
+            _friendButton = Button(screen, "친구", () => OnFriends?.Invoke(), 26);
+            Place(_friendButton, new Vector2(0, 1), new Vector2(Margin + 440 + Gap, -Margin), new Vector2(200, 120), new Vector2(0, 1));
 
-            // 왼쪽 줄: 우편, 상점, 공지 (설정 버튼과 같은 120x120)
+            // 왼쪽 줄: 우편, 상점, 공지, 도감 (설정 버튼과 같은 120x120)
             float y = -(Margin + 120 + Gap);
             foreach (var (label, action) in new (string, Action)[]
                      {
-                         ("우편", () => OnMail?.Invoke()), ("상점", () => OnShop?.Invoke()), ("공지", () => OnNotice?.Invoke())
+                         ("우편", () => OnMail?.Invoke()), ("상점", () => OnShop?.Invoke()), ("공지", () => OnNotice?.Invoke()),
+                         ("도감", () => OnGuidebook?.Invoke())
                      })
             {
                 var b = Button(screen, label, action, 26);
@@ -607,6 +615,15 @@ namespace Executor.Play
             Stretch(t.rectTransform);
         }
 
+        /// <summary>메인 화면 친구 버튼에 안 읽은 메시지 + 받은 친구 요청 수를 표시한다</summary>
+        public void SetFriendCount(int count)
+        {
+            if (_friendButton == null) return;
+            SetButtonText(_friendButton, count > 0 ? $"친구\n({count})" : "친구");
+            var label = _friendButton.GetComponentInChildren<Text>();
+            if (label != null) label.color = count > 0 ? Warn : TextColor;
+        }
+
         /// <summary>메인 화면 우편 버튼에 받지 않은 우편 수를 표시한다 (0이면 "우편"만)</summary>
         public void SetMailCount(int unclaimed)
         {
@@ -655,15 +672,15 @@ namespace Executor.Play
         }
 
         /// <summary>
-        /// 상점 팝업. 위에 종류 탭(전체·스킨·테마·힌트), 아래에 아이템 줄(최대 7개). 줄마다 가격·보유와 구매 버튼.
-        /// 스킨·테마는 이미 가졌으면 "보유 중". 힌트는 1개 / 5개 구매
+        /// 상점 팝업. 위에 종류 탭(전체·스킨·테마), 아래에 아이템 줄(최대 7개). 줄마다 가격·보유와 구매 버튼.
+        /// 이미 가졌으면 "보유 중"
         /// </summary>
         public void ShowShop(IReadOnlyList<Data.ShopItem> items, int coin, string filter, Action<string> onFilter,
-            Action<Data.ShopItem, int> onBuy)
+            Action<Data.ShopItem> onBuy)
         {
             Popup(_popupRoot, $"상점 · 보유 코인 {coin}", new Vector2(1240, 880), out RectTransform body);
             float x = 0;
-            foreach (var (type, label) in new (string, string)[] { (null, "전체"), (Data.ItemTypes.Skin, "스킨"), (Data.ItemTypes.Theme, "테마"), (Data.ItemTypes.Hint, "힌트") })
+            foreach (var (type, label) in new (string, string)[] { (null, "전체"), (Data.ItemTypes.Skin, "스킨"), (Data.ItemTypes.Theme, "테마") })
             {
                 string t = type;
                 bool active = t == filter;
@@ -683,7 +700,7 @@ namespace Executor.Play
                 var item = it;
                 var row = Panel(body, "Item", new Color32(0x16, 0x1e, 0x2a, 0xff), Line);
                 Place(row, new Vector2(0, 1), new Vector2(0, y), new Vector2(1160, 92), new Vector2(0, 1));
-                string owned = Data.ItemTypes.IsUnique(it.ItemType) ? (it.Owned ? " · 보유 중" : "") : (it.Quantity > 0 ? $" · {it.Quantity}개 보유" : "");
+                string owned = it.Owned ? " · 보유 중" : "";
                 var name = Label(row, $"[{Data.ItemTypes.Label(it.ItemType)}] {it.Name}   {it.Price} 코인{owned}", 24, TextAnchor.UpperLeft, bold: true);
                 Stretch(name.rectTransform, 14);
                 name.rectTransform.offsetMax = new Vector2(-300, -12);
@@ -692,20 +709,10 @@ namespace Executor.Play
                 desc.rectTransform.offsetMax = new Vector2(-300, -14);
                 desc.horizontalOverflow = HorizontalWrapMode.Overflow;
 
-                if (Data.ItemTypes.IsUnique(it.ItemType))
-                {
-                    var buy = Button(row, it.Owned ? "보유 중" : "구매", () => { if (!item.Owned) onBuy(item, 1); }, 24,
-                        it.Owned ? new Color32(0x22, 0x26, 0x2e, 0xff) : (Color32?)null);
-                    buy.interactable = !it.Owned;
-                    Place(buy, new Vector2(1, 0.5f), new Vector2(-12, 0), new Vector2(170, 64), new Vector2(1, 0.5f));
-                }
-                else
-                {
-                    var buy5 = Button(row, "5개", () => onBuy(item, 5), 22);
-                    Place(buy5, new Vector2(1, 0.5f), new Vector2(-12, 0), new Vector2(120, 64), new Vector2(1, 0.5f));
-                    var buy1 = Button(row, "1개", () => onBuy(item, 1), 22);
-                    Place(buy1, new Vector2(1, 0.5f), new Vector2(-144, 0), new Vector2(120, 64), new Vector2(1, 0.5f));
-                }
+                var buy = Button(row, it.Owned ? "보유 중" : "구매", () => { if (!item.Owned) onBuy(item); }, 24,
+                    it.Owned ? new Color32(0x22, 0x26, 0x2e, 0xff) : (Color32?)null);
+                buy.interactable = !it.Owned;
+                Place(buy, new Vector2(1, 0.5f), new Vector2(-12, 0), new Vector2(170, 64), new Vector2(1, 0.5f));
                 y -= 102;
             }
             if (items.Count > 7)
@@ -733,8 +740,7 @@ namespace Executor.Play
         {
             Popup(_popupRoot, "프로필", new Vector2(1240, 920), out RectTransform body);
             string record = stats == null ? "" : $" · 공식 스테이지 클리어 {stats.ClearedStageCount} · 별 {stats.TotalStars}";
-            int hints = items.Where(i => i.ItemType == Data.ItemTypes.Hint).Sum(i => i.Quantity);
-            var info = Label(body, $"{p.Email} · 코인 {p.Coin}{record} · 힌트 {hints}개", 22, TextAnchor.UpperLeft, Muted);
+            var info = Label(body, $"{p.Email} · 코인 {p.Coin}{record}", 22, TextAnchor.UpperLeft, Muted);
             Place(info, new Vector2(0, 1), Vector2.zero, new Vector2(1160, 34), new Vector2(0, 1));
 
             // 닉네임
@@ -861,6 +867,104 @@ namespace Executor.Play
             }
         }
 
+        private const int GuidebookColumns = 4, GuidebookRows = 3;
+        /// <summary>도감 한 쪽에 보이는 칸 수</summary>
+        public const int GuidebookPageSize = GuidebookColumns * GuidebookRows;
+
+        /// <summary>
+        /// 도감 팝업. 위에 분류 탭(전체·오류·바이러스·개발 용어)과 해금 수, 가운데 카드 4x3, 아래에 쪽 넘기기.
+        /// 해금한 카드는 이름과 해금 날짜, 누르면 상세. 잠긴 카드는 "???"
+        /// </summary>
+        public void ShowGuidebook(Data.GuidebookListResponse list, string filter, int page, Action<string> onFilter,
+            Action<int> onPage, Action<long> onOpen)
+        {
+            Popup(_popupRoot, $"도감 · 해금 {list.UnlockedCount} / {list.TotalCount}", new Vector2(1240, 880), out RectTransform body);
+            float x = 0;
+            var tabs = new List<(string, string)> { (null, "전체") };
+            tabs.AddRange(Data.GuidebookCategories.All.Select(c => (c, Data.GuidebookCategories.Label(c))));
+            foreach (var (type, label) in tabs)
+            {
+                string t = type;
+                var tab = Button(body, label, () => onFilter(t), 22, t == filter ? (Color?)Line : null);
+                Place(tab, new Vector2(0, 1), new Vector2(x, 0), new Vector2(180, 56), new Vector2(0, 1));
+                x += 190;
+            }
+            if (list.Items.Count == 0)
+            {
+                var empty = Label(body, "아직 등록된 도감 항목이 없습니다.", 28, TextAnchor.MiddleCenter, Muted);
+                Stretch(empty.rectTransform);
+                return;
+            }
+
+            int pages = (list.Items.Count + GuidebookPageSize - 1) / GuidebookPageSize;
+            page = Mathf.Clamp(page, 0, pages - 1);
+            const float cardW = 275, cardH = 170, gap = 20;
+            int i = 0;
+            foreach (var it in list.Items.Skip(page * GuidebookPageSize).Take(GuidebookPageSize))
+            {
+                var item = it;
+                float cx = (i % GuidebookColumns) * (cardW + gap);
+                float cy = -76 - (i / GuidebookColumns) * (cardH + gap);
+                Color color = it.Unlocked ? (Color)new Color32(0x16, 0x1e, 0x2a, 0xff) : new Color32(0x22, 0x26, 0x2e, 0xff);
+                var card = Button(body, "", () => { if (item.Unlocked) onOpen(item.GuidebookId); }, 24, color);
+                card.interactable = it.Unlocked;
+                Place(card, new Vector2(0, 1), new Vector2(cx, cy), new Vector2(cardW, cardH), new Vector2(0, 1));
+                var cat = Label(card.transform, $"{Data.GuidebookCategories.Label(it.Category)} · No.{it.GuidebookId}", 18, TextAnchor.UpperLeft, Muted);
+                Stretch(cat.rectTransform, 14);
+                var title = Label(card.transform, it.Unlocked ? it.Title : "???", 26, TextAnchor.MiddleLeft, it.Unlocked ? TextColor : Muted, bold: true);
+                Stretch(title.rectTransform, 14);
+                var date = Label(card.transform, it.Unlocked && it.UnlockedAt != null ? $"해금 {it.UnlockedAt.Value.ToLocalTime():yyyy.MM.dd}" : "잠김",
+                    18, TextAnchor.LowerLeft, it.Unlocked ? Good : Muted);
+                Stretch(date.rectTransform, 14);
+                i++;
+            }
+
+            if (pages > 1)
+            {
+                var prev = Button(body, "이전", () => onPage(page - 1), 22);
+                prev.interactable = page > 0;
+                Place(prev, new Vector2(0.5f, 0), new Vector2(-200, 0), new Vector2(160, 56), new Vector2(0.5f, 0));
+                var pageLabel = Label(body, $"{page + 1} / {pages}", 24, TextAnchor.MiddleCenter, Muted);
+                Place(pageLabel, new Vector2(0.5f, 0), Vector2.zero, new Vector2(200, 56), new Vector2(0.5f, 0));
+                var next = Button(body, "다음", () => onPage(page + 1), 22);
+                next.interactable = page < pages - 1;
+                Place(next, new Vector2(0.5f, 0), new Vector2(200, 0), new Vector2(160, 56), new Vector2(0.5f, 0));
+            }
+        }
+
+        /// <summary>도감 상세 팝업. 왼쪽 그림(없으면 상자), 오른쪽 분류·이름·처음 등장·해금일, 아래 설명</summary>
+        /// <param name="stageLabel">처음 등장하는 스테이지 이름 (모르면 null)</param>
+        public void ShowGuidebookDetail(Data.GuidebookDetail d, string stageLabel, Sprite image)
+        {
+            Popup(_popupRoot, d.Title, new Vector2(1240, 820), out RectTransform body);
+            var frame = Panel(body, "Image", new Color32(0x16, 0x22, 0x32, 0xff), Muted);
+            Place(frame, new Vector2(0, 1), Vector2.zero, new Vector2(360, 360), new Vector2(0, 1));
+            if (image != null)
+            {
+                var img = new GameObject("Sprite", typeof(RectTransform), typeof(Image)).GetComponent<Image>();
+                img.transform.SetParent(frame, false);
+                img.sprite = image;
+                img.preserveAspect = true;
+                Stretch(img.rectTransform, 8);
+            }
+            else
+            {
+                var none = Label(frame, "이미지 없음", 24, TextAnchor.MiddleCenter, Muted);
+                Stretch(none.rectTransform);
+            }
+            var info = new List<string> { $"분류: {Data.GuidebookCategories.Label(d.Category)}", $"번호: No.{d.GuidebookId}" };
+            if (!string.IsNullOrEmpty(stageLabel)) info.Add($"처음 등장: {stageLabel}");
+            if (d.UnlockedAt != null) info.Add($"해금: {d.UnlockedAt.Value.ToLocalTime():yyyy.MM.dd HH:mm}");
+            var meta = Label(body, string.Join("\n", info), 24, TextAnchor.UpperLeft, Muted);
+            meta.lineSpacing = 1.4f;
+            Place(meta, new Vector2(0, 1), new Vector2(400, 0), new Vector2(760, 360), new Vector2(0, 1));
+            var comment = Label(body, d.Comment ?? "", 26, TextAnchor.UpperLeft);
+            comment.lineSpacing = 1.3f;
+            comment.verticalOverflow = VerticalWrapMode.Truncate;
+            Stretch(comment.rectTransform);
+            comment.rectTransform.offsetMax = new Vector2(0, -390);
+        }
+
         /// <summary>공지 목록 팝업. 항목을 누르면 onOpen(공지 ID)</summary>
         public void ShowNotices(IReadOnlyList<Data.NoticeSummary> notices, Action<long> onOpen)
         {
@@ -916,7 +1020,9 @@ namespace Executor.Play
         }
 
         /// <summary>설정 팝업. 소리 설정은 아직 값만 저장한다</summary>
-        public void ShowSettings(string account, bool loggedIn, Action logout)
+        /// <param name="bugReport">버그 제보 (null이면 버튼 없음)</param>
+        /// <param name="myReports">내 신고 목록 (null이면 버튼 없음)</param>
+        public void ShowSettings(string account, bool loggedIn, Action logout, Action bugReport = null, Action myReports = null)
         {
             Popup(_popupRoot, "설정", new Vector2(820, 560), out RectTransform body);
             float y = 0;
@@ -936,6 +1042,16 @@ namespace Executor.Play
                 var b = Button(body, "로그아웃", null, 26);
                 Place(b, new Vector2(0, 0), Vector2.zero, new Vector2(220, 64), new Vector2(0, 0));
                 b.onClick.AddListener(() => { ClosePopups(); logout?.Invoke(); });
+            }
+            if (loggedIn && myReports != null)
+            {
+                var mine = Button(body, "내 신고", () => { ClosePopups(); myReports(); }, 24);
+                Place(mine, new Vector2(1, 0), Vector2.zero, new Vector2(200, 64), new Vector2(1, 0));
+            }
+            if (loggedIn && bugReport != null)
+            {
+                var bug = Button(body, "버그 제보", () => { ClosePopups(); bugReport(); }, 24);
+                Place(bug, new Vector2(1, 0), new Vector2(-216, 0), new Vector2(200, 64), new Vector2(1, 0));
             }
         }
 

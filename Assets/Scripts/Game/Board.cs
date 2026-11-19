@@ -208,8 +208,43 @@ namespace Executor.Game
         /// <summary>모은 숨겨진 요소 수 (워프해도 유지)</summary>
         public int HiddenCollected => _objects.Count(o => o.Type == MapObjectTypes.Hidden && o.IsRemoved);
 
-        /// <summary>숨겨진 요소를 모두 모았는지 (별 3). 맵에 없으면 false</summary>
+        /// <summary>숨겨진 요소를 모두 모았는지. 맵에 없으면 false</summary>
         public bool AllHiddenFound => HiddenTotal > 0 && HiddenCollected == HiddenTotal;
+
+        // ---------- 별 3 조건 (맵의 stars.bonus) ----------
+
+        public const string BonusHidden = "hidden", BonusHack = "hack";
+
+        /// <summary>별 3 조건 종류: hidden(숨겨진 요소 모두 찾기, 기본) / hack(지정한 컴퓨터를 시간 안에 복구)</summary>
+        public string BonusType => Data.Stars?.Bonus?.Type == BonusHack ? BonusHack : BonusHidden;
+
+        /// <summary>hack: 시간을 재는 컴퓨터 (없는 id면 null)</summary>
+        public BoardObject BonusComputer => BonusType != BonusHack ? null
+            : _objects.FirstOrDefault(o => o.Type == MapObjectTypes.Computer && o.Id == Data.Stars.Bonus.Target);
+
+        /// <summary>hack: 목표 시간(초)</summary>
+        public float BonusSeconds => Math.Max(0f, Data.Stars?.Bonus?.Seconds ?? 0f);
+
+        /// <summary>별 3을 받을 수 있는 맵인지 (hidden: 숨겨진 요소가 있음, hack: 컴퓨터와 목표 시간이 있음)</summary>
+        public bool BonusAvailable => BonusType == BonusHack ? BonusComputer != null && BonusSeconds > 0 : HiddenTotal > 0;
+
+        /// <summary>별 3 조건을 채웠는지 (클리어 여부는 따로)</summary>
+        public bool BonusAchieved => BonusType == BonusHack
+            ? BonusAvailable && BestHackSeconds(BonusComputer.Id) is float best && best <= BonusSeconds
+            : AllHiddenFound;
+
+        /// <summary>컴퓨터별 가장 빨리 복구한 시간(초). 워프해도 유지 (한 번이라도 해낸 기록)</summary>
+        private readonly Dictionary<string, float> _bestHack = new Dictionary<string, float>();
+
+        public float? BestHackSeconds(string computerId) =>
+            computerId != null && _bestHack.TryGetValue(computerId, out float s) ? s : (float?)null;
+
+        /// <summary>해킹에 성공한 시간을 기록한다 (더 빠른 기록만 남는다)</summary>
+        public void RecordHackTime(BoardObject computer, float seconds)
+        {
+            if (computer == null || seconds < 0) return;
+            if (!_bestHack.TryGetValue(computer.Id, out float best) || seconds < best) _bestHack[computer.Id] = seconds;
+        }
 
         /// <summary>만난 이상 개체의 도감 ID (결과 제출의 encounteredGuidebookIds, 워프해도 유지)</summary>
         public IReadOnlyCollection<long> EncounteredGuidebookIds => _objects
@@ -450,7 +485,8 @@ namespace Executor.Game
         {
             Cleared = IsCleared,
             Moves = IsCleared ? Math.Max(1, RecordMoves) : (int?)null,
-            HiddenFound = IsCleared && AllHiddenFound,
+            // 서버 필드 이름은 hiddenFound지만 뜻은 "별 3 조건 달성" (맵의 stars.bonus에 따라 숨겨진 요소 또는 컴퓨터 시간)
+            HiddenFound = IsCleared && BonusAchieved,
             EncounteredGuidebookIds = EncounteredGuidebookIds.Concat(encounteredGuidebookIds ?? Enumerable.Empty<long>())
                 .Distinct().ToList(),
             UnstableCount = UnstableCount,

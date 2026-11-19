@@ -56,7 +56,7 @@ namespace Executor.Play
                         Best = s.BestMoves ?? 0,
                         Stars = s.Stars,
                     });
-                    if (s.Unlocked) loads.Add(LoadMapAsync(stage));
+                    if (s.Unlocked) loads.Add(TryLoadMapAsync(stage));
                 }
                 chapters.Add(chapter);
             }
@@ -64,8 +64,25 @@ namespace Executor.Play
             return chapters;
         }
 
+        /// <summary>
+        /// 목록을 불러올 때 쓰는 맵 받기. 맵 하나의 형식이 잘못돼도 나머지 스테이지는 불러오도록 그 맵만 비워 둔다
+        /// (그 스테이지를 누르면 LoadMapAsync가 다시 시도하고 이유를 보여 준다)
+        /// </summary>
+        private static async Task TryLoadMapAsync(StageInfo stage)
+        {
+            try
+            {
+                await LoadMapAsync(stage);
+            }
+            catch (Newtonsoft.Json.JsonException e)
+            {
+                UnityEngine.Debug.LogError($"[ServerCatalog] 스테이지 {stage.StageId} '{stage.Title}'의 맵 데이터 형식이 잘못되었습니다: {e.Message}");
+            }
+        }
+
         /// <summary>스테이지 상세에서 맵 데이터를 받아 stage.Map에 넣는다 (이미 있으면 그대로)</summary>
         /// <exception cref="ApiException">403 STAGE_LOCKED, 네트워크 오류 등</exception>
+        /// <exception cref="Newtonsoft.Json.JsonException">맵 데이터 형식이 잘못됨 (관리자 웹에서 고쳐야 함)</exception>
         public static async Task LoadMapAsync(StageInfo stage)
         {
             if (stage.Map != null || stage.StageId == null) return;

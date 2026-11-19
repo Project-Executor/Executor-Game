@@ -29,7 +29,36 @@ namespace Executor.Network
 
         public static T Deserialize<T>(string json) => JsonConvert.DeserializeObject<T>(json, Settings);
 
-        /// <summary>JSON 조각(mapData, 객체 힌트 등)을 C# 클래스로 바꾼다. null이면 default</summary>
+        /// <summary>JSON 조각(mapData 등)을 C# 클래스로 바꾼다. null이면 default</summary>
         public static T Convert<T>(JToken token) => token == null ? default : token.ToObject<T>(Serializer);
+    }
+
+    /// <summary>
+    /// 배열 자리에 항목 하나가 객체로 와도 받아 준다 ({...} -> [{...}]). null이면 빈 목록.
+    /// 맵 JSON을 손으로 고치다 대괄호를 빠뜨려도 게임이 멈추지 않게 (예: "guides": { "on": "start", ... })
+    /// </summary>
+    public class SingleOrArrayConverter<T> : JsonConverter
+    {
+        public override bool CanConvert(System.Type objectType) => objectType == typeof(System.Collections.Generic.List<T>);
+
+        public override object ReadJson(JsonReader reader, System.Type objectType, object existingValue, JsonSerializer serializer)
+        {
+            JToken token = JToken.Load(reader);
+            var list = new System.Collections.Generic.List<T>();
+            if (token.Type == JTokenType.Array)
+            {
+                foreach (JToken item in token) list.Add(item.ToObject<T>(serializer));
+            }
+            else if (token.Type == JTokenType.Object)
+            {
+                list.Add(token.ToObject<T>(serializer));
+            }
+            return list;
+        }
+
+        public override bool CanWrite => false;
+
+        public override void WriteJson(JsonWriter writer, object value, JsonSerializer serializer) =>
+            throw new System.NotSupportedException();
     }
 }

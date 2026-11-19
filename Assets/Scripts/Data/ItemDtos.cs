@@ -7,7 +7,6 @@ namespace Executor.Data
     {
         public const string Skin = "SKIN";
         public const string Theme = "THEME";
-        public const string Hint = "HINT";
 
         public static string Label(string type)
         {
@@ -15,13 +14,10 @@ namespace Executor.Data
             {
                 case Skin: return "스킨";
                 case Theme: return "테마";
-                case Hint: return "힌트";
                 default: return type;
             }
         }
 
-        /// <summary>스킨·테마는 하나만 가질 수 있다 (힌트는 여러 개)</summary>
-        public static bool IsUnique(string type) => type == Skin || type == Theme;
     }
 
     /// <summary>상점 아이템 (판매 중인 것만, 내 보유 여부 포함)</summary>
@@ -35,14 +31,8 @@ namespace Executor.Data
         public string ItemType { get; set; }
         public int Price { get; set; }
         public bool Owned { get; set; }
-        /// <summary>보유 수량 (힌트는 여러 개)</summary>
+        /// <summary>보유 수량 (0 또는 1)</summary>
         public int Quantity { get; set; }
-    }
-
-    /// <summary>POST /items/{id}/purchase 본문. 스킨·테마는 무시하고 1개, 힌트는 1~99</summary>
-    public class PurchaseRequest
-    {
-        public int Quantity { get; set; } = 1;
     }
 
     public class PurchaseResponse
@@ -54,7 +44,7 @@ namespace Executor.Data
         public int RemainingCoin { get; set; }
     }
 
-    /// <summary>내 보유 아이템 (GET /users/me/items). 다 쓴 힌트는 빠진다</summary>
+    /// <summary>내 보유 아이템 (GET /users/me/items)</summary>
     public class MyItem
     {
         public long ItemId { get; set; }

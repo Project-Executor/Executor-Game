@@ -77,6 +77,20 @@ namespace Executor.Play
 
         public bool HasPopup => _popupRoot.childCount > 0;
 
+        /// <summary>팝업을 붙이는 자리 (친구·메시지 팝업이 쓴다)</summary>
+        public Transform PopupRoot => _popupRoot;
+
+        private Button _chatButton;
+
+        /// <summary>채팅 버튼에 안 읽은 메시지 + 받은 친구 요청 수를 표시한다</summary>
+        public void SetChatCount(int count)
+        {
+            if (_chatButton == null) return;
+            SetButtonText(_chatButton, count > 0 ? $"채팅 {count}" : "채팅");
+            var label = _chatButton.GetComponentInChildren<Text>();
+            if (label != null) label.color = count > 0 ? Warn : TextColor;
+        }
+
         public void Build()
         {
             _root = Canvas(transform, "GameCanvas", 10);
@@ -307,9 +321,68 @@ namespace Executor.Play
         public void HideNarration() => _narration.SetActive(false);
 
         // ---------------- 결과 ----------------
+        private Button _resultRank;
+
+        /// <summary>결과 화면 오른쪽 위 순위 버튼. label이 null이면 숨긴다</summary>
+        public void SetResultRank(string label, Action onClick)
+        {
+            _resultRank.gameObject.SetActive(label != null);
+            if (label == null) return;
+            _resultRank.GetComponentInChildren<Text>().text = label;
+            _resultRank.onClick.RemoveAllListeners();
+            _resultRank.onClick.AddListener(() => onClick?.Invoke());
+        }
+
+        /// <summary>
+        /// 순위 팝업. 위에 전체·친구 탭, 아래에 순위 줄 (최대 10개, 내 줄은 강조). 내가 10위 밖이면 맨 아래에 내 순위
+        /// </summary>
+        public void ShowRanking(string title, Data.RankingResponse res, bool friends, long myUserId, Action<bool> onScope)
+        {
+            ClosePopups();
+            Popup(_popupRoot, title, new Vector2(900, 900), out RectTransform body);
+            float x = 0;
+            foreach (var (f, label) in new[] { (false, "전체"), (true, "친구") })
+            {
+                bool scope = f;
+                var tab = Button(body, label, () => onScope(scope), 22, scope == friends ? (Color?)Line : null);
+                Place(tab, new Vector2(0, 1), new Vector2(x, 0), new Vector2(160, 56), new Vector2(0, 1));
+                x += 170;
+            }
+            if (res.Rankings.Count == 0)
+            {
+                var empty = Label(body, friends ? "나와 친구 중 클리어한 사람이 없습니다." : "아직 클리어한 사람이 없습니다.", 26,
+                    TextAnchor.MiddleCenter, Muted);
+                Stretch(empty.rectTransform);
+                return;
+            }
+            float y = -76;
+            bool meShown = false;
+            foreach (var r in res.Rankings.Take(10))
+            {
+                bool me = r.User?.UserId == myUserId;
+                meShown |= me;
+                var row = Panel(body, "Rank", me ? (Color)new Color32(0x1c, 0x3a, 0x52, 0xff) : new Color32(0x16, 0x1e, 0x2a, 0xff), me ? Line : (Color?)null);
+                Place(row, new Vector2(0, 1), new Vector2(0, y), new Vector2(820, 56), new Vector2(0, 1));
+                var rank = Label(row, $"{r.Rank}위", 24, TextAnchor.MiddleLeft, r.Rank <= 3 ? Warn : TextColor, bold: true);
+                Stretch(rank.rectTransform, 16);
+                var name = Label(row, (r.User?.Nickname ?? "(닉네임 없음)") + (me ? "  (나)" : ""), 24, TextAnchor.MiddleLeft);
+                Stretch(name.rectTransform, 16);
+                name.rectTransform.offsetMin = new Vector2(120, 0);
+                var moves = Label(row, $"{r.BestMoves}턴", 24, TextAnchor.MiddleRight, Muted);
+                Stretch(moves.rectTransform, 16);
+                y -= 62;
+            }
+            string mine = res.Me == null ? "아직 이 스테이지를 클리어하지 않았습니다."
+                        : meShown ? $"내 기록 {res.Me.BestMoves}턴 · {res.Me.Rank}위"
+                        : $"내 순위 {res.Me.Rank}위 · {res.Me.BestMoves}턴";
+            var foot = Label(body, mine + "\n같은 턴이면 먼저 클리어한 사람이 앞입니다.", 22, TextAnchor.LowerLeft, Muted);
+            Stretch(foot.rectTransform);
+        }
+
         public void ShowResult(string text, bool success, IEnumerable<(string label, Action onClick)> buttons)
         {
             _result.SetActive(true);
+            _resultRank.gameObject.SetActive(false);
             _resultText.text = text;
             _resultText.color = success ? TextColor : Bad;
             Clear(_resultButtons);
@@ -416,6 +489,7 @@ namespace Executor.Play
             var settings = Button(_hud.transform, "설정", () => OnSettings?.Invoke(), 22);
             Place(settings, new Vector2(1, 1), new Vector2(-48, -48), new Vector2(110, 60), new Vector2(1, 1));
             var chat = Button(_hud.transform, "채팅", () => OnChat?.Invoke(), 22);
+            _chatButton = chat;
             Place(chat, new Vector2(1, 1), new Vector2(-182, -48), new Vector2(110, 60), new Vector2(1, 1));
             _collect = Button(_hud.transform, "수집 0/0", () => OnCollect?.Invoke(), 22);
             Place(_collect, new Vector2(1, 1), new Vector2(-316, -48), new Vector2(170, 60), new Vector2(1, 1));
@@ -526,6 +600,15 @@ namespace Executor.Play
         public void ClearHackInput()
         {
             _hackInput.text = "";
+            FocusHackInput();
+        }
+
+        /// <summary>해킹 입력칸에 커서가 있는지</summary>
+        public bool HackInputFocused => _hackInput.isFocused;
+
+        /// <summary>해킹 입력칸에 포커스를 준다 (Enter로 포커스가 빠졌을 때 다음 프레임에 다시 잡는 용도)</summary>
+        public void FocusHackInput()
+        {
             _hackInput.Select();
             _hackInput.ActivateInputField();
         }
@@ -589,6 +672,9 @@ namespace Executor.Play
             _result = panel.gameObject;
             _resultText = Label(panel, "", 36, TextAnchor.MiddleCenter, bold: true);
             Place(_resultText, new Vector2(0.5f, 1), new Vector2(0, -40), new Vector2(820, 260), new Vector2(0.5f, 1));
+            _resultRank = Button(panel, "순위", null, 22);
+            Place(_resultRank, new Vector2(1, 1), new Vector2(-20, -20), new Vector2(220, 56), new Vector2(1, 1));
+            _resultRank.gameObject.SetActive(false);
             _resultButtons = new GameObject("Buttons", typeof(RectTransform)).GetComponent<RectTransform>();
             _resultButtons.SetParent(panel, false);
             Place(_resultButtons, new Vector2(0.5f, 0), new Vector2(-395, 60), new Vector2(790, 72), new Vector2(0, 0));

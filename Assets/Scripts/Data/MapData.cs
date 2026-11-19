@@ -17,6 +17,7 @@ namespace Executor.Data
         public GridPoint Player { get; set; }
         public List<MapObjectData> Objects { get; set; } = new List<MapObjectData>();
         public Dictionary<string, DialogueData> Dialogues { get; set; } = new Dictionary<string, DialogueData>();
+        [Newtonsoft.Json.JsonConverter(typeof(SingleOrArrayConverter<GuideData>))]
         public List<GuideData> Guides { get; set; } = new List<GuideData>();
         public StoryData Story { get; set; } = new StoryData();
         /// <summary>별 조건 설정. 없으면 기본값 (docs/map-data.md 3.4)</summary>
@@ -73,6 +74,20 @@ namespace Executor.Data
     {
         /// <summary>별 2: 허용하는 불안정 체크포인트 수 (출구 포함). 기본 0</summary>
         public int MaxUnstable { get; set; }
+        /// <summary>별 3 조건. 없으면 숨겨진 요소 모두 찾기 (docs/map-data.md 3.4)</summary>
+        public StarBonus Bonus { get; set; }
+    }
+
+    /// <summary>
+    /// 별 3 조건. Type: hidden (숨겨진 요소 모두 찾기, 기본) / hack (Target 컴퓨터를 Seconds초 안에 복구)
+    /// </summary>
+    public class StarBonus
+    {
+        public string Type { get; set; }
+        /// <summary>hack: 컴퓨터 오브젝트 id</summary>
+        public string Target { get; set; }
+        /// <summary>hack: 이 시간(초) 안에 복구하면 별 3</summary>
+        public float? Seconds { get; set; }
     }
 
     /// <summary>구간 보기에서 화면에 보일 칸 수. 비운 값은 자동 (둘 다 비우면 가장 넓은 구간에 맞춤)</summary>
@@ -157,8 +172,10 @@ namespace Executor.Data
     public class StoryData
     {
         /// <summary>플레이 전</summary>
+        [Newtonsoft.Json.JsonConverter(typeof(SingleOrArrayConverter<StoryStep>))]
         public List<StoryStep> Intro { get; set; } = new List<StoryStep>();
         /// <summary>클리어 후 결과 화면 전</summary>
+        [Newtonsoft.Json.JsonConverter(typeof(SingleOrArrayConverter<StoryStep>))]
         public List<StoryStep> Outro { get; set; } = new List<StoryStep>();
     }
 

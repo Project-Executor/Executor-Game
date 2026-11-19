@@ -98,11 +98,7 @@ namespace Executor.Data
         public UserSummary Creator { get; set; }
         public int ParMoves { get; set; }
         public int RewardCoin { get; set; }
-        /// <summary>받을 수 있는 힌트 개수 (힌트 내용은 힌트 API로만 받는다)</summary>
-        public int HintCount { get; set; }
-        /// <summary>이미 본 힌트 번호 (오름차순). 이 번호는 다시 받아도 아이템이 빠지지 않는다</summary>
-        public List<int> ViewedHintIndexes { get; set; } = new List<int>();
-        /// <summary>맵 데이터 JSON (hints는 빠져 있음). 구조가 정해지면 GetMapData&lt;T&gt;()로 바꿔 쓴다</summary>
+        /// <summary>맵 데이터 JSON. MapData.From()이나 GetMapData&lt;T&gt;()로 바꿔 쓴다</summary>
         public JObject MapData { get; set; }
         public MyRecord MyRecord { get; set; }
 
@@ -191,28 +187,5 @@ namespace Executor.Data
     {
         public long Rank { get; set; }
         public int BestMoves { get; set; }
-    }
-
-    public class HintRequest
-    {
-        public int HintIndex { get; set; }
-    }
-
-    /// <summary>POST /stages/{stageId}/hint</summary>
-    public class HintResponse
-    {
-        public int HintIndex { get; set; }
-        /// <summary>map_data.hints[hintIndex] 그대로. 보통 문자열이지만 객체일 수도 있다</summary>
-        public JToken Content { get; set; }
-        /// <summary>이번 요청으로 힌트 아이템을 썼는지. 이미 본 힌트면 false</summary>
-        public bool Charged { get; set; }
-        /// <summary>남은 힌트 아이템 수 (여러 종류면 합계)</summary>
-        public long RemainingHintItems { get; set; }
-
-        /// <summary>힌트가 문자열이면 그 값, 객체면 null</summary>
-        public string ContentText => Content?.Type == JTokenType.String ? Content.Value<string>() : null;
-
-        /// <summary>객체 힌트를 원하는 C# 클래스로 바꾼다</summary>
-        public T GetContent<T>() => Json.Convert<T>(Content);
     }
 }

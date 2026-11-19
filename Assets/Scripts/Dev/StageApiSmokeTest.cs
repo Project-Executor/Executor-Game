@@ -12,7 +12,7 @@ namespace Executor.Dev
     /// 스테이지·사용자 맵 API 점검용. 빈 GameObject에 붙이고 Play를 누르면 Console에 결과가 찍힌다.
     /// <para>
     /// zz-unity-stage-...@example.com 테스트 계정을 만들고, 그 계정으로 사용자 맵을 만들어
-    /// 상세 조회 -> 결과 제출 -> 순위 -> 힌트 -> 공개 전환 -> 수정 -> 삭제를 확인한 뒤 탈퇴로 정리한다.
+    /// 상세 조회 -> 결과 제출 -> 순위 -> 공개 전환 -> 수정 -> 삭제를 확인한 뒤 탈퇴로 정리한다.
     /// (운영 DB에는 아직 공식 스테이지가 없어서 플레이 확인은 사용자 맵으로 한다)
     /// </para>
     /// 실행하면 이 PC에 저장된 로그인 토큰은 지워진다. 배포 서버 접속이 안 되면 VPN을 켤 것.
@@ -82,8 +82,7 @@ namespace Executor.Dev
                 // ---------- 사용자 맵 저장 ----------
                 var mapData = JObject.Parse(@"{
                     ""width"": 7, ""height"": 5,
-                    ""tiles"": [[0,0,1],[1,0,0]],
-                    ""hints"": [""열쇠는 오른쪽 벽 너머에 있다."", { ""text"": ""봇"", ""x"": 2 }]
+                    ""tiles"": [[0,0,1],[1,0,0]]
                 }");
                 var created = await CustomStageApi.CreateAsync("zz-유니티 점검 맵", 25, mapData);
                 long mapId = created.StageId;
@@ -100,16 +99,10 @@ namespace Executor.Dev
                 Check("상세: 사용자 맵, 제작자 = 나", !detail.IsOfficial && detail.Creator.UserId == myId
                                                       && detail.StageType == StageType.Normal,
                     $"type={detail.StageType}");
-                Check("상세: hints는 빠지고 개수만", detail.HintCount == 2 && !detail.MapData.ContainsKey("hints")
-                                                   && detail.MapData.Value<int>("width") == 7);
-                Check("상세: 열람한 힌트 없음, 기록 없음",
-                    detail.ViewedHintIndexes.Count == 0 && !detail.MyRecord.Cleared && detail.MyRecord.Stars.Max == 3);
+                Check("상세: 맵 데이터 그대로", detail.MapData.Value<int>("width") == 7);
+                Check("상세: 기록 없음", !detail.MyRecord.Cleared && detail.MyRecord.Stars.Max == 3);
                 var typed = detail.GetMapData<TestMap>();
                 Check("mapData를 C# 클래스로 변환", typed.Width == 7 && typed.Height == 5);
-
-                // ---------- 힌트 (테스트 계정은 힌트 아이템이 없음) ----------
-                await ExpectError("힌트 아이템 없음 -> 409", "NOT_ENOUGH_ITEM", () => StageApi.UseHintAsync(mapId, 0));
-                await ExpectError("범위 밖 힌트 번호 -> 400", "INVALID_INPUT", () => StageApi.UseHintAsync(mapId, 5));
 
                 // ---------- 결과 제출 ----------
                 var fail = await StageApi.SubmitFailAsync(mapId);
@@ -156,10 +149,10 @@ namespace Executor.Dev
 
                 await CustomStageApi.SetVisibilityAsync(mapId, false);
                 var updated = await CustomStageApi.UpdateAsync(mapId, "zz-수정된 맵", 30,
-                    JObject.Parse(@"{ ""width"": 3, ""hints"": [""새 힌트""] }"));
+                    JObject.Parse(@"{ ""width"": 3 }"));
                 detail = await StageApi.GetStageAsync(mapId);
                 Check("비공개 후 수정 -> 기록 초기화",
-                    !updated.Verified && detail.Title == "zz-수정된 맵" && detail.HintCount == 1
+                    !updated.Verified && detail.Title == "zz-수정된 맵" && detail.MapData.Value<int>("width") == 3
                     && !detail.MyRecord.Cleared && detail.MyRecord.PlayCount == 0);
 
                 await CustomStageApi.DeleteAsync(mapId);

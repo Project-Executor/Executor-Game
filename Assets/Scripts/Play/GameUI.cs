@@ -438,11 +438,19 @@ namespace Executor.Play
             Stretch(_toastText.rectTransform, 20);
         }
 
+        /// <summary>대화 중 게임 화면을 덮는 검정 판의 불투명도 (0 투명 ~ 1 검정)</summary>
+        private const float DialogueDim = 0.55f;
+
         private void BuildDialogue()
         {
             _dialogue = new GameObject("Dialogue", typeof(RectTransform));
             _dialogue.transform.SetParent(_root, false);
             Stretch((RectTransform)_dialogue.transform);
+
+            // 대화 중에는 뒤의 게임 화면을 어둡게 (일러스트·대화창보다 뒤, 클릭은 그대로 통과)
+            var dim = Panel(_dialogue.transform, "Dim", new Color(0, 0, 0, DialogueDim));
+            Stretch(dim);
+            dim.GetComponent<Image>().raycastTarget = false;
 
             var portraitRoot = new GameObject("Portrait", typeof(RectTransform)).GetComponent<RectTransform>();
             portraitRoot.SetParent(_dialogue.transform, false);

@@ -188,7 +188,7 @@ namespace Executor.Play
         }
 
         // ================= 메인 화면 =================
-        public Action OnProfile, OnMail, OnShop, OnNotice, OnStages, OnMainBack;
+        public Action OnProfile, OnMail, OnShop, OnNotice, OnGuidebook, OnStages, OnMainBack;
 
         public void ShowMain(string nickname, string coin)
         {
@@ -216,11 +216,12 @@ namespace Executor.Play
             _profileCoin.rectTransform.offsetMax = new Vector2(-28, -16);
             SettingsButton(screen, () => OnSettings?.Invoke());
 
-            // 왼쪽 줄: 우편, 상점, 공지 (설정 버튼과 같은 120x120)
+            // 왼쪽 줄: 우편, 상점, 공지, 도감 (설정 버튼과 같은 120x120)
             float y = -(Margin + 120 + Gap);
             foreach (var (label, action) in new (string, Action)[]
                      {
-                         ("우편", () => OnMail?.Invoke()), ("상점", () => OnShop?.Invoke()), ("공지", () => OnNotice?.Invoke())
+                         ("우편", () => OnMail?.Invoke()), ("상점", () => OnShop?.Invoke()), ("공지", () => OnNotice?.Invoke()),
+                         ("도감", () => OnGuidebook?.Invoke())
                      })
             {
                 var b = Button(screen, label, action, 26);
@@ -859,6 +860,104 @@ namespace Executor.Play
                 var claim = Button(body, "받기", () => onClaim(), 28);
                 Place(claim, new Vector2(1, 0), Vector2.zero, new Vector2(240, 72), new Vector2(1, 0));
             }
+        }
+
+        private const int GuidebookColumns = 4, GuidebookRows = 3;
+        /// <summary>도감 한 쪽에 보이는 칸 수</summary>
+        public const int GuidebookPageSize = GuidebookColumns * GuidebookRows;
+
+        /// <summary>
+        /// 도감 팝업. 위에 분류 탭(전체·오류·바이러스·개발 용어)과 해금 수, 가운데 카드 4x3, 아래에 쪽 넘기기.
+        /// 해금한 카드는 이름과 해금 날짜, 누르면 상세. 잠긴 카드는 "???"
+        /// </summary>
+        public void ShowGuidebook(Data.GuidebookListResponse list, string filter, int page, Action<string> onFilter,
+            Action<int> onPage, Action<long> onOpen)
+        {
+            Popup(_popupRoot, $"도감 · 해금 {list.UnlockedCount} / {list.TotalCount}", new Vector2(1240, 880), out RectTransform body);
+            float x = 0;
+            var tabs = new List<(string, string)> { (null, "전체") };
+            tabs.AddRange(Data.GuidebookCategories.All.Select(c => (c, Data.GuidebookCategories.Label(c))));
+            foreach (var (type, label) in tabs)
+            {
+                string t = type;
+                var tab = Button(body, label, () => onFilter(t), 22, t == filter ? (Color?)Line : null);
+                Place(tab, new Vector2(0, 1), new Vector2(x, 0), new Vector2(180, 56), new Vector2(0, 1));
+                x += 190;
+            }
+            if (list.Items.Count == 0)
+            {
+                var empty = Label(body, "아직 등록된 도감 항목이 없습니다.", 28, TextAnchor.MiddleCenter, Muted);
+                Stretch(empty.rectTransform);
+                return;
+            }
+
+            int pages = (list.Items.Count + GuidebookPageSize - 1) / GuidebookPageSize;
+            page = Mathf.Clamp(page, 0, pages - 1);
+            const float cardW = 275, cardH = 170, gap = 20;
+            int i = 0;
+            foreach (var it in list.Items.Skip(page * GuidebookPageSize).Take(GuidebookPageSize))
+            {
+                var item = it;
+                float cx = (i % GuidebookColumns) * (cardW + gap);
+                float cy = -76 - (i / GuidebookColumns) * (cardH + gap);
+                Color color = it.Unlocked ? (Color)new Color32(0x16, 0x1e, 0x2a, 0xff) : new Color32(0x22, 0x26, 0x2e, 0xff);
+                var card = Button(body, "", () => { if (item.Unlocked) onOpen(item.GuidebookId); }, 24, color);
+                card.interactable = it.Unlocked;
+                Place(card, new Vector2(0, 1), new Vector2(cx, cy), new Vector2(cardW, cardH), new Vector2(0, 1));
+                var cat = Label(card.transform, $"{Data.GuidebookCategories.Label(it.Category)} · No.{it.GuidebookId}", 18, TextAnchor.UpperLeft, Muted);
+                Stretch(cat.rectTransform, 14);
+                var title = Label(card.transform, it.Unlocked ? it.Title : "???", 26, TextAnchor.MiddleLeft, it.Unlocked ? TextColor : Muted, bold: true);
+                Stretch(title.rectTransform, 14);
+                var date = Label(card.transform, it.Unlocked && it.UnlockedAt != null ? $"해금 {it.UnlockedAt.Value.ToLocalTime():yyyy.MM.dd}" : "잠김",
+                    18, TextAnchor.LowerLeft, it.Unlocked ? Good : Muted);
+                Stretch(date.rectTransform, 14);
+                i++;
+            }
+
+            if (pages > 1)
+            {
+                var prev = Button(body, "이전", () => onPage(page - 1), 22);
+                prev.interactable = page > 0;
+                Place(prev, new Vector2(0.5f, 0), new Vector2(-200, 0), new Vector2(160, 56), new Vector2(0.5f, 0));
+                var pageLabel = Label(body, $"{page + 1} / {pages}", 24, TextAnchor.MiddleCenter, Muted);
+                Place(pageLabel, new Vector2(0.5f, 0), Vector2.zero, new Vector2(200, 56), new Vector2(0.5f, 0));
+                var next = Button(body, "다음", () => onPage(page + 1), 22);
+                next.interactable = page < pages - 1;
+                Place(next, new Vector2(0.5f, 0), new Vector2(200, 0), new Vector2(160, 56), new Vector2(0.5f, 0));
+            }
+        }
+
+        /// <summary>도감 상세 팝업. 왼쪽 그림(없으면 상자), 오른쪽 분류·이름·처음 등장·해금일, 아래 설명</summary>
+        /// <param name="stageLabel">처음 등장하는 스테이지 이름 (모르면 null)</param>
+        public void ShowGuidebookDetail(Data.GuidebookDetail d, string stageLabel, Sprite image)
+        {
+            Popup(_popupRoot, d.Title, new Vector2(1240, 820), out RectTransform body);
+            var frame = Panel(body, "Image", new Color32(0x16, 0x22, 0x32, 0xff), Muted);
+            Place(frame, new Vector2(0, 1), Vector2.zero, new Vector2(360, 360), new Vector2(0, 1));
+            if (image != null)
+            {
+                var img = new GameObject("Sprite", typeof(RectTransform), typeof(Image)).GetComponent<Image>();
+                img.transform.SetParent(frame, false);
+                img.sprite = image;
+                img.preserveAspect = true;
+                Stretch(img.rectTransform, 8);
+            }
+            else
+            {
+                var none = Label(frame, "이미지 없음", 24, TextAnchor.MiddleCenter, Muted);
+                Stretch(none.rectTransform);
+            }
+            var info = new List<string> { $"분류: {Data.GuidebookCategories.Label(d.Category)}", $"번호: No.{d.GuidebookId}" };
+            if (!string.IsNullOrEmpty(stageLabel)) info.Add($"처음 등장: {stageLabel}");
+            if (d.UnlockedAt != null) info.Add($"해금: {d.UnlockedAt.Value.ToLocalTime():yyyy.MM.dd HH:mm}");
+            var meta = Label(body, string.Join("\n", info), 24, TextAnchor.UpperLeft, Muted);
+            meta.lineSpacing = 1.4f;
+            Place(meta, new Vector2(0, 1), new Vector2(400, 0), new Vector2(760, 360), new Vector2(0, 1));
+            var comment = Label(body, d.Comment ?? "", 26, TextAnchor.UpperLeft);
+            comment.lineSpacing = 1.3f;
+            comment.verticalOverflow = VerticalWrapMode.Truncate;
+            Stretch(comment.rectTransform);
+            comment.rectTransform.offsetMax = new Vector2(0, -390);
         }
 
         /// <summary>공지 목록 팝업. 항목을 누르면 onOpen(공지 ID)</summary>

@@ -13,6 +13,7 @@ namespace Executor.Play
     ///     Resources/Pixel/objects/{exit|crate|breakable|key|door|npc|checkpoint|hidden|anomaly|computer|computerRestored}, Resources/Pixel/player,
     ///     인물별 도트는 Resources/Pixel/npcs/{인물ID} (없으면 objects/npc)</item>
     ///   <item>스탠딩 일러스트: Resources/Portraits/{인물ID}/{표정} (예: Portraits/cassia/smile)</item>
+    ///   <item>도감 그림: Resources/Guidebook/{이름} (도감 image 값의 파일 이름, 확장자 제외)</item>
     ///   <item>화면 일러스트: Resources/Illustrations/title (시작 화면 배경), title_logo (시작 화면 로고),
     ///     main (메인 화면 가운데 그림)</item>
     /// </list>
@@ -85,6 +86,20 @@ namespace Executor.Play
             if (characterId == null) return null;
             return Load<Sprite>($"Portraits/{characterId}/{expression}")
                    ?? (expression != "default" ? Load<Sprite>($"Portraits/{characterId}/default") : null);
+        }
+
+        /// <summary>
+        /// 도감 그림. 도감의 image 값(예: "/guide/npe.png", "npe")에서 파일 이름만 떼어 Resources/Guidebook/{이름}을 찾는다.
+        /// 없으면 null (화면은 "이미지 없음" 상자)
+        /// </summary>
+        public static Sprite Guidebook(string image)
+        {
+            if (string.IsNullOrWhiteSpace(image)) return null;
+            string name = image.Trim().Replace('\\', '/');
+            name = name.Substring(name.LastIndexOf('/') + 1);
+            int dot = name.LastIndexOf('.');
+            if (dot > 0) name = name.Substring(0, dot);
+            return name.Length == 0 ? null : Load<Sprite>("Guidebook/" + name);
         }
 
         private enum Shape { Solid, Frame, Cross, Crack, Small, Bar, Diamond }

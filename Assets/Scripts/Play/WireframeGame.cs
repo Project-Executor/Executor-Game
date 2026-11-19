@@ -149,6 +149,7 @@ namespace Executor.Play
             _menu.OnProfile = ShowProfile;
             _menu.OnMail = OpenMailbox;
             _menu.OnNotice = OpenNotices;
+            _menu.OnGuidebook = () => OpenGuidebook(null, 0);
             _menu.OnShop = () => OpenShop(_shopFilter);
             // 메인의 스테이지 버튼: 가장 멀리 진행한 Operation의 스테이지 화면으로
             _menu.OnStages = () =>
@@ -397,6 +398,53 @@ namespace Executor.Play
         }
 
         /// <summary>공지 목록 (로그인 없이 조회). 서버에 닿지 못하면 안내만 한다</summary>
+        // ---------------- 도감 ----------------
+        private async void OpenGuidebook(string category, int page)
+        {
+            if (!PlayerSession.IsOnline)
+            {
+                _menu.ShowMessage("도감", "도감은 로그인하면 볼 수 있습니다.\n(해금 기록이 서버에 저장됩니다)");
+                return;
+            }
+            try
+            {
+                GuidebookListResponse list = await GuidebookApi.GetListAsync(category);
+                if (_mode != Mode.Main) return;
+                _menu.ClosePopups();
+                _menu.ShowGuidebook(list, category, page, c => OpenGuidebook(c, 0), p => OpenGuidebook(category, p), OpenGuidebookItem);
+            }
+            catch (ApiException e)
+            {
+                _menu.ShowMessage("도감", e.IsNetworkError ? "서버에 연결할 수 없어 도감을 불러오지 못했습니다." : e.Message);
+            }
+        }
+
+        private async void OpenGuidebookItem(long guidebookId)
+        {
+            try
+            {
+                GuidebookDetail d = await GuidebookApi.GetDetailAsync(guidebookId);
+                if (_mode != Mode.Main) return;
+                _menu.ShowGuidebookDetail(d, StageLabel(d.StageId), ArtCatalog.Guidebook(d.Image));
+            }
+            catch (ApiException e)
+            {
+                _menu.ShowMessage("도감", e.IsNetworkError ? "서버에 연결할 수 없습니다." : e.Message);
+            }
+        }
+
+        /// <summary>서버 스테이지 ID -> "Operation 이름 3. 스테이지 제목" (모르면 null)</summary>
+        private string StageLabel(long? stageId)
+        {
+            if (stageId == null) return null;
+            foreach (ChapterInfo c in _chapters)
+            {
+                StageInfo s = c.Stages.FirstOrDefault(x => x.StageId == stageId);
+                if (s != null) return $"{c.Title} {s.No}. {s.Title}";
+            }
+            return null;
+        }
+
         private async void OpenNotices()
         {
             try

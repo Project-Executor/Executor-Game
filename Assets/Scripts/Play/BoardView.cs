@@ -37,25 +37,6 @@ namespace Executor.Play
         private readonly Dictionary<Transform, Vector3> _targets = new Dictionary<Transform, Vector3>();
         private Material _material;
 
-        /// <summary>가 보지 않은 칸을 덮는 어둠 [y * Width + x] (docs/map-data.md 3.8)</summary>
-        private SpriteRenderer[] _fog;
-        private static readonly Color FogColor = new Color32(0x0b, 0x0e, 0x13, 0xff);
-        private static Sprite _fogSprite;
-
-        /// <summary>한 칸(1 유닛)을 꽉 채우는 흰 사각형. 색은 SpriteRenderer.color로 칠한다</summary>
-        private static Sprite FogSprite
-        {
-            get
-            {
-                if (_fogSprite != null) return _fogSprite;
-                var tex = new Texture2D(1, 1) { filterMode = FilterMode.Point };
-                tex.SetPixel(0, 0, Color.white);
-                tex.Apply();
-                _fogSprite = Sprite.Create(tex, new Rect(0, 0, 1, 1), new Vector2(0.5f, 0.5f), 1);
-                return _fogSprite;
-            }
-        }
-
         public void Build(Board board)
         {
             Clear();
@@ -81,16 +62,6 @@ namespace Executor.Play
                 _objects[obj] = sr;
             }
             _player = Spawn("player", ArtCatalog.Player, board.PlayerPos, 2).transform;
-
-            // 가 보지 않은 곳을 덮는 어둠 (칸마다 하나, 모든 것 위에). 밝혀진 칸은 끈다
-            _fog = new SpriteRenderer[board.Width * board.Height];
-            for (int y = 0; y < board.Height; y++)
-            for (int x = 0; x < board.Width; x++)
-            {
-                SpriteRenderer fog = Spawn("fog", FogSprite, new GridPos(x, y), 3);
-                fog.color = FogColor;
-                _fog[y * board.Width + x] = fog;
-            }
             Overview = false;
             _segmentView = default;
             Sync();
@@ -103,14 +74,6 @@ namespace Executor.Play
         {
             if (_board == null) return;
             _targets[_player] = ToWorld(_board.PlayerPos);
-            if (_fog != null)
-            {
-                for (int i = 0; i < _fog.Length; i++)
-                {
-                    bool explored = _board.IsExplored(new GridPos(i % _board.Width, i / _board.Width));
-                    if (_fog[i].gameObject.activeSelf == explored) _fog[i].gameObject.SetActive(!explored);
-                }
-            }
             foreach (var pair in _objects)
             {
                 BoardObject obj = pair.Key;
@@ -290,7 +253,6 @@ namespace Executor.Play
             foreach (Transform child in transform) Destroy(child.gameObject);
             _objects.Clear();
             _targets.Clear();
-            _fog = null;
         }
     }
 }

@@ -144,7 +144,9 @@ namespace Executor.Play
             _menu.OnTitleLogin = OpenLogin;
             _menu.OnTitleLogout = Logout;
             _menu.OnTitleOffline = () => { PlayerSession.StartOffline(); ReloadChapters(); ShowTitle(); };
-            _menu.OnSettings = () => _menu.ShowSettings(PlayerSession.DisplayName, PlayerSession.IsOnline, Logout);
+            _menu.OnSettings = () => _menu.ShowSettings(PlayerSession.DisplayName, PlayerSession.IsOnline, Logout,
+                () => ReportPanel.Open(_menu.PopupRoot, new ReportPanel.Target { PreferCategory = "버그 제보" }),
+                () => ReportPanel.OpenMine(_menu.PopupRoot));
 
             _menu.OnProfile = ShowProfile;
             _menu.OnMail = OpenMailbox;
@@ -679,7 +681,22 @@ namespace Executor.Play
             buttons.Add(("다시 하기 (R)", () => StartStage(_stage, false)));
             buttons.Add(("스테이지 선택", ShowStageSelect));
             buttons.Add(("메인으로", ShowMain));
+            if (PlayerSession.IsOnline) buttons.Add(("버그 제보", ReportThisStage));
             _game.ShowMenu("일시 정지", buttons);
+        }
+
+        /// <summary>일시 정지 메뉴의 버그 제보: 서버 스테이지면 이 스테이지를 대상으로</summary>
+        private void ReportThisStage()
+        {
+            StageInfo stage = _stage;
+            string name = $"{_chapter?.Title} {stage?.No}. {stage?.Title}";
+            ReportPanel.Open(_game.PopupRoot, new ReportPanel.Target
+            {
+                StageId = stage?.StageId,
+                Label = stage?.StageId != null ? $"스테이지 {name}" : null,
+                PreferCategory = "버그 제보",
+                Title = $"[{name}] ",
+            });
         }
 
         private void StartStage(StageInfo stage, bool withIntro)

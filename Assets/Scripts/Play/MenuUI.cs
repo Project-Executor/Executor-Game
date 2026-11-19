@@ -1020,7 +1020,9 @@ namespace Executor.Play
         }
 
         /// <summary>설정 팝업. 소리 설정은 아직 값만 저장한다</summary>
-        public void ShowSettings(string account, bool loggedIn, Action logout)
+        /// <param name="bugReport">버그 제보 (null이면 버튼 없음)</param>
+        /// <param name="myReports">내 신고 목록 (null이면 버튼 없음)</param>
+        public void ShowSettings(string account, bool loggedIn, Action logout, Action bugReport = null, Action myReports = null)
         {
             Popup(_popupRoot, "설정", new Vector2(820, 560), out RectTransform body);
             float y = 0;
@@ -1040,6 +1042,16 @@ namespace Executor.Play
                 var b = Button(body, "로그아웃", null, 26);
                 Place(b, new Vector2(0, 0), Vector2.zero, new Vector2(220, 64), new Vector2(0, 0));
                 b.onClick.AddListener(() => { ClosePopups(); logout?.Invoke(); });
+            }
+            if (loggedIn && myReports != null)
+            {
+                var mine = Button(body, "내 신고", () => { ClosePopups(); myReports(); }, 24);
+                Place(mine, new Vector2(1, 0), Vector2.zero, new Vector2(200, 64), new Vector2(1, 0));
+            }
+            if (loggedIn && bugReport != null)
+            {
+                var bug = Button(body, "버그 제보", () => { ClosePopups(); bugReport(); }, 24);
+                Place(bug, new Vector2(1, 0), new Vector2(-216, 0), new Vector2(200, 64), new Vector2(1, 0));
             }
         }
 

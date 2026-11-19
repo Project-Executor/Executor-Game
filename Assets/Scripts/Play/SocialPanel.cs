@@ -413,6 +413,14 @@ namespace Executor.Play
             Place(title, new Vector2(0, 1), new Vector2(180, 0), new Vector2(700, 56), new Vector2(0, 1));
             var refresh = Button(_body, "새로고침", () => LoadChat(false), 20);
             Place(refresh, new Vector2(1, 1), Vector2.zero, new Vector2(160, 56), new Vector2(1, 1));
+            var report = Button(_body, "신고", () => ReportPanel.Open(_root(), new ReportPanel.Target
+            {
+                UserId = partner.UserId,
+                Label = $"사용자 {Name(partner)}",
+                PreferCategory = "기타",
+                Title = "부적절한 메시지",
+            }), 20, new Color32(0x3a, 0x22, 0x28, 0xff));
+            Place(report, new Vector2(1, 1), new Vector2(-172, 0), new Vector2(120, 56), new Vector2(1, 1));
 
             _chatList = ScrollArea(_body, 76, 130, out _chatScroll);
             _chatInput = Input(_body, "메시지 (Enter로 보내기, 500자까지)", limit: MessageMax, size: 26);

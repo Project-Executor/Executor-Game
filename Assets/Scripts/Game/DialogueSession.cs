@@ -19,8 +19,8 @@ namespace Executor.Game
         public DialogueNode Current { get; private set; }
         public bool IsFinished => Current == null;
 
-        /// <summary>현재 말하는 사람 (노드에 없으면 인물 이름)</summary>
-        public string Speaker => Current == null ? null : Current.Speaker ?? Npc.Name;
+        /// <summary>현재 말하는 사람 (노드에 없으면 인물 이름, {nickname} 치환됨)</summary>
+        public string Speaker => Current == null ? null : TextFormat.Apply(Current.Speaker ?? Npc.Name, _nickname);
 
         /// <summary>현재 대사 ({nickname} 치환됨)</summary>
         public string Text => Current == null ? null : TextFormat.Apply(Current.Text, _nickname);

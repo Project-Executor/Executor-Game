@@ -103,14 +103,26 @@ namespace Executor.Play
 
         public static void SetButtonText(Button button, string text) => button.GetComponentInChildren<Text>().text = text;
 
-        /// <summary>입력칸에서 Enter로 입력을 마쳤을 때 action (다른 곳을 눌러 포커스가 빠진 경우는 제외)</summary>
+        /// <summary>
+        /// 입력칸에서 Enter로 입력을 마쳤을 때 action (다른 곳을 눌러 포커스가 빠진 경우는 제외).
+        /// InputField.onSubmit은 Enter로 끝냈을 때만 불린다. 예전에는 onEndEdit + "이번 프레임에 Enter를 눌렀나"로 판단했는데,
+        /// 입력칸이 키를 처리하는 시점과 Input System의 프레임이 어긋나 Enter를 놓치는 일이 있었다
+        /// </summary>
         public static void OnEnter(InputField field, Action action)
         {
-            field.onEndEdit.AddListener(_ =>
-            {
-                Keyboard k = Keyboard.current;
-                if (k != null && (k.enterKey.wasPressedThisFrame || k.numpadEnterKey.wasPressedThisFrame)) action();
-            });
+            field.onSubmit.AddListener(_ => action());
+        }
+
+        /// <summary>
+        /// 다른 입력칸으로 포커스를 옮긴다. Enter를 누르면 UI가 그 Enter를 "제출"로 한 번 더 보내는데,
+        /// 그때 방금 떠난 입력칸이 아직 선택돼 있으면 그 칸이 포커스를 다시 가져간다.
+        /// 그래서 선택을 바로 다음 칸으로 바꿔 두고(그 제출은 다음 칸이 받아 자기를 켠다), 켜기도 바로 요청한다
+        /// </summary>
+        public static void FocusField(InputField field)
+        {
+            if (field == null || !field.gameObject.activeInHierarchy) return;
+            if (EventSystem.current != null) EventSystem.current.SetSelectedGameObject(field.gameObject);
+            field.ActivateInputField();
         }
 
         public static InputField Input(Transform parent, string placeholder, bool password = false, int limit = 0, int size = 30)

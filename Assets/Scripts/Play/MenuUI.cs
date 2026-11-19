@@ -1115,22 +1115,33 @@ namespace Executor.Play
             }
             submit.onClick.AddListener(Submit);
 
-            // Enter: 이메일 → 비밀번호 → (회원가입이면 재입력 →) 제출
-            OnEnter(email, () => FocusLater(password));
-            OnEnter(password, () => { if (signupMode) FocusLater(confirm); else Submit(); });
+            // Enter: 로그인은 이메일 → 비밀번호 → 로그인, 회원가입은 이메일 → 비밀번호 → 비밀번호 재입력 → 가입하기.
+            // 이메일·비밀번호가 비어 있으면 Enter를 눌러도 그 칸에 머문다
+            OnEnter(email, () => MoveFocus(email.text.Trim().Length == 0 ? email : password));
+            OnEnter(password, () =>
+            {
+                if (password.text.Length == 0) MoveFocus(password);
+                else if (signupMode) MoveFocus(confirm);
+                else Submit();
+            });
             OnEnter(confirm, Submit);
-            FocusLater(email);
+            // 로그인 ↔ 회원가입을 바꾸면 이메일부터 (이미 썼으면 비밀번호부터)
+            toggle.onClick.AddListener(() => MoveFocus(email.text.Trim().Length == 0 ? email : password));
+            MoveFocus(email);
         }
 
-        /// <summary>한 프레임 뒤에 입력칸을 선택한다 (Enter로 입력을 마친 같은 프레임에는 선택이 무시될 수 있음)</summary>
-        private void FocusLater(InputField field) => StartCoroutine(FocusRoutine(field));
+        /// <summary>입력칸으로 포커스를 옮긴다: 바로 옮기고, 한 프레임 뒤에도 그 칸이 아니면 한 번 더 (Enter 처리와 겹칠 때 대비)</summary>
+        private void MoveFocus(InputField field)
+        {
+            FocusField(field);
+            StartCoroutine(FocusRoutine(field));
+        }
 
         private static IEnumerator FocusRoutine(InputField field)
         {
             yield return null;
-            if (field == null || !field.gameObject.activeInHierarchy) yield break;
-            field.Select();
-            field.ActivateInputField();
+            if (field == null || !field.gameObject.activeInHierarchy || field.isFocused) yield break;
+            FocusField(field);
         }
 
         private static Slider MakeSlider(Transform parent, float value)

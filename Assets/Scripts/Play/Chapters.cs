@@ -33,6 +33,16 @@ namespace Executor.Play
         public string Id;
         public string Title;
         public string Subtitle;
+        /// <summary>소속 레이어 (스토리 대주제). 시나리오 트리에서 이 값으로 묶는다</summary>
+        public string LayerId = "";
+        public string LayerName = "";
+        public string LayerDescription = "";
+        public int LayerOrder;
+
+        /// <summary>"Layer 0 · Tutorial" (이름이 이미 "Layer N"이면 그대로)</summary>
+        public string LayerLabel => LayerName == $"Layer {LayerOrder}" || string.IsNullOrEmpty(LayerName)
+            ? $"Layer {LayerOrder}"
+            : $"Layer {LayerOrder} · {LayerName}";
         public List<StageInfo> Stages = new List<StageInfo>();
 
         /// <summary>스테이지가 하나라도 있는지 (없으면 "준비 중")</summary>
@@ -47,6 +57,9 @@ namespace Executor.Play
     {
         /// <summary>닉네임 입력 단계인지 (예전 맵의 inputCharacterName도 같은 단계로 본다)</summary>
         public static bool IsNicknameInput(string type) => type == "inputNickname" || type == "inputCharacterName";
+
+        /// <summary>인물 대사 단계 (나레이션 화면 대신 대화창에 보여 준다)</summary>
+        public const string Line = "line";
     }
 
     public static class ChapterCatalog
@@ -71,6 +84,10 @@ namespace Executor.Play
                     Id = c.Value<string>("id"),
                     Title = c.Value<string>("title"),
                     Subtitle = c.Value<string>("subtitle"),
+                    LayerId = c["layer"]?.Value<string>("id") ?? "",
+                    LayerName = c["layer"]?.Value<string>("name") ?? "",
+                    LayerDescription = c["layer"]?.Value<string>("description") ?? "",
+                    LayerOrder = c["layer"]?.Value<int>("order") ?? 0,
                 };
                 foreach (TextAsset file in Resources.LoadAll<TextAsset>(c.Value<string>("maps")))
                 {

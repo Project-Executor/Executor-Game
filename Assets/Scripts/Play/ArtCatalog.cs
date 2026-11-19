@@ -10,7 +10,7 @@ namespace Executor.Play
     /// <list type="bullet">
     ///   <item>도트 (16x16, Pixels Per Unit 16, Filter Point):
     ///     Resources/Pixel/tiles/floor, Resources/Pixel/tiles/wall,
-    ///     Resources/Pixel/objects/{exit|crate|breakable|key|door|npc|checkpoint|hidden|anomaly}, Resources/Pixel/player,
+    ///     Resources/Pixel/objects/{exit|crate|breakable|key|door|npc|checkpoint|hidden|anomaly|computer|computerRestored}, Resources/Pixel/player,
     ///     인물별 도트는 Resources/Pixel/npcs/{인물ID} (없으면 objects/npc)</item>
     ///   <item>스탠딩 일러스트: Resources/Portraits/{인물ID}/{표정} (예: Portraits/cassia/smile)</item>
     ///   <item>화면 일러스트: Resources/Illustrations/title (시작 화면 배경), title_logo (시작 화면 로고),
@@ -34,6 +34,8 @@ namespace Executor.Play
 
         public static Sprite Floor => Pixel("tiles/floor", new Color32(0x1b, 0x2a, 0x3a, 0xff), Shape.Frame);
         public static Sprite Wall => Pixel("tiles/wall", new Color32(0x56, 0x68, 0x80, 0xff), Shape.Solid);
+        /// <summary>복구된 컴퓨터 (Resources/Pixel/objects/computerRestored)</summary>
+        public static Sprite ComputerRestored => Pixel("objects/computerRestored", new Color32(0x5f, 0xd1, 0xb0, 0xff), Shape.Frame);
         public static Sprite Player => Pixel("player", new Color32(0x4f, 0xd1, 0xff, 0xff), Shape.Diamond);
 
         /// <summary>오브젝트 그래픽. npc는 인물별 도트가 있으면 그것을 쓴다</summary>
@@ -55,6 +57,9 @@ namespace Executor.Play
                 case MapObjectTypes.Checkpoint: return Pixel("objects/checkpoint", new Color32(0x2c, 0xd5, 0xe8, 0xff), Shape.Small);
                 case MapObjectTypes.Hidden: return Pixel("objects/hidden", new Color32(0xff, 0x5f, 0xb0, 0xff), Shape.Small);
                 case MapObjectTypes.Anomaly: return Pixel("objects/anomaly", new Color32(0xe0, 0x36, 0x2c, 0xff), Shape.Diamond);
+                // 가짜 벽은 드러난 뒤에도 벽 그림을 쓴다 (따로 그림 없음)
+                case MapObjectTypes.FakeWall: return Wall;
+                case MapObjectTypes.Computer: return Pixel("objects/computer", new Color32(0xc2, 0x36, 0x5a, 0xff), Shape.Frame);
                 default: return Pixel("objects/" + type, new Color32(0xff, 0x00, 0xff, 0xff), Shape.Small);
             }
         }

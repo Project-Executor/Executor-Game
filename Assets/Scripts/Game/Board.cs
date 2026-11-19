@@ -23,9 +23,22 @@ namespace Executor.Game
         public int? SegmentTurns { get; }
         /// <summary>anomaly: 만나면 해금되는 도감 ID</summary>
         public long? GuidebookId { get; }
+        /// <summary>computer: 칠 단어 목록 ID (없으면 기본 단어)</summary>
+        public long? WordListId { get; }
+        /// <summary>computer: 칠 단어 수 (1~20)</summary>
+        public int WordCount { get; }
+        /// <summary>computer: 제한 시간 초 (5~300)</summary>
+        public int TimeLimit { get; }
+        /// <summary>computer: 복구하면 실행할 장치 동작</summary>
+        public IReadOnlyList<DialogueEffect> Effects { get; }
+        /// <summary>computer: 해킹으로 복구했는지 (맵 상태라 워프하면 되돌아간다)</summary>
+        public bool IsRestored { get; internal set; }
         /// <summary>부서진 블록, 주운 열쇠, 열린 문, 모은 숨겨진 요소는 true. 더는 칸을 차지하지 않는다</summary>
         public bool IsRemoved { get; internal set; }
-        /// <summary>화면에 보이는지. 숨겨진 요소만 처음에 false이고 3x3 안에 들어오면 true (그 뒤 계속)</summary>
+        /// <summary>
+        /// 정체가 드러났는지. 숨겨진 요소는 처음에 false이고 3x3 안에 들어오면 true,
+        /// 가짜 벽은 처음에 false(벽으로 보임)이고 들어가면 true. 한 번 true가 되면 워프해도 유지한다
+        /// </summary>
         public bool IsRevealed { get; internal set; }
 
         internal BoardObject(MapObjectData data)
@@ -40,7 +53,11 @@ namespace Executor.Game
             Order = data.Order ?? 0;
             SegmentTurns = data.Turns;
             GuidebookId = data.GuidebookId;
-            IsRevealed = Type != MapObjectTypes.Hidden;
+            WordListId = data.WordListId;
+            WordCount = Math.Max(TypingChallenge.MinWordCount, Math.Min(TypingChallenge.MaxWordCount, data.WordCount ?? TypingChallenge.DefaultWordCount));
+            TimeLimit = Math.Max(TypingChallenge.MinTimeLimit, Math.Min(TypingChallenge.MaxTimeLimit, data.TimeLimit ?? TypingChallenge.DefaultTimeLimit));
+            Effects = data.Effects ?? new List<DialogueEffect>();
+            IsRevealed = Type != MapObjectTypes.Hidden && Type != MapObjectTypes.FakeWall;
         }
     }
 
@@ -61,6 +78,8 @@ namespace Executor.Game
         ReachedCheckpoint,
         /// <summary>숨겨진 요소를 모았다</summary>
         Collected,
+        /// <summary>가짜 벽을 처음 지나갔다 (드러남). 이미 드러난 가짜 벽은 Moved</summary>
+        FoundFakeWall,
         Cleared
     }
 
@@ -113,6 +132,17 @@ namespace Executor.Game
         /// <summary>만난 이상 개체 (오브젝트 id). 워프해도 유지</summary>
         private readonly HashSet<string> _encountered = new HashSet<string>();
         private readonly List<BoardObject> _lastEncounters = new List<BoardObject>();
+        /// <summary>미니맵에서 밝혀진 칸 [y * Width + x]. 워프해도 유지</summary>
+        private bool[] _explored;
+
+        /// <summary>미니맵 기본 밝힘 범위 (플레이어 둘레 칸 수)</summary>
+        public const int DefaultRevealRadius = 2;
+
+        /// <summary>미니맵이 밝혀지는 범위 (map_data minimap.revealRadius, 없거나 1 미만이면 기본값)</summary>
+        public int RevealRadius => Data.Minimap?.RevealRadius is int r && r >= 1 ? r : DefaultRevealRadius;
+
+        /// <summary>미니맵에서 밝혀진 칸인지 (플레이어가 RevealRadius 안에 들어간 적 있는 칸)</summary>
+        public bool IsExplored(GridPos p) => IsInside(p) && _explored[p.Y * Width + p.X];
 
         public MapData Data { get; }
         public int Width { get; }
@@ -204,6 +234,7 @@ namespace Executor.Game
             }
             PlayerPos = new GridPos(data.Player.X, data.Player.Y);
             _objects = data.Objects.Select(o => new BoardObject(o)).ToList();
+            _explored = new bool[Width * Height];
             _snapshots[StartOrder] = Capture();
             LookAround();
         }
@@ -264,6 +295,7 @@ namespace Executor.Game
             {
                 case MapObjectTypes.Npc:
                 case MapObjectTypes.Anomaly:
+                case MapObjectTypes.Computer:
                     return new MoveResult(MoveOutcome.Blocked, direction, from, from, target);
 
                 case MapObjectTypes.Hidden:
@@ -271,9 +303,17 @@ namespace Executor.Game
                     target.IsRevealed = true;
                     return Step(MoveOutcome.Collected, direction, from, to, target);
 
+                case MapObjectTypes.FakeWall:
+                {
+                    bool first = !target.IsRevealed;
+                    target.IsRevealed = true;
+                    return Step(first ? MoveOutcome.FoundFakeWall : MoveOutcome.Moved, direction, from, to, target);
+                }
+
                 case MapObjectTypes.Crate:
                 {
                     GridPos beyond = to + direction.Delta();
+                    // 가짜 벽도 오브젝트라 상자는 밀어 넣을 수 없다 (벽처럼 보이므로)
                     if (IsWall(beyond) || ObjectAt(beyond) != null)
                     {
                         return new MoveResult(MoveOutcome.Blocked, direction, from, from, target);
@@ -347,6 +387,52 @@ namespace Executor.Game
             .OrderBy(o => Math.Abs(o.Pos.X - PlayerPos.X) + Math.Abs(o.Pos.Y - PlayerPos.Y))
             .ToList();
 
+        /// <summary>
+        /// E를 눌렀을 때 상대할 인물 또는 컴퓨터 (3x3 안에서 가장 가까운, 같으면 인물 먼저). 없으면 null.
+        /// 복구된 컴퓨터도 돌려준다 (화면이 "이미 복구됨"을 알린다)
+        /// </summary>
+        public BoardObject Interactable => _objects
+            .Where(o => !o.IsRemoved && (o.Type == MapObjectTypes.Npc || o.Type == MapObjectTypes.Computer) && o.Pos.IsWithin3x3(PlayerPos))
+            .OrderBy(o => Math.Abs(o.Pos.X - PlayerPos.X) + Math.Abs(o.Pos.Y - PlayerPos.Y))
+            .ThenBy(o => o.Type == MapObjectTypes.Npc ? 0 : 1)
+            .FirstOrDefault();
+
+        /// <summary>해킹 시작. 1턴을 쓴다 (실패해도 돌려주지 않는다)</summary>
+        /// <returns>시작했으면 true (클리어 후, 복구된 컴퓨터, 3x3 밖이면 false)</returns>
+        public bool BeginHack(BoardObject computer)
+        {
+            if (IsOver || computer == null || computer.Type != MapObjectTypes.Computer || computer.IsRemoved
+                || computer.IsRestored || !computer.Pos.IsWithin3x3(PlayerPos)) return false;
+            UseTurn();
+            return true;
+        }
+
+        /// <summary>해킹 성공: 컴퓨터를 복구하고 effects를 순서대로 실행한다 (remove: 출구·체크포인트 말고 없앤다, giveKey: 열쇠)</summary>
+        /// <returns>이번에 실행한 효과 (화면 알림용). 이미 복구됐으면 빈 목록</returns>
+        public IReadOnlyList<DialogueEffect> CompleteHack(BoardObject computer)
+        {
+            var applied = new List<DialogueEffect>();
+            if (computer == null || computer.Type != MapObjectTypes.Computer || computer.IsRestored) return applied;
+            computer.IsRestored = true;
+            foreach (DialogueEffect effect in computer.Effects)
+            {
+                if (effect?.Type == "giveKey" && !string.IsNullOrEmpty(effect.KeyId))
+                {
+                    AddKey(effect.KeyId);
+                    applied.Add(effect);
+                }
+                else if (effect?.Type == "remove")
+                {
+                    BoardObject target = _objects.FirstOrDefault(o => o.Id == effect.Target);
+                    if (target == null || target.IsRemoved || target.Type == MapObjectTypes.Exit
+                        || target.Type == MapObjectTypes.Checkpoint || target == computer) continue;
+                    target.IsRemoved = true;
+                    applied.Add(effect);
+                }
+            }
+            return applied;
+        }
+
         /// <summary>E를 눌렀을 때 대화할 인물 (3x3 안에서 가장 가까운). 없으면 null</summary>
         public BoardObject TalkableNpc => NpcsInRange().FirstOrDefault();
 
@@ -378,9 +464,16 @@ namespace Executor.Game
             return new MoveResult(outcome, direction, from, to, target);
         }
 
-        /// <summary>플레이어 주변 3x3: 숨겨진 요소를 드러내고, 처음 만난 이상 개체를 기록한다</summary>
+        /// <summary>플레이어 주변 3x3: 숨겨진 요소를 드러내고, 처음 만난 이상 개체를 기록한다. 미니맵도 RevealRadius만큼 밝힌다</summary>
         private void LookAround()
         {
+            int radius = RevealRadius;
+            for (int y = Math.Max(0, PlayerPos.Y - radius); y <= Math.Min(Height - 1, PlayerPos.Y + radius); y++)
+            for (int x = Math.Max(0, PlayerPos.X - radius); x <= Math.Min(Width - 1, PlayerPos.X + radius); x++)
+            {
+                _explored[y * Width + x] = true;
+            }
+
             _lastEncounters.Clear();
             foreach (BoardObject o in _objects)
             {
@@ -403,11 +496,11 @@ namespace Executor.Game
 
         // ---------- 워프용 상태 저장 ----------
 
-        /// <summary>워프로 되돌릴 상태: 위치, 오브젝트(위치·hp·사라짐, 숨겨진 요소 제외), 열쇠, 대화로 받은 열쇠 기록</summary>
+        /// <summary>워프로 되돌릴 상태: 위치, 오브젝트(위치·hp·사라짐·컴퓨터 복구, 숨겨진 요소 제외), 열쇠, 대화로 받은 열쇠 기록</summary>
         private sealed class Snapshot
         {
             public GridPos Player;
-            public (GridPos Pos, int Hp, bool Removed)[] Objects;
+            public (GridPos Pos, int Hp, bool Removed, bool Restored)[] Objects;
             public Dictionary<string, int> Keys;
             public HashSet<string> KeysGivenByNpc;
         }
@@ -415,7 +508,7 @@ namespace Executor.Game
         private Snapshot Capture() => new Snapshot
         {
             Player = PlayerPos,
-            Objects = _objects.Select(o => (o.Pos, o.Hp, o.IsRemoved)).ToArray(),
+            Objects = _objects.Select(o => (o.Pos, o.Hp, o.IsRemoved, o.IsRestored)).ToArray(),
             Keys = new Dictionary<string, int>(_keys),
             KeysGivenByNpc = new HashSet<string>(_keysGivenByNpc)
         };
@@ -430,6 +523,7 @@ namespace Executor.Game
                 _objects[i].Pos = s.Objects[i].Pos;
                 _objects[i].Hp = s.Objects[i].Hp;
                 _objects[i].IsRemoved = s.Objects[i].Removed;
+                _objects[i].IsRestored = s.Objects[i].Restored;
             }
             _keys.Clear();
             foreach (var kv in s.Keys) _keys[kv.Key] = kv.Value;

@@ -343,6 +343,80 @@ public static class Program
         Check("클리어 전 결과: 별 3 아님, 도감 ID는 보냄", !req.Cleared && !req.HiddenFound && req.EncounteredGuidebookIds.SequenceEqual(new long[] { 3 }));
         Check("숨겨진 요소 없는 맵은 별 3 불가", !new Board(Map(new[] { "###", "#.#", "###" })).AllHiddenFound);
 
+        // 가짜 벽 (docs/map-data.md 3.7)
+        b = new Board(Map(new[] { "#######", "#.....#", "#######" },
+            Obj("c", MapObjectTypes.Crate, 2, 1), Obj("f", MapObjectTypes.FakeWall, 3, 1)));
+        var fake = b.Objects.First(o => o.Id == "f");
+        Check("가짜 벽: 처음엔 드러나지 않음", !fake.IsRevealed);
+        Check("가짜 벽 쪽으로 상자 -> 밀리지 않음, 턴 0", b.Move(Direction.Right).Outcome == MoveOutcome.Blocked && b.Turns == 0);
+        b = new Board(Map(new[] { "#######", "#.....#", "#######" },
+            Cp("cp1", 2, 1, order: 1, turns: 10), Obj("f", MapObjectTypes.FakeWall, 3, 1)), 10);
+        fake = b.Objects.First(o => o.Id == "f");
+        b.Move(Direction.Right);
+        Check("가짜 벽 바로 옆(3x3 안)이어도 드러나지 않음", !fake.IsRevealed && b.CurrentOrder == 1);
+        r = b.Move(Direction.Right);
+        Check("가짜 벽 칸 -> 지나감, 드러남, 턴 1", r.Outcome == MoveOutcome.FoundFakeWall && fake.IsRevealed
+            && b.PlayerPos == new GridPos(3, 1) && b.SegmentTurns == 1);
+        r = b.Move(Direction.Right);
+        Check("가짜 벽 너머로 이동", r.Outcome == MoveOutcome.Moved && b.PlayerPos == new GridPos(4, 1));
+        Check("워프해도 드러난 채 유지", b.WarpTo(1) && fake.IsRevealed && b.PlayerPos == new GridPos(2, 1));
+        r = b.Move(Direction.Right);
+        Check("드러난 가짜 벽 -> 그냥 이동", r.Outcome == MoveOutcome.Moved && b.PlayerPos == new GridPos(3, 1));
+
+        // 미니맵 밝힘 (docs/map-data.md 3.8)
+        b = new Board(Map(new[] { "##########", "#........#", "##########" }, Cp("cp1", 2, 1, order: 1, turns: 10)), 10);
+        Check("미니맵: 시작 둘레 2칸만 밝혀짐 (기본)", b.RevealRadius == 2 && b.IsExplored(new GridPos(3, 1))
+            && !b.IsExplored(new GridPos(4, 1)) && b.IsExplored(new GridPos(0, 0)));
+        b.Move(Direction.Right); b.Move(Direction.Right); b.Move(Direction.Right);
+        Check("미니맵: 이동하면 더 밝혀짐", b.IsExplored(new GridPos(6, 1)) && !b.IsExplored(new GridPos(7, 1)));
+        b.WarpTo(1);
+        Check("미니맵: 워프해도 밝힌 곳 유지", b.IsExplored(new GridPos(6, 1)) && b.PlayerPos == new GridPos(2, 1));
+        var wide = Map(new[] { "##########", "#........#", "##########" });
+        wide.Minimap = new MinimapSettings { RevealRadius = 4 };
+        b = new Board(wide);
+        Check("미니맵: revealRadius 4", b.RevealRadius == 4 && b.IsExplored(new GridPos(5, 1)) && !b.IsExplored(new GridPos(6, 1)));
+        var json = Executor.Network.Json.Deserialize<MapData>("{\"width\":3,\"height\":3,\"camera\":{\"width\":15},\"minimap\":{\"revealRadius\":3}}");
+        Check("camera·minimap JSON 읽기", json.Camera?.Width == 15 && json.Camera.Height == null && json.Minimap?.RevealRadius == 3);
+
+        // 감염된 컴퓨터 (docs/map-data.md 3.9): 시작 (1,1), 체크포인트 (2,1), 컴퓨터 (3,2), 문 (5,1)
+        var pcMap = Executor.Network.Json.Deserialize<MapData>(
+            "{\"width\":8,\"height\":4,\"tiles\":[\"########\",\"#......#\",\"#......#\",\"########\"],\"player\":{\"x\":1,\"y\":1},"
+            + "\"objects\":[{\"id\":\"cp1\",\"type\":\"checkpoint\",\"x\":2,\"y\":1,\"order\":1,\"turns\":10},"
+            + "{\"id\":\"pc\",\"type\":\"computer\",\"x\":3,\"y\":2,\"wordListId\":7,\"wordCount\":3,\"timeLimit\":999,"
+            + "\"effects\":[{\"type\":\"remove\",\"target\":\"door1\"},{\"type\":\"giveKey\",\"keyId\":\"lab\"},{\"type\":\"remove\",\"target\":\"cp1\"}]},"
+            + "{\"id\":\"door1\",\"type\":\"door\",\"x\":5,\"y\":1,\"keyId\":\"none\"}]}");
+        b = new Board(pcMap, 10);
+        var pc = b.Objects.First(o => o.Id == "pc");
+        Check("컴퓨터 JSON 읽기 (timeLimit은 300으로 맞춤)", pc.WordListId == 7 && pc.WordCount == 3 && pc.TimeLimit == 300 && pc.Effects.Count == 3);
+        Check("컴퓨터: 3x3 밖이면 해킹 불가", b.Interactable == null && !b.BeginHack(pc) && b.Turns == 0);
+        b.Move(Direction.Right);
+        Check("컴퓨터: 체크포인트 도착, 3x3 안 -> 상대할 대상", b.CurrentOrder == 1 && b.Interactable?.Id == "pc");
+        Check("컴퓨터 칸 -> 막힘", b.Move(Direction.Down).Outcome == MoveOutcome.Moved && b.Move(Direction.Right).Outcome == MoveOutcome.Blocked);
+        int before = b.SegmentTurns;
+        Check("해킹 시작 -> 1턴", b.BeginHack(pc) && b.SegmentTurns == before + 1);
+        Check("실패해도 다시 시작 가능, 또 1턴", b.BeginHack(pc) && b.SegmentTurns == before + 2);
+        var applied = b.CompleteHack(pc);
+        var door = b.Objects.First(o => o.Id == "door1");
+        Check("복구 -> 문 없어짐, 열쇠 받음, 체크포인트는 못 없앰", pc.IsRestored && door.IsRemoved && b.KeyCount("lab") == 1
+            && applied.Count == 2 && !b.Objects.First(o => o.Id == "cp1").IsRemoved);
+        Check("복구된 컴퓨터는 다시 해킹 불가, 효과도 한 번만", !b.BeginHack(pc) && b.CompleteHack(pc).Count == 0 && b.KeyCount("lab") == 1);
+        Check("워프 -> 복구 전 상태로 (다시 감염, 문 닫힘, 열쇠 없음)", b.WarpTo(1) && !pc.IsRestored && !door.IsRemoved && b.KeyCount("lab") == 0);
+
+        // 타자 해킹
+        var tc = new TypingChallenge(new[] { "ls", "cd", "pwd", "ls", " " }, 3, 30, new Random(1));
+        Check("타자: 단어 3개, 겹치지 않음 (빈 단어·중복 제외)", tc.Words.Count == 3 && tc.Words.Distinct().Count() == 3);
+        Check("타자: 틀리면 그대로", !tc.Submit("nope") && tc.Index == 0);
+        Check("타자: 맞으면 다음 (앞뒤 공백 무시)", tc.Submit(" " + tc.Current + " ") && tc.Index == 1);
+        tc.Submit(tc.Current); tc.Submit(tc.Current);
+        Check("타자: 모두 치면 성공", tc.IsSucceeded && tc.IsOver && !tc.IsTimedOut);
+        tc = new TypingChallenge(new[] { "a", "b" }, 5, 1);
+        Check("타자: 목록보다 많이 뽑으면 겹쳐서 채움, 제한 시간 최소 5초", tc.Words.Count == 5 && tc.TimeLimit == 5);
+        tc.Tick(4.9f);
+        Check("타자: 시간 남음", !tc.IsOver);
+        tc.Tick(0.2f);
+        Check("타자: 시간이 다 되면 실패, 입력 무시", tc.IsTimedOut && !tc.Submit(tc.Current));
+        Check("타자: 목록이 비면 기본 단어", new TypingChallenge(null, 2, 30).Words.All(w => TypingChallenge.DefaultWords.Contains(w)));
+
         // 모르는 type은 지나간다
         b = new Board(Map(new[] { "####", "#..#", "####" }, Obj("x", "bot", 2, 1)));
         Check("모르는 type -> 바닥처럼 이동", b.Move(Direction.Right).Outcome == MoveOutcome.Moved);

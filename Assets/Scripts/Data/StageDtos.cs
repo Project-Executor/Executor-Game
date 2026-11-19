@@ -34,8 +34,21 @@ namespace Executor.Data
         public long OperationId { get; set; }
         public string Name { get; set; }
         public string Description { get; set; }
+        /// <summary>레이어 안에서의 순서</summary>
         public int SortOrder { get; set; }
+        /// <summary>소속 레이어 (스토리 대주제)</summary>
+        public LayerSummary Layer { get; set; }
         public List<StageSummary> Stages { get; set; } = new List<StageSummary>();
+    }
+
+    /// <summary>레이어 (스토리 대주제). 그 안에 작전(Operation)이 들어간다</summary>
+    public class LayerSummary
+    {
+        public long LayerId { get; set; }
+        public string Name { get; set; }
+        public string Description { get; set; }
+        /// <summary>순서 (튜토리얼 = 0)</summary>
+        public int SortOrder { get; set; }
     }
 
     /// <summary>작전 목록 안의 스테이지 요약과 내 진행도</summary>

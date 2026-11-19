@@ -1205,6 +1205,9 @@ namespace Executor.Play
                 _game.ClearHackInput();
             }
             _game.UpdateHack(HackWordsText(), _hacking.TimeLeft, _hacking.TimeLimit, status, good);
+            // Enter를 누르면 입력칸이 스스로 포커스를 놓으므로(같은 프레임에 다시 잡으면 무시됨),
+            // 해킹 중에는 포커스가 빠질 때마다 다음 프레임에 다시 잡는다. 마우스로 다른 곳을 눌러도 계속 칠 수 있다
+            if (!_game.HackInputFocused) _game.FocusHackInput();
         }
 
         /// <summary>단어 줄: 친 단어는 초록, 지금 단어는 노랑 굵게, 남은 단어는 흐리게</summary>

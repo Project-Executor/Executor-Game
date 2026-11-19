@@ -600,6 +600,15 @@ namespace Executor.Play
         public void ClearHackInput()
         {
             _hackInput.text = "";
+            FocusHackInput();
+        }
+
+        /// <summary>해킹 입력칸에 커서가 있는지</summary>
+        public bool HackInputFocused => _hackInput.isFocused;
+
+        /// <summary>해킹 입력칸에 포커스를 준다 (Enter로 포커스가 빠졌을 때 다음 프레임에 다시 잡는 용도)</summary>
+        public void FocusHackInput()
+        {
             _hackInput.Select();
             _hackInput.ActivateInputField();
         }

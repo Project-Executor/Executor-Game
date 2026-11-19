@@ -38,6 +38,11 @@ namespace Executor.Play
         private ScrollRect _chatScroll;
         private InputField _chatInput;
         private float _pollLeft;
+        /// <summary>
+        /// 다음 Tick에 다시 포커스를 줄 입력칸. Enter를 누르면 Unity 입력칸이 스스로 포커스를 놓는데,
+        /// 그 처리(onEndEdit) 안에서 바로 다시 잡으면 무시되므로 한 프레임 뒤에 잡는다. 보내기·검색 버튼을 눌렀을 때도 같다
+        /// </summary>
+        private InputField _refocus;
         private bool _loadingChat;
         private long _lastMessageId;
 
@@ -76,6 +81,16 @@ namespace Executor.Play
         /// <summary>대화 화면이 열려 있으면 PollSeconds마다 새 메시지를 불러온다</summary>
         public void Tick(float deltaTime)
         {
+            if (_refocus != null)
+            {
+                InputField field = _refocus;
+                _refocus = null;
+                if (field != null && field.gameObject.activeInHierarchy && !field.isFocused)
+                {
+                    field.Select();
+                    field.ActivateInputField();
+                }
+            }
             if (_popup == null || _partner == null) return;
             _pollLeft -= deltaTime;
             if (_pollLeft > 0) return;
@@ -350,9 +365,9 @@ namespace Executor.Play
         {
             var input = Input(_body, "닉네임 일부를 입력하고 Enter", limit: 20, size: 26);
             Place(input, new Vector2(0, 1), new Vector2(0, -76), new Vector2(PopupW - 80 - 180, 64), new Vector2(0, 1));
-            var go = Button(_body, "검색", () => Search(input.text), 24);
+            var go = Button(_body, "검색", () => { _refocus = input; Search(input.text); }, 24);
             Place(go, new Vector2(1, 1), new Vector2(0, -76), new Vector2(160, 64), new Vector2(1, 1));
-            OnEnter(input, () => Search(input.text));
+            OnEnter(input, () => { _refocus = input; Search(input.text); });
             _searchList = ScrollArea(_body, 160, 44, out _);
             input.Select();
             input.ActivateInputField();
@@ -503,12 +518,12 @@ namespace Executor.Play
         private async void Send()
         {
             if (_chatInput == null || _partner == null) return;
+            _refocus = _chatInput; // 보내든 못 보내든 입력칸에 계속 쓸 수 있게
             string text = _chatInput.text.Trim();
             if (text.Length == 0) return;
             if (text.Length > MessageMax) { Status($"메시지는 {MessageMax}자까지입니다.", false); return; }
             UserSummary partner = _partner;
             _chatInput.text = "";
-            _chatInput.ActivateInputField();
             try
             {
                 await MessageApi.SendAsync(partner.UserId, text);
@@ -518,7 +533,11 @@ namespace Executor.Play
             }
             catch (ApiException e)
             {
-                if (_chatInput != null && _partner == partner) _chatInput.text = text; // 보내지 못한 내용은 되돌려 둔다
+                if (_chatInput != null && _partner == partner)
+                {
+                    _chatInput.text = text; // 보내지 못한 내용은 되돌려 둔다
+                    _refocus = _chatInput;
+                }
                 Status(e.Code == "NOT_FRIEND" ? "친구에게만 메시지를 보낼 수 있습니다." : Error(e), false);
             }
         }

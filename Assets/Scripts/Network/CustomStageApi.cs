@@ -6,7 +6,7 @@ using Newtonsoft.Json.Linq;
 namespace Executor.Network
 {
     /// <summary>
-    /// 사용자 제작 맵 관리 (/api/custom-stages). 플레이(상세·결과·순위·힌트)는 StageApi를 그대로 쓴다.
+    /// 사용자 제작 맵 관리 (/api/custom-stages). 플레이(상세·결과·순위)는 StageApi를 그대로 쓴다.
     /// <list type="bullet">
     ///   <item>저장하면 비공개. 비공개 맵은 제작자만 보고 플레이할 수 있다</item>
     ///   <item>제작자가 클리어해야(verified) 공개할 수 있다</item>
@@ -32,7 +32,7 @@ namespace Executor.Network
             ApiClient.PostAsync<CustomStageState>("/custom-stages",
                 new CustomStageRequest { Title = title, ParMoves = parMoves, MapData = mapData });
 
-        /// <summary>비공개 맵 수정. 이 맵의 기록과 힌트 열람 기록이 모두 지워진다</summary>
+        /// <summary>비공개 맵 수정. 이 맵의 기록이 모두 지워진다</summary>
         /// <exception cref="ApiException">403 FORBIDDEN, 404 NOT_FOUND, 409 PUBLISHED_STAGE (공개 중)</exception>
         public static Task<CustomStageState> UpdateAsync(long stageId, string title, int parMoves, JObject mapData) =>
             ApiClient.PutAsync<CustomStageState>($"/custom-stages/{stageId}",

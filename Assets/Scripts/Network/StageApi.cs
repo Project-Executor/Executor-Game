@@ -13,7 +13,7 @@ namespace Executor.Network
         public static Task<List<OperationResponse>> GetOperationsAsync() =>
             ApiClient.GetAsync<List<OperationResponse>>("/operations");
 
-        /// <summary>스테이지 상세와 맵 데이터 (hints 제외)</summary>
+        /// <summary>스테이지 상세와 맵 데이터</summary>
         /// <exception cref="ApiException">403 STAGE_LOCKED, 403 FORBIDDEN(남의 비공개 맵), 404 NOT_FOUND</exception>
         public static Task<StageDetail> GetStageAsync(long stageId) =>
             ApiClient.GetAsync<StageDetail>($"/stages/{stageId}");
@@ -51,14 +51,5 @@ namespace Executor.Network
             int size = 20) =>
             ApiClient.GetAsync<RankingResponse>(
                 $"/stages/{stageId}/rankings?scope={(scope == RankingScope.Friends ? "friends" : "all")}&size={size}");
-
-        /// <summary>
-        /// 힌트 하나를 받는다. 처음 보는 힌트면 힌트 아이템 1개를 쓰고(Charged = true),
-        /// 이미 본 힌트(StageDetail.ViewedHintIndexes)는 아이템이 0개여도 무료로 다시 받는다.
-        /// </summary>
-        /// <param name="hintIndex">0 ~ HintCount - 1</param>
-        /// <exception cref="ApiException">400 INVALID_INPUT(범위 밖), 409 NOT_ENOUGH_ITEM, 403, 404</exception>
-        public static Task<HintResponse> UseHintAsync(long stageId, int hintIndex) =>
-            ApiClient.PostAsync<HintResponse>($"/stages/{stageId}/hint", new HintRequest { HintIndex = hintIndex });
     }
 }

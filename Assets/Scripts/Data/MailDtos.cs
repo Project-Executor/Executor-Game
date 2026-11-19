@@ -36,7 +36,7 @@ namespace Executor.Data
     {
         public long ItemId { get; set; }
         public string Name { get; set; }
-        /// <summary>SKIN, THEME, HINT</summary>
+        /// <summary>SKIN, THEME</summary>
         public string ItemType { get; set; }
     }
 

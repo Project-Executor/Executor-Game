@@ -11,7 +11,7 @@ namespace Executor.Data
         /// <summary>1~9999</summary>
         public int ParMoves { get; set; }
         /// <summary>
-        /// 맵 JSON 객체 (최대 256KB). hints를 넣으려면 배열이어야 한다.
+        /// 맵 JSON 객체 (최대 256KB).
         /// C# 객체에서 만들려면 JObject.FromObject(맵객체, Json.Serializer)
         /// </summary>
         public JObject MapData { get; set; }

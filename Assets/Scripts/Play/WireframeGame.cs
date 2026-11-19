@@ -358,30 +358,28 @@ namespace Executor.Play
             }
         }
 
-        private void ConfirmPurchase(ShopItem item, int quantity)
+        private void ConfirmPurchase(ShopItem item)
         {
-            int price = item.Price * quantity;
+            int price = item.Price;
             int coin = PlayerSession.Profile?.Coin ?? 0;
-            string count = ItemTypes.IsUnique(item.ItemType) ? "" : $" {quantity}개";
-            string text = $"{item.Name}{count}을(를) {price} 코인에 살까요?\n\n보유 코인 {coin} → {coin - price}";
+            string text = $"{item.Name}을(를) {price} 코인에 살까요?\n\n보유 코인 {coin} → {coin - price}";
             if (price > coin)
             {
                 _menu.ShowMessage("구매", $"코인이 모자랍니다.\n\n필요 {price} · 보유 {coin}");
                 return;
             }
-            _menu.ShowConfirm("구매", text, () => Purchase(item, quantity));
+            _menu.ShowConfirm("구매", text, () => Purchase(item));
         }
 
-        private async void Purchase(ShopItem item, int quantity)
+        private async void Purchase(ShopItem item)
         {
             try
             {
-                PurchaseResponse res = await ItemApi.PurchaseAsync(item.ItemId, quantity);
+                PurchaseResponse res = await ItemApi.PurchaseAsync(item.ItemId);
                 ApplyCoin(res.RemainingCoin);
                 _menu.ClosePopups();
                 OpenShop(_shopFilter);
-                string have = ItemTypes.IsUnique(item.ItemType) ? "프로필에서 장착할 수 있습니다." : $"지금 {res.Quantity}개 가지고 있습니다.";
-                _menu.ShowMessage("구매 완료", $"{item.Name}을(를) 샀습니다.\n{have}\n\n남은 코인 {res.RemainingCoin}");
+                _menu.ShowMessage("구매 완료", $"{item.Name}을(를) 샀습니다.\n프로필에서 장착할 수 있습니다.\n\n남은 코인 {res.RemainingCoin}");
             }
             catch (ApiException e)
             {

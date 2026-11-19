@@ -29,7 +29,7 @@ namespace Executor.Network
 
         public static T Deserialize<T>(string json) => JsonConvert.DeserializeObject<T>(json, Settings);
 
-        /// <summary>JSON 조각(mapData, 객체 힌트 등)을 C# 클래스로 바꾼다. null이면 default</summary>
+        /// <summary>JSON 조각(mapData 등)을 C# 클래스로 바꾼다. null이면 default</summary>
         public static T Convert<T>(JToken token) => token == null ? default : token.ToObject<T>(Serializer);
     }
 }

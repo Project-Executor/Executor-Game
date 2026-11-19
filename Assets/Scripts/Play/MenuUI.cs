@@ -656,15 +656,15 @@ namespace Executor.Play
         }
 
         /// <summary>
-        /// 상점 팝업. 위에 종류 탭(전체·스킨·테마·힌트), 아래에 아이템 줄(최대 7개). 줄마다 가격·보유와 구매 버튼.
-        /// 스킨·테마는 이미 가졌으면 "보유 중". 힌트는 1개 / 5개 구매
+        /// 상점 팝업. 위에 종류 탭(전체·스킨·테마), 아래에 아이템 줄(최대 7개). 줄마다 가격·보유와 구매 버튼.
+        /// 이미 가졌으면 "보유 중"
         /// </summary>
         public void ShowShop(IReadOnlyList<Data.ShopItem> items, int coin, string filter, Action<string> onFilter,
-            Action<Data.ShopItem, int> onBuy)
+            Action<Data.ShopItem> onBuy)
         {
             Popup(_popupRoot, $"상점 · 보유 코인 {coin}", new Vector2(1240, 880), out RectTransform body);
             float x = 0;
-            foreach (var (type, label) in new (string, string)[] { (null, "전체"), (Data.ItemTypes.Skin, "스킨"), (Data.ItemTypes.Theme, "테마"), (Data.ItemTypes.Hint, "힌트") })
+            foreach (var (type, label) in new (string, string)[] { (null, "전체"), (Data.ItemTypes.Skin, "스킨"), (Data.ItemTypes.Theme, "테마") })
             {
                 string t = type;
                 bool active = t == filter;
@@ -684,7 +684,7 @@ namespace Executor.Play
                 var item = it;
                 var row = Panel(body, "Item", new Color32(0x16, 0x1e, 0x2a, 0xff), Line);
                 Place(row, new Vector2(0, 1), new Vector2(0, y), new Vector2(1160, 92), new Vector2(0, 1));
-                string owned = Data.ItemTypes.IsUnique(it.ItemType) ? (it.Owned ? " · 보유 중" : "") : (it.Quantity > 0 ? $" · {it.Quantity}개 보유" : "");
+                string owned = it.Owned ? " · 보유 중" : "";
                 var name = Label(row, $"[{Data.ItemTypes.Label(it.ItemType)}] {it.Name}   {it.Price} 코인{owned}", 24, TextAnchor.UpperLeft, bold: true);
                 Stretch(name.rectTransform, 14);
                 name.rectTransform.offsetMax = new Vector2(-300, -12);
@@ -693,20 +693,10 @@ namespace Executor.Play
                 desc.rectTransform.offsetMax = new Vector2(-300, -14);
                 desc.horizontalOverflow = HorizontalWrapMode.Overflow;
 
-                if (Data.ItemTypes.IsUnique(it.ItemType))
-                {
-                    var buy = Button(row, it.Owned ? "보유 중" : "구매", () => { if (!item.Owned) onBuy(item, 1); }, 24,
-                        it.Owned ? new Color32(0x22, 0x26, 0x2e, 0xff) : (Color32?)null);
-                    buy.interactable = !it.Owned;
-                    Place(buy, new Vector2(1, 0.5f), new Vector2(-12, 0), new Vector2(170, 64), new Vector2(1, 0.5f));
-                }
-                else
-                {
-                    var buy5 = Button(row, "5개", () => onBuy(item, 5), 22);
-                    Place(buy5, new Vector2(1, 0.5f), new Vector2(-12, 0), new Vector2(120, 64), new Vector2(1, 0.5f));
-                    var buy1 = Button(row, "1개", () => onBuy(item, 1), 22);
-                    Place(buy1, new Vector2(1, 0.5f), new Vector2(-144, 0), new Vector2(120, 64), new Vector2(1, 0.5f));
-                }
+                var buy = Button(row, it.Owned ? "보유 중" : "구매", () => { if (!item.Owned) onBuy(item); }, 24,
+                    it.Owned ? new Color32(0x22, 0x26, 0x2e, 0xff) : (Color32?)null);
+                buy.interactable = !it.Owned;
+                Place(buy, new Vector2(1, 0.5f), new Vector2(-12, 0), new Vector2(170, 64), new Vector2(1, 0.5f));
                 y -= 102;
             }
             if (items.Count > 7)
@@ -734,8 +724,7 @@ namespace Executor.Play
         {
             Popup(_popupRoot, "프로필", new Vector2(1240, 920), out RectTransform body);
             string record = stats == null ? "" : $" · 공식 스테이지 클리어 {stats.ClearedStageCount} · 별 {stats.TotalStars}";
-            int hints = items.Where(i => i.ItemType == Data.ItemTypes.Hint).Sum(i => i.Quantity);
-            var info = Label(body, $"{p.Email} · 코인 {p.Coin}{record} · 힌트 {hints}개", 22, TextAnchor.UpperLeft, Muted);
+            var info = Label(body, $"{p.Email} · 코인 {p.Coin}{record}", 22, TextAnchor.UpperLeft, Muted);
             Place(info, new Vector2(0, 1), Vector2.zero, new Vector2(1160, 34), new Vector2(0, 1));
 
             // 닉네임

@@ -11,13 +11,14 @@ using UnityEngine.InputSystem;
 namespace Executor.Play
 {
     /// <summary>
-    /// 와이어프레임 앱 흐름: 시작 화면 → 메인 화면 → 스테이지 선택 → 게임.
+    /// 게임 흐름: 시작 화면 → 메인 화면 → 스테이지 선택 → (스토리) → 플레이 → (스토리) → 결과.
     /// 빈 씬의 GameObject 하나에 붙이면 카메라·UI를 만든다 (메뉴 Executor > 와이어프레임 플레이 씬 만들기).
+    /// 화면은 MenuUI(메뉴)·GameUI(플레이)·BoardView(판)가 그리고, 이 클래스는 모드 전환과 입력, 서버 호출을 맡는다.
     /// <list type="bullet">
-    ///   <item>로그인: 서버 계정 (자동 로그인 포함). 오프라인 테스트로도 들어갈 수 있다</item>
-    ///   <item>챕터: Resources/Maps/chapters.json, 맵: Resources/Maps/{챕터ID}/stage-N.json (ChapterCatalog)</item>
-    ///   <item>턴: 남은 턴(parMoves - 쓴 턴)만 보여 주고, -1이 되면 실패</item>
-    ///   <item>진행 기록은 계정·챕터별로 PC에 저장 (StageProgress, 서버에 공식 스테이지 등록 후 서버 기록으로 교체)</item>
+    ///   <item>로그인: 서버 계정 (자동 로그인 포함). 스테이지는 서버의 레이어 → Operation → 스테이지 (ServerCatalog)</item>
+    ///   <item>오프라인 테스트: Resources/Maps/chapters.json과 Resources/Maps/{챕터ID}/stage-N.json (ChapterCatalog), 기록은 PC에만</item>
+    ///   <item>턴: 구간마다 "남은 턴 = 기준 턴 - 쓴 턴". 0 밑으로 내려가도 실패가 아니라, 그대로 도착하면 불안정 (별 2 판정)</item>
+    ///   <item>규칙은 Game/Board.cs, 맵 형식과 규칙 문서는 Executor-Server docs/map-data.md</item>
     /// </list>
     /// </summary>
     public class WireframeGame : MonoBehaviour

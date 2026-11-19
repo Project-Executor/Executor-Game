@@ -21,6 +21,10 @@ namespace Executor.Data
         public StoryData Story { get; set; } = new StoryData();
         /// <summary>별 조건 설정. 없으면 기본값 (docs/map-data.md 3.4)</summary>
         public StarsData Stars { get; set; } = new StarsData();
+        /// <summary>카메라 설정. 없으면 자동 (docs/map-data.md 3.8)</summary>
+        public CameraSettings Camera { get; set; }
+        /// <summary>미니맵 설정. 없으면 기본값 (docs/map-data.md 3.8)</summary>
+        public MinimapSettings Minimap { get; set; }
 
         /// <summary>스테이지 상세의 mapData(JObject)를 읽는다</summary>
         public static MapData From(JObject mapData) => Json.Convert<MapData>(mapData);
@@ -61,6 +65,19 @@ namespace Executor.Data
     {
         /// <summary>별 2: 허용하는 불안정 체크포인트 수 (출구 포함). 기본 0</summary>
         public int MaxUnstable { get; set; }
+    }
+
+    /// <summary>구간 보기에서 화면에 보일 칸 수. 비운 값은 자동 (둘 다 비우면 가장 넓은 구간에 맞춤)</summary>
+    public class CameraSettings
+    {
+        public int? Width { get; set; }
+        public int? Height { get; set; }
+    }
+
+    public class MinimapSettings
+    {
+        /// <summary>미니맵이 밝혀지는 범위: 플레이어 둘레 몇 칸 (기본 2 = 5x5)</summary>
+        public int? RevealRadius { get; set; }
     }
 
     public static class MapObjectTypes

@@ -208,12 +208,22 @@ namespace Executor.Play
         }
 
         /// <summary>
-        /// 구간 보기의 크기 (칸). 판 내내 같은 크기를 쓰도록 모든 구간(시작 → 체크포인트 1 → … → 출구) 중
+        /// 구간 보기의 크기 (칸). map_data camera.width·height가 있으면 그 값, 없으면 판 내내 같은 크기를 쓰도록 모든 구간(시작 → 체크포인트 1 → … → 출구) 중
         /// 가장 넓은 구간이 들어가는 크기로 한 번 정한다. 여백 포함, 최소 크기 이상, 맵 크기 이하
         /// </summary>
         private RectInt SegmentView()
         {
             if (_segmentView.width > 0) return _segmentView;
+
+            // 맵에 camera 크기가 있으면 그대로 쓴다 (비운 쪽은 1로 두어 다른 쪽이 크기를 정하게)
+            CameraSettings fixedView = _board.Data.Camera;
+            if (fixedView != null && (fixedView.Width > 0 || fixedView.Height > 0))
+            {
+                int fw = fixedView.Width > 0 ? fixedView.Width.Value : 1;
+                int fh = fixedView.Height > 0 ? fixedView.Height.Value : 1;
+                _segmentView = new RectInt(0, 0, Mathf.Min(_board.Width, fw), Mathf.Min(_board.Height, fh));
+                return _segmentView;
+            }
 
             // 구간 끝점: 시작 위치, 체크포인트(번호 순), 출구
             var stops = new List<GridPos> { new GridPos(_board.Data.Player.X, _board.Data.Player.Y) };

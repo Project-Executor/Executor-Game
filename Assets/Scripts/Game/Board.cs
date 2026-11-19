@@ -118,6 +118,17 @@ namespace Executor.Game
         /// <summary>만난 이상 개체 (오브젝트 id). 워프해도 유지</summary>
         private readonly HashSet<string> _encountered = new HashSet<string>();
         private readonly List<BoardObject> _lastEncounters = new List<BoardObject>();
+        /// <summary>미니맵에서 밝혀진 칸 [y * Width + x]. 워프해도 유지</summary>
+        private bool[] _explored;
+
+        /// <summary>미니맵 기본 밝힘 범위 (플레이어 둘레 칸 수)</summary>
+        public const int DefaultRevealRadius = 2;
+
+        /// <summary>미니맵이 밝혀지는 범위 (map_data minimap.revealRadius, 없거나 1 미만이면 기본값)</summary>
+        public int RevealRadius => Data.Minimap?.RevealRadius is int r && r >= 1 ? r : DefaultRevealRadius;
+
+        /// <summary>미니맵에서 밝혀진 칸인지 (플레이어가 RevealRadius 안에 들어간 적 있는 칸)</summary>
+        public bool IsExplored(GridPos p) => IsInside(p) && _explored[p.Y * Width + p.X];
 
         public MapData Data { get; }
         public int Width { get; }
@@ -209,6 +220,7 @@ namespace Executor.Game
             }
             PlayerPos = new GridPos(data.Player.X, data.Player.Y);
             _objects = data.Objects.Select(o => new BoardObject(o)).ToList();
+            _explored = new bool[Width * Height];
             _snapshots[StartOrder] = Capture();
             LookAround();
         }
@@ -391,9 +403,16 @@ namespace Executor.Game
             return new MoveResult(outcome, direction, from, to, target);
         }
 
-        /// <summary>플레이어 주변 3x3: 숨겨진 요소를 드러내고, 처음 만난 이상 개체를 기록한다</summary>
+        /// <summary>플레이어 주변 3x3: 숨겨진 요소를 드러내고, 처음 만난 이상 개체를 기록한다. 미니맵도 RevealRadius만큼 밝힌다</summary>
         private void LookAround()
         {
+            int radius = RevealRadius;
+            for (int y = Math.Max(0, PlayerPos.Y - radius); y <= Math.Min(Height - 1, PlayerPos.Y + radius); y++)
+            for (int x = Math.Max(0, PlayerPos.X - radius); x <= Math.Min(Width - 1, PlayerPos.X + radius); x++)
+            {
+                _explored[y * Width + x] = true;
+            }
+
             _lastEncounters.Clear();
             foreach (BoardObject o in _objects)
             {

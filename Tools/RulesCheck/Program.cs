@@ -363,6 +363,21 @@ public static class Program
         r = b.Move(Direction.Right);
         Check("드러난 가짜 벽 -> 그냥 이동", r.Outcome == MoveOutcome.Moved && b.PlayerPos == new GridPos(3, 1));
 
+        // 미니맵 밝힘 (docs/map-data.md 3.8)
+        b = new Board(Map(new[] { "##########", "#........#", "##########" }, Cp("cp1", 2, 1, order: 1, turns: 10)), 10);
+        Check("미니맵: 시작 둘레 2칸만 밝혀짐 (기본)", b.RevealRadius == 2 && b.IsExplored(new GridPos(3, 1))
+            && !b.IsExplored(new GridPos(4, 1)) && b.IsExplored(new GridPos(0, 0)));
+        b.Move(Direction.Right); b.Move(Direction.Right); b.Move(Direction.Right);
+        Check("미니맵: 이동하면 더 밝혀짐", b.IsExplored(new GridPos(6, 1)) && !b.IsExplored(new GridPos(7, 1)));
+        b.WarpTo(1);
+        Check("미니맵: 워프해도 밝힌 곳 유지", b.IsExplored(new GridPos(6, 1)) && b.PlayerPos == new GridPos(2, 1));
+        var wide = Map(new[] { "##########", "#........#", "##########" });
+        wide.Minimap = new MinimapSettings { RevealRadius = 4 };
+        b = new Board(wide);
+        Check("미니맵: revealRadius 4", b.RevealRadius == 4 && b.IsExplored(new GridPos(5, 1)) && !b.IsExplored(new GridPos(6, 1)));
+        var json = Executor.Network.Json.Deserialize<MapData>("{\"width\":3,\"height\":3,\"camera\":{\"width\":15},\"minimap\":{\"revealRadius\":3}}");
+        Check("camera·minimap JSON 읽기", json.Camera?.Width == 15 && json.Camera.Height == null && json.Minimap?.RevealRadius == 3);
+
         // 모르는 type은 지나간다
         b = new Board(Map(new[] { "####", "#..#", "####" }, Obj("x", "bot", 2, 1)));
         Check("모르는 type -> 바닥처럼 이동", b.Move(Direction.Right).Outcome == MoveOutcome.Moved);

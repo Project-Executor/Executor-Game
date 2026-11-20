@@ -33,7 +33,7 @@ namespace Executor.Game
         public IReadOnlyList<DialogueEffect> Effects { get; }
         /// <summary>computer: 해킹으로 복구했는지 (맵 상태라 워프하면 되돌아간다)</summary>
         public bool IsRestored { get; internal set; }
-        /// <summary>부서진 블록, 주운 열쇠, 열린 문, 모은 데이터 파편은 true. 더는 칸을 차지하지 않는다</summary>
+        /// <summary>부서진 방화벽, 주운 열쇠, 열린 문, 모은 데이터 파편은 true. 더는 칸을 차지하지 않는다</summary>
         public bool IsRemoved { get; internal set; }
         /// <summary>
         /// 정체가 드러났는지. 데이터 파편은 처음에 false이고 3x3 안에 들어오면 true,
@@ -68,9 +68,9 @@ namespace Executor.Game
         Moved,
         /// <summary>상자를 밀었다. 플레이어는 제자리</summary>
         Pushed,
-        /// <summary>블록 내구도가 줄었다. 플레이어는 제자리</summary>
+        /// <summary>방화벽 내구도가 줄었다. 플레이어는 제자리</summary>
         Damaged,
-        /// <summary>블록이 부서졌다. 플레이어는 제자리</summary>
+        /// <summary>방화벽이 부서졌다. 플레이어는 제자리</summary>
         Broke,
         PickedUpKey,
         OpenedDoor,
@@ -90,7 +90,7 @@ namespace Executor.Game
         public Direction Direction { get; }
         public GridPos PlayerFrom { get; }
         public GridPos PlayerTo { get; }
-        /// <summary>영향을 받은 오브젝트 (상자·블록·열쇠·문·체크포인트·데이터 파편·출구·막은 인물·이상 개체). 바닥 이동이나 벽이면 null</summary>
+        /// <summary>영향을 받은 오브젝트 (상자·방화벽·열쇠·문·체크포인트·데이터 파편·출구·막은 인물·이상 개체). 바닥 이동이나 벽이면 null</summary>
         public BoardObject Target { get; }
 
         public bool UsedTurn => Outcome != MoveOutcome.Blocked;

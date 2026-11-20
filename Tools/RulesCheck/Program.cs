@@ -172,11 +172,11 @@ public static class Program
             Obj("c", MapObjectTypes.Crate, 2, 1), Obj("k", MapObjectTypes.Key, 3, 1, keyId: "lab")));
         Check("상자 너머에 열쇠 -> 막힘", b.Move(Direction.Right).Outcome == MoveOutcome.Blocked && b.Turns == 0);
 
-        // 블록
+        // 방화벽 (breakable)
         b = new Board(Map(new[] { "#####", "#...#", "#####" }, Obj("b", MapObjectTypes.Breakable, 2, 1, hp: 2)));
         var r1 = b.Move(Direction.Right);
         var r2 = b.Move(Direction.Right);
-        Check("블록 hp 2 -> 두 번째에 부서짐, 플레이어 제자리",
+        Check("방화벽 hp 2 -> 두 번째에 부서짐, 플레이어 제자리",
             r1.Outcome == MoveOutcome.Damaged && r2.Outcome == MoveOutcome.Broke && b.ObjectAt(new GridPos(2, 1)) == null
             && b.PlayerPos == new GridPos(1, 1) && b.Turns == 2);
         Check("부서진 자리로 이동", b.Move(Direction.Right).Outcome == MoveOutcome.Moved && b.PlayerPos == new GridPos(2, 1));

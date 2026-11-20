@@ -18,7 +18,7 @@ namespace Executor.Play
         private static readonly Color32 PlayerEdge = new Color32(0x2f, 0x6f, 0xde, 0xff);
         private static readonly Color32 Exit = new Color32(0x3c, 0xcf, 0x7a, 0xff);
         private static readonly Color32 Crate = new Color32(0xb0, 0x7a, 0x3c, 0xff);
-        private static readonly Color32 Breakable = new Color32(0x9a, 0x9a, 0xa8, 0xff);
+        private static readonly Color32 Breakable = new Color32(0x8f, 0xc8, 0xf0, 0xff); // 방화벽 (얼음빛 하늘색)
         private static readonly Color32 Key = new Color32(0xff, 0xd2, 0x3f, 0xff);
         private static readonly Color32 Door = new Color32(0xc0, 0x45, 0x55, 0xff);
         private static readonly Color32 Npc = new Color32(0xb0, 0x7c, 0xf0, 0xff);
@@ -36,7 +36,7 @@ namespace Executor.Play
         /// <summary>그림 설명 (전체 맵 팝업 아래에 쓴다)</summary>
         public const string Legend =
             "흰 점: 나 · 초록: 출구 · 청록: 안정 체크포인트 · 주황: 불안정 · 흐린 청록: 아직 안 간 체크포인트 · 분홍: 데이터 파편(찾은 것만) · 진홍: 이상 개체\n"
-            + "노랑: 열쇠 · 자주: 문 · 갈색: 상자 · 회색: 블록 · 보라: 인물 · 어두운 회색: 찾은 가짜 벽 · 빨강/민트: 감염/복구된 컴퓨터 · 검정: 아직 안 가 본 곳";
+            + "노랑: 열쇠 · 자주: 문 · 갈색: 상자 · 하늘색: 방화벽 · 보라: 인물 · 어두운 회색: 찾은 가짜 벽 · 빨강/민트: 감염/복구된 컴퓨터 · 검정: 아직 안 가 본 곳";
 
         /// <summary>Board를 텍스처로 그린다. reuse가 같은 크기면 다시 쓴다</summary>
         public static Texture2D Render(Board board, Texture2D reuse = null)

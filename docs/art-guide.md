@@ -30,7 +30,8 @@
 맵의 **한 칸 = 16 × 16 px 도트**이고, 화질이 떨어지지 않게 **4배(64 × 64 px)로 저장**한다.
 화면에서는 카메라가 구간을 확대해 한 칸이 대략 100~150px로 커지고, **도트 느낌 그대로(Point 필터)** 보인다.
 
-- **타일·오브젝트**: 크기와 상관없이 **한 칸에 꼭 맞춰** 그린다 (64 × 64든 16 × 16이든 된다. 정사각형으로 그린다).
+- **타일·오브젝트**: 크기와 상관없이 **너비가 한 칸**에 맞춰진다. 정사각형이면 칸 가운데, **세로로 긴 그림(컴퓨터 등)은 아래가 칸 바닥에 닿고 위로 솟아 윗칸까지** 올라간다 (입체감).
+- **앞뒤 순서**: 아랫줄에 있는 것이 앞에 그려진다. 같은 줄이면 플레이어가 오브젝트 앞.
 - **플레이어**: 한 칸보다 큰 그림. **64px = 한 칸** 기준으로 크기가 정해진다 (72 × 128 = 가로 1.125칸, 세로 2칸).
   발이 서 있는 칸의 아래쪽에 닿고, 머리는 윗칸까지 올라간다.
 
@@ -47,16 +48,16 @@
 | --- | --- | --- |
 | `Pixel/objects/exit.png` | 출구 | |
 | `Pixel/objects/crate.png` | 상자 (밀 수 있음) | |
-| `Pixel/objects/breakable.png` | 부서지는 블록 | 내구도가 줄수록 게임이 **어둡게 칠한다** → 밝은 색으로 그린다 |
-| `Pixel/objects/key.png` | 열쇠 | ✅ 들어 있음 (64 × 64) |
+| `Pixel/objects/breakable_0.png`, `_1`, `_2` | **방화벽** (부딪혀 부숨, type `breakable`) | ✅ 들어 있음 (원본 묶음: `Art/objects/firewall_sheet.png`). 0 그대로 → 1 금 감 → 2 거의 부서짐(한 번만 더 치면 부서질 때). **세 장을 같은 캔버스 크기·위치**로. 단계 그림이 없으면 `breakable.png` 한 장을 내구도만큼 어둡게 칠한다 |
+| `Pixel/objects/key.png` | 열쇠 | ✅ 들어 있음 |
 | `Pixel/objects/door.png` | 잠긴 문 | |
 | `Pixel/objects/npc.png` | 인물 (공통) | 인물별 도트가 없을 때 쓴다 |
 | `Pixel/npcs/{인물ID}.png` | 인물별 도트 | 예: `Pixel/npcs/cassia.png`. 인물ID는 [4장](#4-인물-id) |
 | `Pixel/objects/checkpoint.png` | 체크포인트 | |
 | `Pixel/objects/hidden.png` | 데이터 파편 | 가까이 가야 나타난다 |
 | `Pixel/objects/anomaly.png` | 이상 개체 | |
-| `Pixel/objects/computer.png` | 감염된 컴퓨터 | |
-| `Pixel/objects/computerRestored.png` | 복구된 컴퓨터 | 해킹에 성공하면 이 그림으로 바뀐다 |
+| `Pixel/objects/computer.png` | 감염된 컴퓨터 | ✅ 들어 있음 (원본 두 장 묶음: `Art/objects/computer_sheet.png`) |
+| `Pixel/objects/computerRestored.png` | 복구된 컴퓨터 | ✅ 들어 있음. 해킹에 성공하면 이 그림으로 바뀐다. **감염된 컴퓨터와 같은 캔버스 크기·위치**로 그려야 바뀔 때 튀지 않는다 |
 
 ### 플레이어 (걷는 동작, GIF)
 
@@ -82,8 +83,16 @@
 
 ### 가져오기 설정 (도트)
 
-`Assets/Resources/Pixel/` 아래 그림은 **자동으로 맞춰진다** (`Assets/Scripts/Editor/PixelArtImporter.cs`): Sprite, **Point 필터, 압축 없음**, 밉맵 없음.
-크기는 코드가 정하므로 Pixels Per Unit은 신경 쓰지 않아도 된다. 흐려 보이면 그림을 고르고 오른쪽 클릭 → **Reimport**.
+`Assets/Resources/Pixel/` 아래 그림은 **자동으로 맞춰진다** (`Assets/Scripts/Editor/PixelArtImporter.cs`).
+
+| 그림 | 설정 | 이유 |
+| --- | --- | --- |
+| 작은 도트 (긴 변 256px 이하, 예: 64 × 64, 72 × 128) | Point 필터, 압축 없음, 밉맵 없음 | 도트가 흐려지지 않게 |
+| 큰 그림 (예: 749 × 749 컴퓨터, 1254 × 1254 열쇠) | Bilinear, 밉맵, 최대 1024px | 한 칸(약 100~150px)으로 크게 줄일 때 계단·반짝임 없이 |
+
+- 크기는 코드가 정하므로 Pixels Per Unit은 신경 쓰지 않아도 된다.
+- 그림이 이상해 보이면(흐림, 계단) `Pixel` 폴더를 오른쪽 클릭 → **Reimport**. 이 설정이 생기기 전에 들어온 그림도 다시 맞춰진다.
+- 여러 그림을 한 장에 그렸으면 원본은 `Art/`에 두고 나눈 파일을 `Pixel/`에 넣는다 (감염된·복구된 컴퓨터처럼).
 
 ---
 

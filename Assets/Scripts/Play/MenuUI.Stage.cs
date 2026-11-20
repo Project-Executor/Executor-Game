@@ -338,6 +338,9 @@ namespace Executor.Play
             Inset(_expMap, 0, 0, 0, 0);
             _zoom = viewport.gameObject.AddComponent<ZoomPan>();
             _zoom.Content = _expMap;
+            _zoom.Grid = raw;
+            _zoom.GridTile = 32 * S;
+            _zoom.PanSlack = 0.35f; // 확대하지 않아도 빈 곳을 끌어 기판을 옮길 수 있다 (가로·세로 35%까지)
 
             _expHeading = Label(board, "", 24 * S, Fg, TextAnchor.UpperLeft, bold: true);
             At(_expHeading, 24 * S, 20 * S, BoardW - 48 * S, 28 * S);
@@ -621,7 +624,7 @@ namespace Executor.Play
                 Inset(t, 0, 0, 0, 0);
                 x += w + gap;
             }
-            Text help = Label(bar.transform, "휠 · +/− 확대 · 드래그 이동 · 0 맞춤 · 숫자 선택 · Enter 시작", 12 * S, Muted, TextAnchor.MiddleLeft);
+            Text help = Label(bar.transform, "휠 · +/− 확대 · 빈 곳 끌어 이동 · 0 맞춤 · 숫자 선택 · Enter 시작", 12 * S, Muted, TextAnchor.MiddleLeft);
             At(help, x + 4 * S, 0, 700 * S, ExpStatusH - 2 * S);
 
             // 오른쪽: 진행 상황 ▬▬▬ 4 / 6

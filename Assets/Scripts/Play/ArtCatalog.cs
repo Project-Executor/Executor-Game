@@ -41,7 +41,13 @@ namespace Executor.Play
         private static readonly Dictionary<string, Sprite> Cache = new Dictionary<string, Sprite>();
 
         public static Sprite Floor => Pixel("tiles/floor", new Color32(0x1b, 0x2a, 0x3a, 0xff), Shape.Frame);
-        public static Sprite Wall => Pixel("tiles/wall", new Color32(0x56, 0x68, 0x80, 0xff), Shape.Solid);
+        /// <summary>
+        /// 스테이지 화면 바탕색. 벽도 같은 색으로 테두리 없이 칠해 벽이 블록이 아니라 맵 바깥(빈 공간)처럼 보이게 한다 —
+        /// 바닥만 길처럼 떠 보인다. tiles/wall.png를 넣으면 그 그림을 쓴다
+        /// </summary>
+        public static readonly Color32 MapBackground = new Color32(0x0d, 0x0d, 0x15, 0xff);
+
+        public static Sprite Wall => Pixel("tiles/wall", MapBackground, Shape.Flat);
         /// <summary>복구된 컴퓨터 (Resources/Pixel/objects/computerRestored)</summary>
         public static Sprite ComputerRestored => Pixel("objects/computerRestored", new Color32(0x5f, 0xd1, 0xb0, 0xff), Shape.Frame);
         public static Sprite Player => Pixel("player", new Color32(0x4f, 0xd1, 0xff, 0xff), Shape.Diamond);
@@ -179,7 +185,7 @@ namespace Executor.Play
             return name.Length == 0 ? null : Load<Sprite>("Guidebook/" + name);
         }
 
-        private enum Shape { Solid, Frame, Cross, Crack, Small, Bar, Diamond }
+        private enum Shape { Solid, Flat, Frame, Cross, Crack, Small, Bar, Diamond }
 
         private static Sprite Pixel(string path, Color32 color, Shape shape)
         {
@@ -264,6 +270,7 @@ namespace Executor.Play
                 Color32 c = shape switch
                 {
                     Shape.Solid => edge ? dark : color,
+                    Shape.Flat => color,
                     Shape.Frame => edge ? color : dark,
                     Shape.Cross => edge || x == y || x == n - 1 - y ? dark : color,
                     Shape.Crack => edge || (x == n / 2 && y > 3) || (y == n / 2 && x < 10) ? dark : color,

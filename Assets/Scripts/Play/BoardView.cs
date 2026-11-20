@@ -256,7 +256,7 @@ namespace Executor.Play
             Camera cam = Camera.main;
             if (cam == null || _board == null) return;
             cam.orthographic = true;
-            cam.backgroundColor = new Color32(0x2a, 0x2f, 0x37, 0xff);
+            cam.backgroundColor = ArtCatalog.MapBackground;
             cam.clearFlags = CameraClearFlags.SolidColor;
             Rect area = GameUI.GameArea;
             float aspect = cam.aspect;

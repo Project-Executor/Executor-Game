@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using Executor.Data;
+using Executor.Game;
 using UnityEngine;
 
 namespace Executor.Play
@@ -22,6 +23,12 @@ namespace Executor.Play
     {
         public const int TilePixels = 16;
 
+        /// <summary>
+        /// 그림 배율: 한 칸(16px 도트)을 4배로 그려 64px. 플레이어처럼 한 칸보다 큰 그림은 이 값으로 크기를 정한다
+        /// (72x128 그림 = 가로 1.125칸, 세로 2칸). 타일·오브젝트는 크기와 상관없이 한 칸에 꼭 맞춘다
+        /// </summary>
+        public const int ArtPixelsPerTile = 64;
+
         /// <summary>대화의 speaker 이름 -> 인물 ID (일러스트·도트 폴더 이름)</summary>
         public static readonly Dictionary<string, string> SpeakerToCharacter = new Dictionary<string, string>
         {
@@ -39,12 +46,44 @@ namespace Executor.Play
         public static Sprite ComputerRestored => Pixel("objects/computerRestored", new Color32(0x5f, 0xd1, 0xb0, 0xff), Shape.Frame);
         public static Sprite Player => Pixel("player", new Color32(0x4f, 0xd1, 0xff, 0xff), Shape.Diamond);
 
+        private static readonly Dictionary<Direction, Sprite[]> PlayerCache = new Dictionary<Direction, Sprite[]>();
+
+        /// <summary>
+        /// 플레이어 걷기 프레임 (Resources/Pixel/player/{front|back|left|right}_{0,1,2...}.png, 0번이 멈춘 자세).
+        /// Art/player의 GIF를 Tools/gif_to_frames.py로 나눈 것이다. 발이 칸 아래쪽에 닿게 세우고, 위쪽은 윗칸까지 올라간다.
+        /// 프레임이 없으면 Pixel/player.png 한 장, 그것도 없으면 임시 도트
+        /// </summary>
+        public static Sprite[] PlayerFrames(Direction facing)
+        {
+            if (PlayerCache.TryGetValue(facing, out Sprite[] cached)) return cached;
+            string name = facing switch
+            {
+                Direction.Up => "back",
+                Direction.Left => "left",
+                Direction.Right => "right",
+                _ => "front",
+            };
+            var frames = new List<Sprite>();
+            for (int i = 0; i < 32; i++)
+            {
+                var texture = Resources.Load<Texture2D>($"Pixel/player/{name}_{i}");
+                if (texture == null) break;
+                texture.filterMode = FilterMode.Point;
+                float pivotY = ArtPixelsPerTile / 2f / texture.height; // 칸 가운데에서 반 칸 아래 = 발
+                frames.Add(Sprite.Create(texture, new Rect(0, 0, texture.width, texture.height), new Vector2(0.5f, pivotY), ArtPixelsPerTile));
+            }
+            if (frames.Count == 0) frames.Add(Player);
+            Sprite[] result = frames.ToArray();
+            PlayerCache[facing] = result;
+            return result;
+        }
+
         /// <summary>오브젝트 그래픽. npc는 인물별 도트가 있으면 그것을 쓴다</summary>
         public static Sprite ForObject(string type, string characterId = null)
         {
             if (type == MapObjectTypes.Npc && characterId != null)
             {
-                Sprite own = Load<Sprite>("Pixel/npcs/" + characterId);
+                Sprite own = CellSprite("Pixel/npcs/" + characterId);
                 if (own != null) return own;
             }
             switch (type)
@@ -106,7 +145,23 @@ namespace Executor.Play
 
         private static Sprite Pixel(string path, Color32 color, Shape shape)
         {
-            return Load<Sprite>("Pixel/" + path) ?? Placeholder(path, color, shape);
+            return CellSprite("Pixel/" + path) ?? Placeholder(path, color, shape);
+        }
+
+        /// <summary>
+        /// 한 칸을 꼭 채우는 그림 (타일·오브젝트). 16x16이든 4배인 64x64든 한 칸에 맞춘다 (긴 변 = 1칸).
+        /// 가져오기 설정(Pixels Per Unit, Sprite 여부)과 상관없이 텍스처로 읽어 만든다. 없으면 null
+        /// </summary>
+        private static Sprite CellSprite(string path)
+        {
+            if (Cache.TryGetValue(path, out Sprite cached)) return cached;
+            var texture = Resources.Load<Texture2D>(path);
+            if (texture == null) return null;
+            texture.filterMode = FilterMode.Point;
+            Sprite sprite = Sprite.Create(texture, new Rect(0, 0, texture.width, texture.height), new Vector2(0.5f, 0.5f),
+                Mathf.Max(texture.width, texture.height));
+            Cache[path] = sprite;
+            return sprite;
         }
 
         /// <summary>

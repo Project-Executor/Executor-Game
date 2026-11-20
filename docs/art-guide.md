@@ -15,7 +15,8 @@
 
 | 종류 | 그릴 크기 (px) | 화면에 보이는 크기 | 경로 | 가져오기 설정 |
 | --- | --- | --- | --- | --- |
-| 맵 타일·오브젝트·플레이어 | **16 × 16** | 한 칸 약 100~150 | `Pixel/...` | [도트](#가져오기-설정-도트) |
+| 맵 타일·오브젝트 | **64 × 64** (16px 도트 × 4) | 한 칸 약 100~150 | `Pixel/tiles/`, `Pixel/objects/` | 자동 |
+| 플레이어 (걷는 동작) | **72 × 128** (18 × 32 × 4), 방향별 GIF | 2칸 높이 | `Art/player/*.gif` → `Pixel/player/` | 자동 |
 | 대화 스탠딩 일러스트 | **1200 × 2000** (세로 2000 권장) | 세로 1000 | `Portraits/{인물}/{표정}.png` | [일러스트](#가져오기-설정-일러스트) |
 | 시작 화면 배경 | **1920 × 1080** | 화면 전체 | `Illustrations/title.png` | 일러스트 |
 | 시작 화면 로고 | **760 × 300 안** (가로로 긴 로고) | 760 × 300 상자 안 | `Illustrations/title_logo.png` | 일러스트 |
@@ -24,13 +25,14 @@
 
 ---
 
-## 1. 맵 도트 (16 × 16)
+## 1. 맵 도트 (16px 도트를 4배로)
 
-맵의 **한 칸 = 16 × 16 px** 이다. 화면에서는 카메라가 구간을 확대해 보여 주므로 한 칸이 대략 100~150px로 커진다
-(맵마다 `camera` 설정에 따라 다름). 그래서 **도트 느낌 그대로(Point 필터)** 크게 보인다.
+맵의 **한 칸 = 16 × 16 px 도트**이고, 화질이 떨어지지 않게 **4배(64 × 64 px)로 저장**한다.
+화면에서는 카메라가 구간을 확대해 한 칸이 대략 100~150px로 커지고, **도트 느낌 그대로(Point 필터)** 보인다.
 
-> 32 × 32처럼 더 크게 그려도 된다. 이때는 가져오기 설정의 **Pixels Per Unit을 그린 크기와 같게(32)** 해서 한 칸이 1 유닛이 되게 한다.
-> 모든 도트를 같은 크기로 맞추는 것을 권한다.
+- **타일·오브젝트**: 크기와 상관없이 **한 칸에 꼭 맞춰** 그린다 (64 × 64든 16 × 16이든 된다. 정사각형으로 그린다).
+- **플레이어**: 한 칸보다 큰 그림. **64px = 한 칸** 기준으로 크기가 정해진다 (72 × 128 = 가로 1.125칸, 세로 2칸).
+  발이 서 있는 칸의 아래쪽에 닿고, 머리는 윗칸까지 올라간다.
 
 ### 타일 (배경 있음, 칸을 꽉 채움)
 
@@ -39,15 +41,14 @@
 | `Pixel/tiles/floor.png` | 바닥 | 어두운 남색, 테두리 |
 | `Pixel/tiles/wall.png` | 벽. **가짜 벽도 이 그림을 쓴다** (찾기 전·후 모두 화면에서는 벽) | 회청색 |
 
-### 플레이어·오브젝트 (배경 투명, 칸 가운데에 그린다)
+### 오브젝트 (배경 투명, 칸 가운데에 그린다)
 
 | 파일 | 맵 요소 | 메모 |
 | --- | --- | --- |
-| `Pixel/player.png` | 플레이어 | |
 | `Pixel/objects/exit.png` | 출구 | |
 | `Pixel/objects/crate.png` | 상자 (밀 수 있음) | |
 | `Pixel/objects/breakable.png` | 부서지는 블록 | 내구도가 줄수록 게임이 **어둡게 칠한다** → 밝은 색으로 그린다 |
-| `Pixel/objects/key.png` | 열쇠 | |
+| `Pixel/objects/key.png` | 열쇠 | ✅ 들어 있음 (64 × 64) |
 | `Pixel/objects/door.png` | 잠긴 문 | |
 | `Pixel/objects/npc.png` | 인물 (공통) | 인물별 도트가 없을 때 쓴다 |
 | `Pixel/npcs/{인물ID}.png` | 인물별 도트 | 예: `Pixel/npcs/cassia.png`. 인물ID는 [4장](#4-인물-id) |
@@ -57,20 +58,32 @@
 | `Pixel/objects/computer.png` | 감염된 컴퓨터 | |
 | `Pixel/objects/computerRestored.png` | 복구된 컴퓨터 | 해킹에 성공하면 이 그림으로 바뀐다 |
 
+### 플레이어 (걷는 동작, GIF)
+
+방향마다 **GIF 하나**로 그린다. Unity는 GIF 애니메이션을 재생하지 못하므로, 스크립트로 프레임 PNG로 나눠서 넣는다.
+
+| 원본 (게임에 안 들어감) | 게임이 읽는 파일 |
+| --- | --- |
+| `Executor-Game/Art/player/front.gif` (아래를 봄) | `Pixel/player/front_0.png`, `front_1.png` ... |
+| `Executor-Game/Art/player/back.gif` (위를 봄) | `Pixel/player/back_0.png` ... |
+| `Executor-Game/Art/player/left.gif`, `right.gif` | `Pixel/player/left_0.png`, `right_0.png` ... |
+
+- **크기**: 18 × 32 도트를 4배 → **72 × 128 px**. 모든 방향·프레임을 같은 크기로, 발은 그림 아래쪽에 맞춘다.
+- **프레임**: 몇 장이든 된다 (지금 4장). **0번(첫 프레임)이 멈춰 있을 때 자세**다. 걸을 때는 1번부터 차례로 돌아간다.
+- **속도**: 한 칸 이동 0.18초, 프레임 하나 0.12초 (`BoardView`의 `MoveSeconds`, `WalkFrameSeconds`). GIF의 프레임 시간은 쓰지 않는다.
+- GIF를 고친 뒤에는 Executor-Game 폴더에서 아래를 실행하면 프레임 PNG가 다시 만들어진다.
+
+  ```bash
+  python Tools/gif_to_frames.py
+  ```
+
+  (Pillow가 필요하다: `pip install pillow`)
+- 프레임이 없으면 `Pixel/player.png` 한 장을 쓰고(걷는 동작 없음), 그것도 없으면 임시 도트가 나온다.
+
 ### 가져오기 설정 (도트)
 
-Project 창에서 그림을 고르고 Inspector에서:
-
-| 항목 | 값 |
-| --- | --- |
-| Texture Type | Sprite (2D and UI) |
-| Sprite Mode | Single |
-| Pixels Per Unit | **16** (그린 크기와 같게) |
-| Filter Mode | **Point (no filter)** |
-| Compression | **None** |
-| Pivot | Center |
-
-설정 뒤 **Apply**.
+`Assets/Resources/Pixel/` 아래 그림은 **자동으로 맞춰진다** (`Assets/Scripts/Editor/PixelArtImporter.cs`): Sprite, **Point 필터, 압축 없음**, 밉맵 없음.
+크기는 코드가 정하므로 Pixels Per Unit은 신경 쓰지 않아도 된다. 흐려 보이면 그림을 고르고 오른쪽 클릭 → **Reimport**.
 
 ---
 
@@ -131,7 +144,7 @@ Portraits/
 
 | 이름표 | 인물ID (폴더 이름) | 스탠딩 일러스트 | 맵 도트 |
 | --- | --- | --- | --- |
-| 집행자 · `{nickname}` (주인공) | `player` | 있음 | `Pixel/player.png` |
+| 집행자 · `{nickname}` (주인공) | `player` | 있음 | `Pixel/player/` (걷는 동작) |
 | 카시아 | `cassia` | 있음 | `Pixel/npcs/cassia.png` (없음) |
 | 연구원 | `researcher` | 없음 | 없음 |
 | 감독관 | `supervisor` | 없음 | 없음 |
@@ -144,8 +157,8 @@ Portraits/
 | 그림 | 상태 |
 | --- | --- |
 | 상점 아이템 이미지 (`items.image`) | 서버에 값은 있지만 화면에 아직 안 쓴다. 쓰게 되면 **128 × 128** 아이콘을 권장 |
-| 스킨 | 장착은 저장되지만 화면은 그대로. 적용하면 **플레이어 도트(16 × 16)를 바꾸는** 방식이 될 예정 |
-| 테마 | 장착은 저장되지만 화면은 그대로. 적용하면 **바닥·벽 타일(16 × 16) 묶음을 바꾸는** 방식이 될 예정 |
+| 스킨 | 장착은 저장되지만 화면은 그대로. 적용하면 **플레이어 걷기 프레임 묶음을 바꾸는** 방식이 될 예정 |
+| 테마 | 장착은 저장되지만 화면은 그대로. 적용하면 **바닥·벽 타일 묶음을 바꾸는** 방식이 될 예정 |
 
 ---
 

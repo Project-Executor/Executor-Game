@@ -58,13 +58,15 @@ Assets/
 │   └── Editor/      에디터 메뉴
 ├── Resources/       코드가 이름으로 불러오는 파일 (그림, 글꼴, 오프라인 맵)
 │   ├── Maps/        chapters.json + {챕터}/stage-N.json (오프라인 테스트용)
-│   ├── Pixel/       16x16 도트 (타일, 오브젝트, 플레이어, 인물)
+│   ├── Pixel/       도트 (16px × 4배: 타일·오브젝트 64x64, 플레이어 걷기 프레임 72x128)
 │   ├── Portraits/   대화 스탠딩 일러스트 ({인물ID}/{표정}.png)
 │   ├── Illustrations/  시작 화면·메인 화면 그림
 │   ├── Guidebook/   도감 그림
 │   └── Fonts/       Pretendard
 └── Scenes/Wireframe.unity
+Art/                 원본 그림 (게임에 안 들어감). 예: player/*.gif → Tools/gif_to_frames.py로 프레임 PNG
 Tools/RulesCheck/    규칙 점검 (Unity 없이 실행)
+Tools/gif_to_frames.py  GIF를 프레임 PNG로 나누기
 ```
 
 ## 규칙 점검

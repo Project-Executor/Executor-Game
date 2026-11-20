@@ -1116,6 +1116,7 @@ namespace Executor.Play
         private void Move(Direction dir)
         {
             MoveResult result = _board.Move(dir);
+            _view.Face(dir);
             if (result.UsedTurn) _view.Sync(); else _view.Bump(dir);
             ShowGuides(_guides.AfterMove(result));
             if (result.Outcome == MoveOutcome.PickedUpKey) _game.Toast("열쇠를 얻었습니다.");

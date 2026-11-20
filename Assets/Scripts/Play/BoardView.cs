@@ -11,7 +11,10 @@ namespace Executor.Play
     /// </summary>
     public class BoardView : MonoBehaviour
     {
-        private const float MoveSeconds = 0.08f;
+        /// <summary>한 칸 움직이는 데 걸리는 시간 (걷는 동작이 보이게)</summary>
+        private const float MoveSeconds = 0.18f;
+        /// <summary>걷기 프레임 하나의 시간. 한 칸에 프레임 1~2개가 지나간다 (GIF 원본은 0.15초)</summary>
+        private const float WalkFrameSeconds = 0.12f;
 
         /// <summary>구간 화면: 구간 시작·끝과 플레이어 둘레로 남기는 칸 수</summary>
         private const int ViewPadding = 2;
@@ -33,6 +36,17 @@ namespace Executor.Play
 
         private Board _board;
         private Transform _player;
+        private SpriteRenderer _playerSprite;
+        /// <summary>플레이어가 보는 방향 (마지막으로 누른 방향)</summary>
+        private Direction _facing = Direction.Down;
+        /// <summary>걷는 동작을 더 보여 줄 시간. 칸을 옮길 때마다 채운다</summary>
+        private float _walkLeft;
+        /// <summary>이번 걸음이 시작된 뒤 지난 시간</summary>
+        private float _stepClock;
+        /// <summary>
+        /// 지금까지 걸은 걸음 수. 걸음마다 시작 프레임을 번갈아 정해(오른발 → 왼발 → ...) 멈췄다 걸어도 같은 발만 나가지 않게 한다
+        /// </summary>
+        private int _steps;
         private readonly Dictionary<BoardObject, SpriteRenderer> _objects = new Dictionary<BoardObject, SpriteRenderer>();
         private readonly Dictionary<Transform, Vector3> _targets = new Dictionary<Transform, Vector3>();
         private Material _material;
@@ -58,10 +72,14 @@ namespace Executor.Play
             {
                 string characterId = obj.Type == MapObjectTypes.Npc && obj.Name != null
                                      && ArtCatalog.SpeakerToCharacter.TryGetValue(obj.Name, out string id) ? id : null;
-                SpriteRenderer sr = Spawn(obj.Id, ArtCatalog.ForObject(obj.Type, characterId), obj.Pos, 1);
+                SpriteRenderer sr = Spawn(obj.Id, ArtCatalog.ForObject(obj.Type, characterId), obj.Pos, SortOrder(obj.Pos.Y, false));
                 _objects[obj] = sr;
             }
-            _player = Spawn("player", ArtCatalog.Player, board.PlayerPos, 2).transform;
+            _facing = Direction.Down;
+            _walkLeft = 0;
+            _steps = 0;
+            _playerSprite = Spawn("player", ArtCatalog.PlayerFrames(_facing)[0], board.PlayerPos, SortOrder(board.PlayerPos.Y, true));
+            _player = _playerSprite.transform;
             Overview = false;
             _segmentView = default;
             Sync();
@@ -73,7 +91,17 @@ namespace Executor.Play
         public void Sync()
         {
             if (_board == null) return;
-            _targets[_player] = ToWorld(_board.PlayerPos);
+            Vector3 playerTarget = ToWorld(_board.PlayerPos);
+            // 다른 칸으로 옮기면 그동안 걷는 동작을 보여 준다
+            if (_targets.TryGetValue(_player, out Vector3 before) && before != playerTarget)
+            {
+                // 새 걸음: 걸음 수를 늘리고 이번 걸음의 시간을 처음부터
+                _steps++;
+                _stepClock = 0;
+                _walkLeft = MoveSeconds;
+            }
+            _targets[_player] = playerTarget;
+            _playerSprite.sortingOrder = SortOrder(_board.PlayerPos.Y, true);
             foreach (var pair in _objects)
             {
                 BoardObject obj = pair.Key;
@@ -91,21 +119,38 @@ namespace Executor.Play
                     sr.sprite = obj.IsRestored ? ArtCatalog.ComputerRestored : ArtCatalog.ForObject(obj.Type);
                 }
                 _targets[sr.transform] = ToWorld(obj.Pos);
-                // 블록은 남은 내구도만큼 진하게
+                sr.sortingOrder = SortOrder(obj.Pos.Y, false); // 상자는 밀려서 줄이 바뀔 수 있다
+                // 방화벽: 단계 그림이 있으면 남은 내구도에 맞는 그림, 없으면 한 장을 남은 내구도만큼 어둡게
                 if (obj.Type == MapObjectTypes.Breakable)
                 {
                     int max = _board.Data.Objects.Find(o => o.Id == obj.Id)?.Hp ?? 1;
-                    float t = max <= 1 ? 1f : 0.45f + 0.55f * obj.Hp / max;
-                    sr.color = new Color(t, t, t, 1f);
+                    Sprite[] stages = ArtCatalog.BreakableStages;
+                    if (stages.Length > 0)
+                    {
+                        sr.sprite = stages[ArtCatalog.BreakableStage(obj.Hp, max, stages.Length)];
+                        sr.color = Color.white;
+                    }
+                    else
+                    {
+                        float t = max <= 1 ? 1f : 0.45f + 0.55f * obj.Hp / max;
+                        sr.color = new Color(t, t, t, 1f);
+                    }
                 }
             }
             UpdateCamera(false);
         }
 
+        /// <summary>
+        /// 그리는 순서: 바닥·벽(0) 위에, 아랫줄일수록 앞에. 윗칸까지 솟는 그림(컴퓨터, 플레이어 머리)이
+        /// 아랫줄의 것을 가리지 않게 한다. 같은 줄이면 플레이어가 오브젝트 앞
+        /// </summary>
+        private static int SortOrder(int row, bool player) => 10 + row * 2 + (player ? 1 : 0);
+
         /// <summary>워프: 미끄러지지 않고 바로 그 상태로 옮긴다 (카메라도)</summary>
         public void SnapToBoard()
         {
             Sync();
+            _walkLeft = 0; // 워프는 걷지 않는다
             foreach (var pair in _targets)
             {
                 if (pair.Key != null) pair.Key.position = pair.Value;
@@ -120,9 +165,16 @@ namespace Executor.Play
             UpdateCamera(false);
         }
 
-        /// <summary>막힌 입력: 그 방향으로 살짝 흔들기</summary>
+        /// <summary>플레이어가 그 방향을 보게 한다 (이동·밀기·막힘 모두)</summary>
+        public void Face(Direction direction)
+        {
+            _facing = direction;
+        }
+
+        /// <summary>막힌 입력: 그 방향을 보고 살짝 흔들기</summary>
         public void Bump(Direction direction)
         {
+            Face(direction);
             GridPos d = direction.Delta();
             _player.position = ToWorld(_board.PlayerPos) + new Vector3(d.X, -d.Y, 0) * 0.15f;
         }
@@ -136,6 +188,7 @@ namespace Executor.Play
             {
                 if (pair.Key != null) pair.Key.position = Vector3.MoveTowards(pair.Key.position, pair.Value, step);
             }
+            AnimatePlayer();
 
             Camera cam = Camera.main;
             if (_hasCamTarget && cam != null)
@@ -144,6 +197,35 @@ namespace Executor.Play
                 cam.orthographicSize = Mathf.Lerp(cam.orthographicSize, _camSize, t);
                 cam.transform.position = Vector3.Lerp(cam.transform.position, _camPos, t);
             }
+        }
+
+        /// <summary>
+        /// 플레이어 그림: 보는 방향의 프레임. 걷는 동안(칸을 옮기는 중) 프레임을 넘기고, 멈추면 0번(서 있는 자세).
+        /// 계속 눌러 이어 걸으면 걷기 동작도 끊기지 않고 이어진다
+        /// </summary>
+        private void AnimatePlayer()
+        {
+            if (_playerSprite == null) return;
+            Sprite[] frames = ArtCatalog.PlayerFrames(_facing);
+            bool moving = _targets.TryGetValue(_player, out Vector3 target) && (_player.position - target).sqrMagnitude > 0.0001f;
+            int index = 0;
+            if (frames.Length > 1 && (moving || _walkLeft > 0))
+            {
+                _walkLeft -= Time.deltaTime;
+                _stepClock += Time.deltaTime;
+                // 걷기 프레임 한 바퀴 = 두 걸음 (4프레임이면 선 자세·오른발·선 자세·왼발).
+                // 한 걸음에 프레임 절반을 쓰고, 걸음 수에 따라 시작 프레임을 번갈아 고른다:
+                //   짝수 걸음 1 -> 2, 홀수 걸음 3 -> 0 (= (1 + 걸음 수 × 2) % 4)
+                int perStep = Mathf.Max(1, frames.Length / 2);
+                int start = 1 + (_steps - 1) * perStep;
+                int within = Mathf.Min(perStep - 1, (int)(_stepClock / WalkFrameSeconds));
+                index = ((start + within) % frames.Length + frames.Length) % frames.Length;
+            }
+            else
+            {
+                _walkLeft = 0;
+            }
+            if (_playerSprite.sprite != frames[index]) _playerSprite.sprite = frames[index];
         }
 
         private void SnapAll()
@@ -174,7 +256,7 @@ namespace Executor.Play
             Camera cam = Camera.main;
             if (cam == null || _board == null) return;
             cam.orthographic = true;
-            cam.backgroundColor = new Color32(0x2a, 0x2f, 0x37, 0xff);
+            cam.backgroundColor = ArtCatalog.MapBackground;
             cam.clearFlags = CameraClearFlags.SolidColor;
             Rect area = GameUI.GameArea;
             float aspect = cam.aspect;

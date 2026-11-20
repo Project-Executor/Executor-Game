@@ -147,7 +147,7 @@ namespace Executor.Play
         /// <summary>퀘스트 팝업에 보여 줄 자세한 내용</summary>
         public void SetQuest(string text) => _questDetail = text;
 
-        /// <summary>오른쪽 위 "수집 n/m" (숨겨진 요소). 모두 모으면 초록</summary>
+        /// <summary>오른쪽 위 "수집 n/m" (데이터 파편). 모두 모으면 초록</summary>
         public void SetCollect(int collected, int total)
         {
             SetButtonText(_collect, $"수집 {collected}/{total}");

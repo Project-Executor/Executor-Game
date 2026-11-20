@@ -78,7 +78,7 @@ namespace Executor.Data
         public bool Clear { get; set; }
         /// <summary>최소 턴이 parMoves 이하</summary>
         public bool Par { get; set; }
-        /// <summary>숨겨진 버그 처치 / 피스 수집</summary>
+        /// <summary>별 3 조건 달성 (데이터 파편 모두 수집 등)</summary>
         public bool Hidden { get; set; }
         public int Count { get; set; }
         public int Max { get; set; }
@@ -126,7 +126,9 @@ namespace Executor.Data
         public int UnstableCount { get; set; }
         /// <summary>워프한 횟수 (통계용)</summary>
         public int Rewinds { get; set; }
-        /// <summary>클리어했을 때만 반영된다</summary>
+        /// <summary>별 2 조건 달성 (조건은 맵의 stars.star2, 게임이 판정). 클리어했을 때만 반영된다</summary>
+        public bool ParAchieved { get; set; }
+        /// <summary>별 3 조건 달성 (조건은 맵의 stars.star3, 게임이 판정). 클리어했을 때만 반영된다</summary>
         public bool HiddenFound { get; set; }
         /// <summary>이번 판에서 만난 이상 개체의 도감 ID (최대 50개). 클리어하지 못해도 해금된다</summary>
         public List<long> EncounteredGuidebookIds { get; set; } = new List<long>();

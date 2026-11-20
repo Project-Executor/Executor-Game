@@ -1458,45 +1458,58 @@ namespace Executor.Play
 
             async void ShowResult()
             {
-                string serverLine = "";
+                StageResultResponse res = null;
+                string serverError = null;
                 if (submit != null)
                 {
                     try
                     {
-                        StageResultResponse res = await submit;
+                        res = await submit;
                         ApplyServerResult(chapter, stage, res);
                         newBest = res.IsNewBest;
                         best = res.BestMoves ?? best;
-                        serverLine = ServerResultText(res);
                     }
                     catch (ApiException e)
                     {
                         if (e.IsNetworkError) PendingResults.Add(stage.StageId.Value, request);
-                        serverLine = e.IsNetworkError
-                            ? "\n서버에 저장하지 못했습니다. 다음에 접속할 때 다시 보냅니다."
-                            : "\n서버 저장 실패: " + e.Message;
+                        serverError = e.IsNetworkError
+                            ? "서버에 저장하지 못했습니다. 다음에 접속할 때 다시 보냅니다."
+                            : "서버 저장 실패: " + e.Message;
                     }
                 }
                 if (_board == null || _stage != stage) return; // 기다리는 동안 다른 화면으로 갔으면 그만
                 _mode = Mode.Result;
                 Block();
-                bool hasNext = _chapter.Stages.Any(s => s.No > _stage.No);
-                var buttons = new List<(string, System.Action)>
+                string code = chapter == null ? $"{stage.No}" : $"{chapter.LayerOrder}-{stage.No}";
+                int maxStars = StarCountShown();
+                var info = new GameUI.ResultInfo
                 {
-                    ("다시 (R)", () => StartStage(_stage, false)),
-                    ("스테이지 선택 (Esc)", ShowStageSelect),
+                    Code = code,
+                    Title = $"{code} · {stage.Title}",
+                    MaxStars = maxStars,
+                    Stars = Enumerable.Range(1, maxStars).Count(n => n == 1 || _board.IsStarMet(n)),
+                    Record = record,
+                    Par = _board.CheckpointCount == 0 ? stage.Par : (int?)null,
+                    Rewinds = _board.Rewinds,
+                    NewBest = newBest,
+                    Reward = res != null && res.FirstClear && res.RewardCoin > 0 ? $"+{res.RewardCoin}" : null,
+                    HasRanking = submit != null && serverError == null,
+                    HasNext = _chapter.Stages.Any(s => s.No > _stage.No),
+                    OnRetry = () => StartStage(_stage, false),
+                    OnSelect = ShowStageSelect,
+                    OnNext = NextStage,
                 };
-                if (hasNext) buttons.Add(("다음 (Enter)", NextStage));
-                string detail = _board.CheckpointCount == 0
-                    ? $"남은 턴 {_board.RemainingTurns} · {record}턴 사용"
-                    : $"기록 {record}턴 (구간 최고의 합) · 누른 턴 {_board.Turns} · 워프 {_board.Rewinds}회";
-                // 별 2·3: 달성 여부와 조건 (별 1은 클리어)
-                string stars = string.Concat(Enumerable.Range(2, System.Math.Max(0, StarCountShown() - 1))
-                    .Select(n => $"\n{(_board.IsStarMet(n) ? "달성" : "미달성")} · {StarLine(n)}"));
-                string guide = _board.EncounteredGuidebookIds.Count > 0 ? $"\n도감 기록 {_board.EncounteredGuidebookIds.Count}종" : "";
-                _game.ShowResult($"클리어!\n\n{_stage.Title}\n{detail}{stars}{guide}" +
-                                 (newBest ? "\n최고 기록" : $"\n최고 {best}턴") + serverLine, true, buttons);
-                if (submit != null && submit.Status == TaskStatus.RanToCompletion) LoadResultRank(stage);
+                for (int n = 1; n <= maxStars; n++)
+                {
+                    bool met = n == 1 || _board.IsStarMet(n);
+                    string text = _board.IsStarAvailable(n) ? StarTypes.Text(_board, n) : StarTypes.Unavailable(_board, n);
+                    string progress = _board.IsStarAvailable(n) ? StarTypes.Progress(_board, n) : "";
+                    info.StarRows.Add(($"<color=#ffd84a>★{n}</color> {text}", met, met ? "달성" : progress.Length > 0 ? progress : "미달성"));
+                }
+                if (res?.UnlockedGuidebooks != null) info.Unlocked.AddRange(res.UnlockedGuidebooks.Select(g => g.Title));
+                _game.ShowResult(info);
+                if (serverError != null) _game.Toast(serverError, Theme.Red);
+                if (res != null) LoadResultRank(stage);
             }
 
             if (_stage.Map.Story?.Outro?.Count > 0) PlayStory(_stage.Map.Story.Outro, ShowResult);
@@ -1511,11 +1524,12 @@ namespace Executor.Play
             {
                 RankingResponse res = await StageApi.GetRankingsAsync(stage.StageId.Value, RankingScope.All, 10);
                 if (_mode != Mode.Result || _stage != stage) return;
-                _game.SetResultRank(res.Me == null ? "순위 보기" : $"순위 {res.Me.Rank}위 ▸", () => OpenRanking(stage, false));
+                _game.SetResultRanking(res, PlayerSession.Profile?.UserId ?? 0, PlayerSession.DisplayName, () => OpenRanking(stage, false));
             }
             catch (ApiException e)
             {
                 Debug.LogWarning("[WireframeGame] 순위를 불러오지 못했습니다: " + e.Message);
+                if (_mode == Mode.Result && _stage == stage) _game.SetResultRanking(null, 0, null, null);
             }
         }
 
@@ -1556,19 +1570,6 @@ namespace Executor.Play
                 }
                 ReloadChapters();
             }
-        }
-
-        /// <summary>결과 화면의 서버 줄: 누적 별, 첫 클리어 보상, 해금된 도감</summary>
-        private static string ServerResultText(StageResultResponse res)
-        {
-            var sb = new System.Text.StringBuilder();
-            if (res.Stars != null) sb.Append($"\n누적 별 {res.Stars.Count}/{res.Stars.Max}");
-            if (res.FirstClear && res.RewardCoin > 0) sb.Append($"\n첫 클리어 보상 +{res.RewardCoin} 코인 (보유 {res.TotalCoin})");
-            if (res.UnlockedGuidebooks?.Count > 0)
-            {
-                sb.Append("\n도감 해금: " + string.Join(", ", res.UnlockedGuidebooks.Select(g => g.Title)));
-            }
-            return sb.ToString();
         }
 
         private void NextStage()

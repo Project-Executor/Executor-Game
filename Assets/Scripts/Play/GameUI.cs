@@ -49,11 +49,6 @@ namespace Executor.Play
         /// <summary>닉네임 입력의 중복 확인 버튼</summary>
         public Action OnCheckNickname;
 
-        // 결과
-        private GameObject _result;
-        private Text _resultText;
-        private RectTransform _resultButtons;
-
         public bool HasPopup => _popupRoot.childCount > 0;
 
         /// <summary>팝업을 붙이는 자리 (친구·메시지 팝업이 쓴다)</summary>
@@ -210,19 +205,7 @@ namespace Executor.Play
 
         public void HideNarration() => _narration.SetActive(false);
 
-        // ---------------- 결과 ----------------
-        private Button _resultRank;
-
-        /// <summary>결과 화면 오른쪽 위 순위 버튼. label이 null이면 숨긴다</summary>
-        public void SetResultRank(string label, Action onClick)
-        {
-            _resultRank.gameObject.SetActive(label != null);
-            if (label == null) return;
-            _resultRank.GetComponentInChildren<Text>().text = label;
-            _resultRank.onClick.RemoveAllListeners();
-            _resultRank.onClick.AddListener(() => onClick?.Invoke());
-        }
-
+        // ---------------- 순위 팝업 ----------------
         /// <summary>
         /// 순위 팝업. 위에 전체·친구 탭, 아래에 순위 줄 (최대 10개, 내 줄은 강조). 내가 10위 밖이면 맨 아래에 내 순위
         /// </summary>
@@ -269,21 +252,6 @@ namespace Executor.Play
             Stretch(foot.rectTransform);
         }
 
-        public void ShowResult(string text, bool success, IEnumerable<(string label, Action onClick)> buttons)
-        {
-            _result.SetActive(true);
-            _resultRank.gameObject.SetActive(false);
-            _resultText.text = text;
-            _resultText.color = success ? TextColor : Bad;
-            Clear(_resultButtons);
-            int i = 0;
-            foreach (var (label, onClick) in buttons)
-            {
-                var b = Button(_resultButtons, label, onClick, 26);
-                Place(b, new Vector2(0, 0.5f), new Vector2(i * 270, 0), new Vector2(250, 72), new Vector2(0, 0.5f));
-                i++;
-            }
-        }
 
         private void Update()
         {
@@ -453,19 +421,5 @@ namespace Executor.Play
             Place(hint, new Vector2(0.5f, 0), new Vector2(0, 40), new Vector2(1000, 36), new Vector2(0.5f, 0));
         }
 
-        private void BuildResult()
-        {
-            var panel = Panel(_root, "Result", PanelColor, Line);
-            Place(panel, new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(900, 460));
-            _result = panel.gameObject;
-            _resultText = Label(panel, "", 36, TextAnchor.MiddleCenter, bold: true);
-            Place(_resultText, new Vector2(0.5f, 1), new Vector2(0, -40), new Vector2(820, 260), new Vector2(0.5f, 1));
-            _resultRank = Button(panel, "순위", null, 22);
-            Place(_resultRank, new Vector2(1, 1), new Vector2(-20, -20), new Vector2(220, 56), new Vector2(1, 1));
-            _resultRank.gameObject.SetActive(false);
-            _resultButtons = new GameObject("Buttons", typeof(RectTransform)).GetComponent<RectTransform>();
-            _resultButtons.SetParent(panel, false);
-            Place(_resultButtons, new Vector2(0.5f, 0), new Vector2(-395, 60), new Vector2(790, 72), new Vector2(0, 0));
-        }
     }
 }

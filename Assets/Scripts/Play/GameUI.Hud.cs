@@ -475,6 +475,7 @@ namespace Executor.Play
             if (_toastQueue.Count == 0) { _toast.SetActive(false); return; }
             var (text, accent) = _toastQueue.Dequeue();
             _toast.SetActive(true);
+            _toastBox.SetAsLastSibling(); // 결과 화면의 어두운 판보다 위에
             foreach (Image edge in _toastBox.Find("Border").GetComponentsInChildren<Image>()) edge.color = accent;
             _toastText.text = text;
             // 글자 길이에 맞춰 상자 크기 (최대 너비 600 × 1.5, 넘치면 줄바꿈)

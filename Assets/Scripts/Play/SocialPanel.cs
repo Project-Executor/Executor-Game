@@ -538,7 +538,12 @@ namespace Executor.Play
                     _chatInput.text = text; // 보내지 못한 내용은 되돌려 둔다
                     _refocus = _chatInput;
                 }
-                Status(e.Code == "NOT_FRIEND" ? "친구에게만 메시지를 보낼 수 있습니다." : Error(e), false);
+                Status(e.Code switch
+                {
+                    "NOT_FRIEND" => "친구에게만 메시지를 보낼 수 있습니다.",
+                    "MESSAGE_SPAM" => "메시지를 너무 빠르게 보내고 있습니다. 잠시 후 다시 보내 주세요.",
+                    _ => Error(e),
+                }, false);
             }
         }
     }

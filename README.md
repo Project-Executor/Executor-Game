@@ -45,11 +45,11 @@ Assets/
 │   ├── Network/     서버 호출 (ApiClient: 토큰 첨부·재발급, 기능별 *Api)
 │   ├── Play/        화면
 │   │   ├── WireframeGame.cs   게임 흐름 (메뉴 ↔ 스테이지 ↔ 결과, 입력 처리)
-│   │   ├── MenuUI.cs          시작·스테이지 선택·시나리오·상점·메일·도감 등 메뉴 화면 (메인은 MenuUI.Main.cs, 스테이지 선택은 MenuUI.Stage.cs)
+│   │   ├── MenuUI.cs          시작·스테이지 선택·시나리오·상점·메일·도감 등 메뉴 화면 (메인 MenuUI.Main.cs, 스테이지 선택 MenuUI.Stage.cs, 바탕화면 창 MenuUI.Windows.cs)
 │   │   ├── GameUI.cs          플레이 화면 (대화창, 해킹 창, 결과, 순위). HUD는 GameUI.Hud.cs, 결과는 GameUI.Result.cs
 │   │   ├── BoardView.cs       판 그리기와 카메라
 │   │   ├── Minimap.cs         미니맵 그림
-│   │   ├── SocialPanel.cs     친구·메시지 팝업
+│   │   ├── SocialPanel.cs     친구·메시지 창 (messenger.exe)
 │   │   ├── ReportPanel.cs     신고·버그 제보 팝업
 │   │   ├── ArtCatalog.cs      그림 찾기 (없으면 임시 색 상자) — docs/art-guide.md
 │   │   ├── ServerSync.cs      서버 스테이지 목록·맵 받기, 못 보낸 결과 다시 보내기

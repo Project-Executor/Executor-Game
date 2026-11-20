@@ -56,5 +56,13 @@ namespace Executor.Data
         /// <summary>처음 등장하는 스테이지 (없으면 null)</summary>
         public long? StageId { get; set; }
         public DateTime? UnlockedAt { get; set; }
+        /// <summary>언어 (예: Java). 없으면 null</summary>
+        public string Language { get; set; }
+        /// <summary>코드 예시 (여러 줄). 없으면 null</summary>
+        public string Code { get; set; }
+        /// <summary>대처 방법 한 줄. 없으면 null</summary>
+        public string Remedy { get; set; }
+        /// <summary>맵에서의 모습 (예: 지나갈 수 없는 칸). 없으면 null</summary>
+        public string MapNote { get; set; }
     }
 }

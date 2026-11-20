@@ -6,31 +6,43 @@ using Executor.Data;
 using Executor.Network;
 using UnityEngine;
 using UnityEngine.UI;
-using static Executor.Play.UiKit;
+using static Executor.Play.Theme;
 
 namespace Executor.Play
 {
     /// <summary>
-    /// 친구·메시지 팝업. 메인 화면(친구 버튼)과 플레이 화면(채팅 버튼)이 같은 화면을 쓴다.
-    /// 탭: 메시지(대화 상대) · 친구 · 받은 요청 · 보낸 요청 · 친구 찾기. 대화를 열면 같은 팝업 안에서 대화 화면으로 바뀐다.
-    /// 대화 화면은 열려 있는 동안 몇 초마다 새 메시지를 불러온다 (Tick).
+    /// 친구·메시지 창 (시안 PopFriends, messenger.exe). 메인 화면(친구 아이콘)과 플레이 화면(채팅 버튼)이 같은 창을 쓴다.
+    /// 왼쪽: 닉네임 찾기 + 메뉴(메시지 · 친구 · 받은 요청 · 보낸 요청). 오른쪽: 고른 메뉴의 목록, 친구 상세(기록 비교 · 채팅 ·
+    /// 도전장(업데이트 예정)), 대화. 대화는 열려 있는 동안 몇 초마다 새 메시지를 불러온다 (Tick).
+    /// 친구 접속 상태·친구 코드·내 맵 보내기는 MVP에서 뺐다 (Executor-Server docs/requirements.md 3.12)
     /// </summary>
     public class SocialPanel
     {
         public const string TabMessages = "messages", TabFriends = "friends", TabReceived = "received", TabSent = "sent", TabSearch = "search";
 
-        private const float PopupW = 1240, PopupH = 900;
+        // 창 (시안 left 236, top 60, 820 x 520)
+        private const float WinW = 820 * S, WinH = 520 * S, NavW = 260 * S, PadX = 24 * S, PadY = 20 * S;
+        private static float BodyH => WinH - WinBorder * 2 - WinTitleH;
+        private static float PaneW => WinW - WinBorder * 2 - NavW - PadX * 2;
         private const float PollSeconds = 5f;
         private const int MessageMax = 500;
 
         private readonly Func<Transform> _root;
         private readonly Action<int> _onBadge;
 
+        /// <summary>창이 뜨거나 닫힐 때 작업 표시줄 탭 (이름 / null)</summary>
+        public Action<string> OnWindow;
+
+        /// <summary>친구 상세의 기록 비교: (스테이지 "1-2", 내 최소 턴, 친구 최소 턴). 없으면 표를 숨긴다</summary>
+        public Func<UserSummary, Task<List<(string stage, int? me, int? friend)>>> CompareRecords;
+
         private GameObject _popup;
-        private RectTransform _body;
+        private RectTransform _nav, _body;
         private Text _status;
         private string _tab = TabMessages;
         private int _received, _unread;
+        private InputField _searchInput;
+        private string _lastSearch;
 
         // 대화 화면
         private UserSummary _partner;
@@ -46,7 +58,7 @@ namespace Executor.Play
         private bool _loadingChat;
         private long _lastMessageId;
 
-        /// <param name="popupRoot">팝업을 붙일 곳 (메뉴 또는 게임 화면의 팝업 자리)</param>
+        /// <param name="popupRoot">창을 붙일 곳 (메뉴 또는 게임 화면의 팝업 자리)</param>
         /// <param name="onBadge">안 읽은 메시지 + 받은 요청 수가 바뀌면 (버튼 숫자 표시용)</param>
         public SocialPanel(Func<Transform> popupRoot, Action<int> onBadge)
         {
@@ -56,18 +68,17 @@ namespace Executor.Play
 
         public bool IsOpen => _popup != null;
 
-        /// <summary>팝업을 연다 (이미 열려 있으면 탭만 바꾼다)</summary>
+        /// <summary>창을 연다 (이미 열려 있으면 메뉴만 바꾼다)</summary>
         public void Open(string tab = TabMessages)
         {
+            Build();
             if (!PlayerSession.IsOnline)
             {
-                Build("친구·메시지");
                 Note("친구와 메시지는 로그인하면 쓸 수 있습니다.");
                 return;
             }
             _tab = tab;
             _partner = null;
-            Build("친구·메시지");
             ShowTab();
         }
 
@@ -76,6 +87,8 @@ namespace Executor.Play
             if (_popup != null) UnityEngine.Object.Destroy(_popup);
             _popup = null;
             _partner = null;
+            OnWindow?.Invoke(null);
+            RefreshBadge();
         }
 
         /// <summary>대화 화면이 열려 있으면 PollSeconds마다 새 메시지를 불러온다</summary>
@@ -109,6 +122,7 @@ namespace Executor.Play
                 _unread = (int)(await unread).Count;
                 _received = (await received).Count;
                 _onBadge?.Invoke(_unread + _received);
+                if (_popup != null) DrawNav();
             }
             catch (ApiException e)
             {
@@ -118,23 +132,101 @@ namespace Executor.Play
 
         // ================= 틀 =================
 
-        private void Build(string title)
+        private void Build()
         {
             if (_popup != null) UnityEngine.Object.Destroy(_popup);
-            _popup = Popup(_root(), title, new Vector2(PopupW, PopupH), out _body, () => { _popup = null; _partner = null; RefreshBadge(); });
+            WindowFrame(_root(), "친구 — messenger.exe", "friends", 236, 60, 820, 520, false, Close, out RectTransform body, out _popup);
+            OnWindow?.Invoke("messenger.exe");
+
+            Image nav = Fill(body, "Nav", Night);
+            At(nav, 0, 0, NavW - 2 * S, BodyH);
+            Image navLine = Fill(body, "NavLine", TrackLine);
+            At(navLine, NavW - 2 * S, 0, 2 * S, BodyH);
+            _nav = nav.rectTransform;
+
+            // 왼쪽 위: 닉네임으로 찾기
+            Text label = Label(_nav, "친구 찾기", 12 * S, Muted, TextAnchor.MiddleLeft);
+            At(label, 12 * S, 12 * S, NavW - 24 * S, 16 * S);
+            _searchInput = UiKit.Input(_nav, "닉네임 입력", limit: 20, size: (int)(12 * S));
+            StyleInput(_searchInput);
+            At(_searchInput, 12 * S, 12 * S + 16 * S + 8 * S, NavW - 2 * S - 24 * S - 52 * S - 6 * S, 28 * S);
+            PrimaryButton(_nav, "찾기", 12 * S, () => { _refocus = _searchInput; SearchFromNav(); }, out RectTransform go);
+            At(go, NavW - 2 * S - 12 * S - 52 * S, 12 * S + 16 * S + 8 * S, 52 * S, 28 * S);
+            UiKit.OnEnter(_searchInput, () => { _refocus = _searchInput; SearchFromNav(); });
+            Image sep = Fill(_nav, "Line", TrackLine);
+            At(sep, 0, 12 * S + 16 * S + 8 * S + 28 * S + 12 * S, NavW - 2 * S, 2 * S);
+
+            _body = Node(body, "Pane");
+            At(_body, NavW + PadX, PadY, PaneW, BodyH - PadY * 2);
+            DrawNav();
+        }
+
+        private const float NavMenuTop = 12 * S + 16 * S + 8 * S + 28 * S + 12 * S + 2 * S + 8 * S;
+
+        /// <summary>왼쪽 메뉴 (메시지 · 친구 · 받은 요청 · 보낸 요청). 지금 메뉴는 하늘색</summary>
+        private void DrawNav()
+        {
+            if (_nav == null) return;
+            Transform old = _nav.Find("Menu");
+            if (old != null) UnityEngine.Object.Destroy(old.gameObject);
+            RectTransform menu = Node(_nav, "Menu");
+            At(menu, 0, NavMenuTop, NavW - 2 * S, BodyH - NavMenuTop);
+            if (!PlayerSession.IsOnline) return;
+            float y = 0;
+            foreach (var (tab, label, count) in new[]
+                     {
+                         (TabMessages, "메시지", _unread), (TabFriends, "친구", 0), (TabReceived, "받은 요청", _received), (TabSent, "보낸 요청", 0),
+                     })
+            {
+                string t = tab;
+                bool current = _tab == t && _partner == null;
+                const float h = 40 * S;
+                RectTransform row = Node(menu, "Tab:" + label);
+                At(row, 0, y, NavW - 2 * S, h);
+                if (current)
+                {
+                    Image bg = Fill(row, "Bg", Hex(0x22d3ee, 0.14f));
+                    Inset(bg, 0, 0, 0, 0);
+                    Image bar = Fill(row, "Bar", Cyan);
+                    At(bar, 0, 0, 2 * S, h);
+                }
+                else
+                {
+                    HoverArea(row, "Hover", Hex(0x22d3ee, 0.10f), () => { _tab = t; _partner = null; ShowTab(); }, out Image area);
+                    Inset(area, 0, 0, 0, 0);
+                }
+                Text text = Label(row, label, 12 * S, Fg, TextAnchor.MiddleLeft, bold: true);
+                Inset(text, 12 * S, 0, 40 * S, 0);
+                if (count > 0)
+                {
+                    Text c = Label(row, count.ToString(), 12 * S, Red, TextAnchor.MiddleRight, UiKit.Mono);
+                    Inset(c, 0, 0, 12 * S, 0);
+                }
+                y += h + 2 * S;
+            }
+        }
+
+        private static void StyleInput(InputField field)
+        {
+            var image = field.GetComponent<Image>();
+            if (image != null) image.color = Ink;
+            var outline = field.GetComponent<Outline>();
+            if (outline != null) outline.effectColor = TrackLine;
         }
 
         private void ClearBody()
         {
-            Clear(_body);
+            UiKit.Clear(_body);
             _chatList = null;
             _chatInput = null;
+            _status = null;
         }
 
         private void Note(string text)
         {
-            var t = Label(_body, text, 28, TextAnchor.MiddleCenter, Muted);
-            Stretch(t.rectTransform);
+            Text t = Label(_body != null ? _body : _nav, text, 12 * S, Muted, TextAnchor.MiddleCenter);
+            t.horizontalOverflow = HorizontalWrapMode.Wrap;
+            Inset(t, 0, 0, 0, 0);
         }
 
         /// <summary>아래쪽 안내 줄 (성공은 초록, 실패는 빨강)</summary>
@@ -142,28 +234,26 @@ namespace Executor.Play
         {
             if (_status == null) return;
             _status.text = text ?? "";
-            _status.color = good ? Good : Bad;
+            _status.color = good ? Green : Red;
         }
 
         private static string Error(ApiException e) => e.IsNetworkError ? "서버에 연결할 수 없습니다." : e.Message;
 
         private static string Name(UserSummary u) => string.IsNullOrEmpty(u?.Nickname) ? "(닉네임 없음)" : u.Nickname;
 
-        /// <summary>세로로 스크롤되는 목록 자리. 반환값(content)에 위에서부터 y를 음수로 내려가며 넣고, 다 넣으면 content.sizeDelta.y를 높이로</summary>
+        /// <summary>세로 스크롤 목록 (content에 위에서부터 At으로 넣고, 끝에 content.sizeDelta.y를 높이로)</summary>
         private static RectTransform ScrollArea(RectTransform parent, float top, float bottom, out ScrollRect scroll)
         {
-            var viewport = new GameObject("Viewport", typeof(RectTransform), typeof(RectMask2D), typeof(Image)).GetComponent<RectTransform>();
-            viewport.SetParent(parent, false);
-            Stretch(viewport);
-            viewport.offsetMin = new Vector2(0, bottom);
-            viewport.offsetMax = new Vector2(0, -top);
-            viewport.GetComponent<Image>().color = new Color(0, 0, 0, 0);
-            var content = new GameObject("Content", typeof(RectTransform)).GetComponent<RectTransform>();
-            content.SetParent(viewport, false);
+            RectTransform viewport = Node(parent, "Viewport");
+            Inset(viewport, 0, top, 0, bottom);
+            viewport.gameObject.AddComponent<RectMask2D>();
+            Image catcher = viewport.gameObject.AddComponent<Image>();
+            catcher.color = new Color(0, 0, 0, 0);
+            RectTransform content = Node(viewport, "Content");
             content.anchorMin = new Vector2(0, 1);
             content.anchorMax = new Vector2(1, 1);
             content.pivot = new Vector2(0.5f, 1);
-            content.sizeDelta = Vector2.zero;
+            content.offsetMin = content.offsetMax = Vector2.zero;
             scroll = viewport.gameObject.AddComponent<ScrollRect>();
             scroll.content = content;
             scroll.viewport = viewport;
@@ -173,33 +263,38 @@ namespace Executor.Play
             return content;
         }
 
-        // ================= 탭 =================
+        /// <summary>오른쪽 머리: 큰 제목 + 아래 안내 줄 자리</summary>
+        private void Heading(string title)
+        {
+            Text t = Label(_body, title, 24 * S, Fg, TextAnchor.MiddleLeft, bold: true);
+            At(t, 0, 0, PaneW, 28 * S);
+            _status = Label(_body, "", 12 * S, Green, TextAnchor.MiddleLeft);
+            At(_status, 0, BodyH - PadY * 2 - 16 * S, PaneW, 16 * S);
+        }
+
+        // ================= 메뉴 =================
 
         private void ShowTab()
         {
             ClearBody();
-            float x = 0;
-            foreach (var (tab, label) in new[]
-                     {
-                         (TabMessages, _unread > 0 ? $"메시지 ({_unread})" : "메시지"), (TabFriends, "친구"),
-                         (TabReceived, _received > 0 ? $"받은 요청 ({_received})" : "받은 요청"), (TabSent, "보낸 요청"), (TabSearch, "친구 찾기"),
-                     })
+            DrawNav();
+            string title = _tab switch
             {
-                string t = tab;
-                var b = Button(_body, label, () => { _tab = t; ShowTab(); }, 22, t == _tab ? (Color?)Line : null);
-                Place(b, new Vector2(0, 1), new Vector2(x, 0), new Vector2(214, 56), new Vector2(0, 1));
-                x += 224;
-            }
-            _status = Label(_body, "", 22, TextAnchor.LowerLeft, Good);
-            Place(_status, new Vector2(0, 0), Vector2.zero, new Vector2(PopupW - 80, 32), new Vector2(0, 0));
-            var loading = Label(_body, "불러오는 중...", 24, TextAnchor.MiddleCenter, Muted);
-            Stretch(loading.rectTransform);
+                TabFriends => "친구",
+                TabReceived => "받은 요청",
+                TabSent => "보낸 요청",
+                TabSearch => "친구 찾기",
+                _ => "메시지",
+            };
+            Heading(title);
+            Text loading = Label(_body, "불러오는 중…", 12 * S, Muted, TextAnchor.MiddleCenter);
+            Inset(loading, 0, 0, 0, 0);
             switch (_tab)
             {
                 case TabFriends: LoadFriends(loading); break;
                 case TabReceived: LoadRequests(loading, true); break;
                 case TabSent: LoadRequests(loading, false); break;
-                case TabSearch: Destroy(loading); BuildSearch(); break;
+                case TabSearch: Destroy(loading); DrawSearchResults(); break;
                 default: LoadRooms(loading); break;
             }
         }
@@ -209,35 +304,65 @@ namespace Executor.Play
             if (c != null) UnityEngine.Object.Destroy(c.gameObject);
         }
 
-        /// <summary>목록 한 줄: 왼쪽에 제목·설명, 오른쪽에 버튼들 (오른쪽부터)</summary>
-        private static RectTransform Row(RectTransform list, ref float y, string title, string sub, Color? titleColor,
+        private const float RowH = 10 * S + 16 * S + 2 * S + 16 * S + 10 * S;
+
+        /// <summary>
+        /// 목록 한 줄: 아바타 + 이름·설명, 오른쪽 버튼들 (오른쪽부터). 버튼 색이 null이면 주 버튼(채움), 아니면 테두리 버튼.
+        /// onRow가 있으면 줄 전체를 누를 수 있다
+        /// </summary>
+        private static RectTransform Row(RectTransform list, ref float y, string title, string sub, Color? titleColor, Action onRow,
             params (string label, Action onClick, Color? color)[] buttons)
         {
-            var row = Panel(list, "Row", new Color32(0x16, 0x1e, 0x2a, 0xff));
-            Place(row, new Vector2(0, 1), new Vector2(0, y), new Vector2(PopupW - 80, 84), new Vector2(0, 1));
-            float right = 12 + buttons.Length * 150;
-            var t = Label(row, title, 26, TextAnchor.UpperLeft, titleColor, bold: true);
-            Stretch(t.rectTransform, 12);
-            t.rectTransform.offsetMax = new Vector2(-right, -12);
-            if (!string.IsNullOrEmpty(sub))
-            {
-                var s = Label(row, sub, 20, TextAnchor.LowerLeft, Muted);
-                Stretch(s.rectTransform, 12);
-                s.rectTransform.offsetMax = new Vector2(-right, -12);
-                s.horizontalOverflow = HorizontalWrapMode.Overflow;
-            }
-            float bx = -12;
+            RectTransform row = Node(list, "Row");
+            At(row, 0, y, PaneW, RowH);
+            Image bg = Fill(row, "Bg", Color.white);
+            Inset(bg, 0, 0, 0, 0);
+            if (onRow != null) Clickable(bg, onRow, Night, Hex(0x1e1942));
+            else bg.color = Night;
+            Image line = Fill(row, "Line", TrackLine);
+            At(line, 0, RowH - 1 * S, PaneW, 1 * S);
+            Avatar(row, 12 * S, (RowH - 28 * S) / 2, 28 * S);
+
+            float right = 12 * S;
             foreach (var (label, onClick, color) in buttons)
             {
-                var b = Button(row, label, onClick, 22, color);
-                Place(b, new Vector2(1, 0.5f), new Vector2(bx, 0), new Vector2(140, 60), new Vector2(1, 0.5f));
-                bx -= 150;
+                Text measure = Label(row, label, 12 * S, Fg, TextAnchor.MiddleCenter, bold: true);
+                float bw = measure.preferredWidth + 24 * S;
+                UnityEngine.Object.Destroy(measure.gameObject);
+                RectTransform b;
+                if (color == null) PrimaryButton(row, label, 12 * S, onClick, out b);
+                else GhostButton(row, label, 12 * S, onClick, out b);
+                AtRight(b, right, (RowH - 28 * S) / 2, bw, 28 * S);
+                right += bw + 8 * S;
             }
-            y -= 94;
+            float textLeft = 12 * S + 28 * S + 10 * S;
+            Text t = Label(row, title, 12 * S, titleColor ?? Fg, TextAnchor.MiddleLeft, bold: true);
+            At(t, textLeft, 10 * S, PaneW - textLeft - right, 16 * S);
+            if (!string.IsNullOrEmpty(sub))
+            {
+                Text s = Label(row, sub, 12 * S, Muted, TextAnchor.MiddleLeft);
+                s.supportRichText = false;
+                At(s, textLeft, 10 * S + 18 * S, PaneW - textLeft - right, 16 * S);
+            }
+            y += RowH;
             return row;
         }
 
-        private RectTransform ListArea(out ScrollRect scroll) => ScrollArea(_body, 76, 44, out scroll);
+        /// <summary>사람 자리 (얼굴 그림 대신 회색 상자)</summary>
+        private static void Avatar(Transform parent, float left, float top, float size)
+        {
+            RectTransform a = Node(parent, "Avatar");
+            At(a, left, top, size, size);
+            Image head = Fill(a, "Head", Hex(0x2d3142));
+            Inset(head, 0, 0, 0, 0);
+            Image body = Fill(a, "Body", Dim);
+            body.rectTransform.anchorMin = Vector2.zero;
+            body.rectTransform.anchorMax = new Vector2(1, 0);
+            body.rectTransform.offsetMin = Vector2.zero;
+            body.rectTransform.offsetMax = new Vector2(0, size / 3);
+        }
+
+        private RectTransform ListArea(out ScrollRect scroll) => ScrollArea(_body, 28 * S + 12 * S, 16 * S + 8 * S, out scroll);
 
         private async void LoadRooms(Text loading)
         {
@@ -246,17 +371,17 @@ namespace Executor.Play
                 List<MessageRoom> rooms = await MessageApi.GetRoomsAsync();
                 if (_popup == null || _tab != TabMessages || _partner != null) return;
                 Destroy(loading);
-                if (rooms.Count == 0) { Note("아직 대화가 없습니다. 친구 탭에서 메시지를 보낼 수 있습니다."); return; }
+                if (rooms.Count == 0) { Note("아직 대화가 없습니다.\n친구를 골라 채팅을 시작해 보세요."); return; }
                 var list = ListArea(out _);
                 float y = 0;
                 foreach (MessageRoom r in rooms)
                 {
                     UserSummary partner = r.Partner;
-                    string title = Name(partner) + (r.UnreadCount > 0 ? $"   새 메시지 {r.UnreadCount}" : "");
-                    Row(list, ref y, title, $"{r.LastMessage}   · {r.LastMessageAt.ToLocalTime():MM.dd HH:mm}",
-                        r.UnreadCount > 0 ? Warn : (Color?)null, ("열기", () => OpenChat(partner), null));
+                    string title = Name(partner) + (r.UnreadCount > 0 ? $"  <color=#ff4d5e>새 메시지 {r.UnreadCount}</color>" : "");
+                    Row(list, ref y, title, $"{r.LastMessage}  · {r.LastMessageAt.ToLocalTime():MM.dd HH:mm}", null,
+                        () => OpenChat(partner), ("열기", () => OpenChat(partner), null));
                 }
-                list.sizeDelta = new Vector2(0, -y);
+                list.sizeDelta = new Vector2(0, y);
             }
             catch (ApiException e) { if (loading != null) loading.text = Error(e); }
         }
@@ -266,43 +391,133 @@ namespace Executor.Play
             try
             {
                 List<FriendResponse> friends = await FriendApi.GetFriendsAsync();
-                if (_popup == null || _tab != TabFriends) return;
+                if (_popup == null || _tab != TabFriends || _partner != null) return;
                 Destroy(loading);
-                if (friends.Count == 0) { Note("아직 친구가 없습니다. '친구 찾기'에서 닉네임으로 찾아 요청을 보내 보세요."); return; }
+                if (friends.Count == 0) { Note("아직 친구가 없습니다.\n왼쪽 위에서 닉네임으로 찾아 요청을 보내 보세요."); return; }
                 var list = ListArea(out _);
                 float y = 0;
                 foreach (FriendResponse f in friends)
                 {
-                    UserSummary user = f.User;
-                    Row(list, ref y, Name(user), $"{f.Since.ToLocalTime():yyyy.MM.dd}부터 친구", null,
-                        ("끊기", () => ConfirmUnfriend(user), new Color32(0x3a, 0x22, 0x28, 0xff)),
-                        ("메시지", () => OpenChat(user), null));
+                    FriendResponse friend = f;
+                    Row(list, ref y, Name(f.User), $"{f.Since.ToLocalTime():yyyy.MM.dd}부터 친구", null, () => ShowFriend(friend),
+                        ("보기", () => ShowFriend(friend), null));
                 }
-                list.sizeDelta = new Vector2(0, -y);
+                list.sizeDelta = new Vector2(0, y);
                 Status($"친구 {friends.Count}명", true);
+            }
+            catch (ApiException e) { if (loading != null) loading.text = Error(e); }
+        }
+
+        // ================= 친구 상세 =================
+
+        /// <summary>친구 상세: 이름, 친구가 된 날, 기록 비교 표, 채팅 · 친구 끊기 · 도전장(업데이트 예정)</summary>
+        private void ShowFriend(FriendResponse friend)
+        {
+            UserSummary user = friend.User;
+            ClearBody();
+            DrawNav();
+            Avatar(_body, 0, 0, 48 * S);
+            Text name = Label(_body, Name(user), 24 * S, Fg, TextAnchor.MiddleLeft, bold: true);
+            At(name, 48 * S + 14 * S, 0, PaneW - 62 * S, 28 * S);
+            Text since = Label(_body, $"{friend.Since.ToLocalTime():yyyy.MM.dd}부터 친구", 12 * S, Muted, TextAnchor.MiddleLeft);
+            At(since, 48 * S + 14 * S, 32 * S, PaneW - 62 * S, 16 * S);
+            float bottom = BodyH - PadY * 2;
+            _status = Label(_body, "", 12 * S, Green, TextAnchor.MiddleLeft);
+            At(_status, 0, bottom - 36 * S - 8 * S - 16 * S, PaneW, 16 * S);
+
+            Text head = Label(_body, "기록 비교 <color=#8b98b8>· 최소 턴, 낮을수록 좋음</color>", 12 * S, Fg, TextAnchor.MiddleLeft, bold: true);
+            At(head, 0, 48 * S + 16 * S, PaneW, 16 * S);
+            RectTransform table = Node(_body, "Compare");
+            At(table, 0, 48 * S + 16 * S + 16 * S + 6 * S, PaneW, 200 * S);
+            Text loading = Label(table, "기록을 불러오는 중…", 12 * S, Muted, TextAnchor.UpperLeft);
+            At(loading, 8 * S, 8 * S, PaneW, 16 * S);
+            LoadCompare(user, table, loading);
+
+            // 아래 버튼: 채팅 · 친구 끊기 · 도전장 (업데이트 예정)
+            float by = bottom - 36 * S;
+            GhostButton(_body, "채팅", 12 * S, () => OpenChat(user), out RectTransform chat);
+            At(chat, 0, by, 90 * S, 36 * S);
+            GhostButton(_body, "친구 끊기", 12 * S, () => ConfirmUnfriend(user), out RectTransform unfriend);
+            At(unfriend, 90 * S + 10 * S, by, 100 * S, 36 * S);
+            Button challenge = PrimaryButton(_body, "도전장 보내기 (업데이트 예정)", 12 * S, null, out RectTransform ch);
+            challenge.interactable = false;
+            At(ch, 200 * S + 10 * S, by, PaneW - 210 * S, 36 * S);
+        }
+
+        private async void LoadCompare(UserSummary user, RectTransform table, Text loading)
+        {
+            if (CompareRecords == null) { loading.text = "비교할 기록이 없습니다."; return; }
+            try
+            {
+                List<(string stage, int? me, int? friend)> rows = await CompareRecords(user);
+                if (table == null || _popup == null) return;
+                Destroy(loading);
+                if (rows.Count == 0)
+                {
+                    Text none = Label(table, "둘 다 기록이 있는 스테이지가 아직 없습니다.", 12 * S, Muted, TextAnchor.UpperLeft);
+                    At(none, 8 * S, 8 * S, PaneW, 16 * S);
+                    return;
+                }
+                const float rowH = 32 * S;
+                Image bg = Fill(table, "Bg", Ink);
+                At(bg, 0, 0, PaneW, rowH * (rows.Count + 1));
+                float[] cols = { 8 * S, PaneW * 0.4f, PaneW * 0.7f };
+                string[] heads = { "스테이지", "나", Name(user) };
+                for (int c = 0; c < 3; c++)
+                {
+                    Text h = Label(table, heads[c], 12 * S, Muted, TextAnchor.MiddleLeft);
+                    At(h, cols[c], 0, PaneW * 0.3f, rowH);
+                }
+                Image headLine = Fill(table, "HeadLine", TrackLine);
+                At(headLine, 0, rowH - 2 * S, PaneW, 2 * S);
+                for (int i = 0; i < rows.Count; i++)
+                {
+                    var (stage, me, friend) = rows[i];
+                    float y = rowH * (i + 1);
+                    Text s = Label(table, stage, 12 * S, Muted, TextAnchor.MiddleLeft);
+                    At(s, cols[0], y, PaneW * 0.3f, rowH);
+                    bool friendBetter = friend != null && (me == null || friend < me);
+                    bool meBetter = me != null && (friend == null || me < friend);
+                    Text m = Label(table, me?.ToString() ?? "—", 12 * S, me == null ? Dim : meBetter ? Green : Fg, TextAnchor.MiddleLeft, UiKit.Mono);
+                    At(m, cols[1], y, PaneW * 0.3f, rowH);
+                    Text f = Label(table, friend?.ToString() ?? "—", 12 * S, friend == null ? Dim : friendBetter ? Green : Fg, TextAnchor.MiddleLeft, UiKit.Mono);
+                    At(f, cols[2], y, PaneW * 0.3f, rowH);
+                    Image line = Fill(table, "Line", TrackLine);
+                    At(line, 0, y + rowH - 1 * S, PaneW, 1 * S);
+                }
             }
             catch (ApiException e) { if (loading != null) loading.text = Error(e); }
         }
 
         private void ConfirmUnfriend(UserSummary user)
         {
-            var popup = Popup(_root(), "친구 끊기", new Vector2(760, 360), out RectTransform body);
-            var t = Label(body, $"{Name(user)} 님과 친구를 끊을까요?\n지난 대화는 남고, 다시 요청할 수 있습니다.", 26, TextAnchor.UpperCenter);
-            Stretch(t.rectTransform);
-            var yes = Button(body, "끊기", async () =>
+            GameObject dialog = null;
+            WindowFrame(_root(), "시스템", null, (1280 - 460) / 2f, 250, 460, 220, true, () => UnityEngine.Object.Destroy(dialog),
+                out RectTransform body, out dialog);
+            float bodyH = 220 * S - WinBorder * 2 - WinTitleH;
+            Text head = Label(body, $"{Name(user)} 님과 친구를 끊을까요?", 24 * S, Fg, TextAnchor.MiddleLeft, bold: true);
+            At(head, 24 * S, 24 * S, 412 * S, 28 * S);
+            Text desc = Label(body, "지난 대화는 남고, 다시 요청할 수 있습니다.", 12 * S, Muted, TextAnchor.MiddleLeft);
+            At(desc, 24 * S, 24 * S + 28 * S + 8 * S, 412 * S, 16 * S);
+            GhostButton(body, "아니요", 12 * S, () => UnityEngine.Object.Destroy(dialog), out RectTransform no);
+            AtRight(no, 24 * S + 120 * S + 10 * S, bodyH - 20 * S - 40 * S, 120 * S, 40 * S);
+            PrimaryButton(body, "끊기", 12 * S, async () =>
             {
-                UnityEngine.Object.Destroy(popup);
+                UnityEngine.Object.Destroy(dialog);
                 try
                 {
                     await FriendApi.DeleteFriendAsync(user.UserId);
                     if (_popup == null) return;
+                    _tab = TabFriends;
                     ShowTab();
                     Status($"{Name(user)} 님과 친구를 끊었습니다.", true);
                 }
                 catch (ApiException e) { Status(Error(e), false); }
-            }, 24, new Color32(0x5a, 0x22, 0x2c, 0xff));
-            Place(yes, new Vector2(0.5f, 0), new Vector2(0, 0), new Vector2(220, 64), new Vector2(0.5f, 0));
+            }, out RectTransform yes);
+            AtRight(yes, 24 * S, bodyH - 20 * S - 40 * S, 120 * S, 40 * S);
         }
+
+        // ================= 요청 =================
 
         private async void LoadRequests(Text loading, bool received)
         {
@@ -310,9 +525,9 @@ namespace Executor.Play
             try
             {
                 List<FriendRequestItem> items = received ? await FriendApi.GetReceivedAsync() : await FriendApi.GetSentAsync();
-                if (_popup == null || _tab != tab) return;
+                if (_popup == null || _tab != tab || _partner != null) return;
                 Destroy(loading);
-                if (received) { _received = items.Count; _onBadge?.Invoke(_unread + _received); }
+                if (received) { _received = items.Count; _onBadge?.Invoke(_unread + _received); DrawNav(); }
                 if (items.Count == 0) { Note(received ? "받은 친구 요청이 없습니다." : "대기 중인 보낸 요청이 없습니다."); return; }
                 var list = ListArea(out _);
                 float y = 0;
@@ -321,13 +536,13 @@ namespace Executor.Play
                     FriendRequestItem req = r;
                     string sub = $"{r.CreatedAt.ToLocalTime():MM.dd HH:mm}에 {(received ? "받음" : "보냄")}";
                     if (received)
-                        Row(list, ref y, Name(r.User), sub, null,
-                            ("거절", () => Answer(req, false), new Color32(0x3a, 0x22, 0x28, 0xff)),
-                            ("수락", () => Answer(req, true), null));
+                        Row(list, ref y, Name(r.User), sub, null, null,
+                            ("수락", () => Answer(req, true), null),
+                            ("거절", () => Answer(req, false), Red));
                     else
-                        Row(list, ref y, Name(r.User), sub, null, ("취소", () => Cancel(req), null));
+                        Row(list, ref y, Name(r.User), sub, null, null, ("취소", () => Cancel(req), Red));
                 }
-                list.sizeDelta = new Vector2(0, -y);
+                list.sizeDelta = new Vector2(0, y);
             }
             catch (ApiException e) { if (loading != null) loading.text = Error(e); }
         }
@@ -359,41 +574,56 @@ namespace Executor.Play
 
         // ================= 친구 찾기 =================
 
-        private RectTransform _searchList;
+        private List<UserSummary> _searchResults = new List<UserSummary>();
+        private string _searchNote;
 
-        private void BuildSearch()
+        private void SearchFromNav()
         {
-            var input = Input(_body, "닉네임 일부를 입력하고 Enter", limit: 20, size: 26);
-            Place(input, new Vector2(0, 1), new Vector2(0, -76), new Vector2(PopupW - 80 - 180, 64), new Vector2(0, 1));
-            var go = Button(_body, "검색", () => { _refocus = input; Search(input.text); }, 24);
-            Place(go, new Vector2(1, 1), new Vector2(0, -76), new Vector2(160, 64), new Vector2(1, 1));
-            OnEnter(input, () => { _refocus = input; Search(input.text); });
-            _searchList = ScrollArea(_body, 160, 44, out _);
-            input.Select();
-            input.ActivateInputField();
+            if (!PlayerSession.IsOnline || _searchInput == null) return;
+            _tab = TabSearch;
+            _partner = null;
+            Search(_searchInput.text);
+        }
+
+        private void DrawSearchResults()
+        {
+            RectTransform list = ListArea(out _);
+            float y = 0;
+            foreach (UserSummary u in _searchResults)
+            {
+                UserSummary user = u;
+                Row(list, ref y, Name(user), null, null, null, ("친구 요청", () => Request(user), null));
+            }
+            list.sizeDelta = new Vector2(0, y);
+            if (_searchResults.Count == 0 && _lastSearch == null) Note("왼쪽 위에 닉네임 일부를 입력하고 찾기를 누르세요.");
+            if (_searchNote != null) Status(_searchNote, _searchResults.Count > 0);
         }
 
         private async void Search(string text)
         {
             string q = (text ?? "").Trim();
-            if (q.Length == 0) { Status("검색어를 입력해 주세요.", false); return; }
+            if (q.Length == 0)
+            {
+                ShowTab();
+                Status("검색어를 입력해 주세요.", false);
+                return;
+            }
             try
             {
                 PageResponse<UserSummary> page = await FriendApi.SearchUsersAsync(q);
-                if (_popup == null || _tab != TabSearch || _searchList == null) return;
-                Clear(_searchList);
-                float y = 0;
-                foreach (UserSummary u in page.Content)
-                {
-                    UserSummary user = u;
-                    Row(_searchList, ref y, Name(user), null, null, ("친구 요청", () => Request(user), null));
-                }
-                _searchList.sizeDelta = new Vector2(0, -y);
-                Status(page.Content.Count == 0 ? $"'{q}'이(가) 들어간 닉네임이 없습니다."
+                if (_popup == null || _tab != TabSearch) return;
+                _lastSearch = q;
+                _searchResults = page.Content;
+                _searchNote = page.Content.Count == 0 ? $"'{q}'이(가) 들어간 닉네임이 없습니다."
                     : page.TotalElements > page.Content.Count ? $"{page.TotalElements}명 중 {page.Content.Count}명 (더 자세히 입력해 보세요)"
-                    : $"{page.Content.Count}명", page.Content.Count > 0);
+                    : $"{page.Content.Count}명";
+                ShowTab();
             }
-            catch (ApiException e) { Status(Error(e), false); }
+            catch (ApiException e)
+            {
+                ShowTab();
+                Status(Error(e), false);
+            }
         }
 
         private async void Request(UserSummary user)
@@ -415,36 +645,39 @@ namespace Executor.Play
 
         // ================= 대화 =================
 
-        /// <summary>그 사람과의 대화 화면 (같은 팝업 안)</summary>
+        /// <summary>그 사람과의 대화 화면 (같은 창 오른쪽)</summary>
         public void OpenChat(UserSummary partner)
         {
-            if (_popup == null) Build("친구·메시지");
+            if (_popup == null) Build();
             _partner = partner;
             _lastMessageId = 0;
             ClearBody();
-            var back = Button(_body, "← 목록", () => { _partner = null; ShowTab(); }, 22);
-            Place(back, new Vector2(0, 1), Vector2.zero, new Vector2(160, 56), new Vector2(0, 1));
-            var title = Label(_body, $"{Name(partner)} 님과 대화", 28, TextAnchor.MiddleLeft, bold: true);
-            Place(title, new Vector2(0, 1), new Vector2(180, 0), new Vector2(700, 56), new Vector2(0, 1));
-            var refresh = Button(_body, "새로고침", () => LoadChat(false), 20);
-            Place(refresh, new Vector2(1, 1), Vector2.zero, new Vector2(160, 56), new Vector2(1, 1));
-            var report = Button(_body, "신고", () => ReportPanel.Open(_root(), new ReportPanel.Target
+            DrawNav();
+            GhostButton(_body, "← 목록", 12 * S, () => { _partner = null; ShowTab(); }, out RectTransform back);
+            At(back, 0, 0, 70 * S, 28 * S);
+            Text title = Label(_body, Name(partner), 24 * S, Fg, TextAnchor.MiddleLeft, bold: true);
+            At(title, 70 * S + 14 * S, 0, PaneW - 84 * S - 150 * S, 28 * S);
+            GhostButton(_body, "새로고침", 12 * S, () => LoadChat(false), out RectTransform refresh);
+            AtRight(refresh, 0, 0, 80 * S, 28 * S);
+            GhostButton(_body, "신고", 12 * S, () => ReportPanel.Open(_root(), new ReportPanel.Target
             {
                 UserId = partner.UserId,
                 Label = $"사용자 {Name(partner)}",
                 PreferCategory = "기타",
                 Title = "부적절한 메시지",
-            }), 20, new Color32(0x3a, 0x22, 0x28, 0xff));
-            Place(report, new Vector2(1, 1), new Vector2(-172, 0), new Vector2(120, 56), new Vector2(1, 1));
+            }), out RectTransform report);
+            AtRight(report, 80 * S + 8 * S, 0, 56 * S, 28 * S);
 
-            _chatList = ScrollArea(_body, 76, 130, out _chatScroll);
-            _chatInput = Input(_body, "메시지 (Enter로 보내기, 500자까지)", limit: MessageMax, size: 26);
-            Place(_chatInput, new Vector2(0, 0), new Vector2(0, 44), new Vector2(PopupW - 80 - 180, 72), new Vector2(0, 0));
-            var send = Button(_body, "보내기", Send, 24);
-            Place(send, new Vector2(1, 0), new Vector2(0, 44), new Vector2(160, 72), new Vector2(1, 0));
-            OnEnter(_chatInput, Send);
-            _status = Label(_body, "", 22, TextAnchor.LowerLeft, Good);
-            Place(_status, new Vector2(0, 0), Vector2.zero, new Vector2(PopupW - 80, 32), new Vector2(0, 0));
+            float bottom = BodyH - PadY * 2;
+            _chatList = ScrollArea(_body, 28 * S + 12 * S, 36 * S + 8 * S + 16 * S + 8 * S, out _chatScroll);
+            _chatInput = UiKit.Input(_body, "메시지 (Enter로 보내기, 500자까지)", limit: MessageMax, size: (int)(12 * S));
+            StyleInput(_chatInput);
+            At(_chatInput, 0, bottom - 16 * S - 8 * S - 36 * S, PaneW - 80 * S - 8 * S, 36 * S);
+            PrimaryButton(_body, "보내기", 12 * S, Send, out RectTransform send);
+            At(send, PaneW - 80 * S, bottom - 16 * S - 8 * S - 36 * S, 80 * S, 36 * S);
+            UiKit.OnEnter(_chatInput, Send);
+            _status = Label(_body, "", 12 * S, Green, TextAnchor.MiddleLeft);
+            At(_status, 0, bottom - 16 * S, PaneW, 16 * S);
             _chatInput.Select();
             _chatInput.ActivateInputField();
             _pollLeft = PollSeconds;
@@ -475,37 +708,40 @@ namespace Executor.Play
 
         private void DrawMessages(List<MessageItem> newestFirst, UserSummary partner)
         {
-            Clear(_chatList);
+            UiKit.Clear(_chatList);
             long me = PlayerSession.Profile?.UserId ?? 0;
-            float width = PopupW - 80;
             float y = 0;
             if (newestFirst.Count == 0)
             {
-                var empty = Label(_chatList, "아직 주고받은 메시지가 없습니다. 첫 메시지를 보내 보세요.", 24, TextAnchor.MiddleCenter, Muted);
-                Place(empty, new Vector2(0, 1), new Vector2(0, -20), new Vector2(width, 60), new Vector2(0, 1));
-                _chatList.sizeDelta = new Vector2(0, 100);
+                Text empty = Label(_chatList, "아직 주고받은 메시지가 없습니다. 첫 메시지를 보내 보세요.", 12 * S, Muted, TextAnchor.MiddleCenter);
+                At(empty, 0, 20 * S, PaneW, 24 * S);
+                _chatList.sizeDelta = new Vector2(0, 60 * S);
                 return;
             }
+            float bubbleW = PaneW * 0.72f;
             foreach (MessageItem m in Enumerable.Reverse(newestFirst))
             {
                 bool mine = m.SenderId == me;
-                // 줄 수를 대강 세서 말풍선 높이를 정한다 (한 줄 약 34자)
-                int lines = Mathf.Clamp(Mathf.CeilToInt((m.Content?.Length ?? 0) / 34f), 1, 15)
-                            + (m.Content ?? "").Count(c => c == '\n');
-                float h = 30 + lines * 32 + 26;
-                float bubbleW = Mathf.Min(760, width * 0.7f);
-                var bubble = Panel(_chatList, "Message", mine ? (Color)new Color32(0x1c, 0x3a, 0x52, 0xff) : new Color32(0x22, 0x2a, 0x36, 0xff));
-                Place(bubble, new Vector2(mine ? 1 : 0, 1), new Vector2(0, y), new Vector2(bubbleW, h), new Vector2(mine ? 1 : 0, 1));
-                var text = Label(bubble, m.Content ?? "", 24, mine ? TextAnchor.UpperRight : TextAnchor.UpperLeft);
+                Text text = Label(_chatList, m.Content ?? "", 12 * S, Fg, mine ? TextAnchor.UpperRight : TextAnchor.UpperLeft);
                 text.supportRichText = false;
-                Stretch(text.rectTransform, 14);
-                text.rectTransform.offsetMin = new Vector2(16, 30);
+                text.horizontalOverflow = HorizontalWrapMode.Wrap;
+                text.lineSpacing = 1.3f;
+                text.rectTransform.sizeDelta = new Vector2(bubbleW - 24 * S, 10);
+                float textH = text.preferredHeight;
+                float h = 10 * S + textH + 6 * S + 16 * S + 8 * S;
+                float x = mine ? PaneW - bubbleW : 0;
+                Image bubble = Fill(_chatList, "Message", mine ? Hex(0x22d3ee, 0.14f) : Night);
+                At(bubble, x, y, bubbleW, h);
+                Image bar = Fill(bubble.transform, "Bar", mine ? Cyan : TrackLine);
+                At(bar, mine ? bubbleW - 2 * S : 0, 0, 2 * S, h);
+                text.transform.SetParent(bubble.transform, false);
+                At(text, 12 * S, 10 * S, bubbleW - 24 * S, textH);
                 string meta = $"{m.CreatedAt.ToLocalTime():MM.dd HH:mm}" + (mine ? (m.IsRead ? " · 읽음" : " · 안 읽음") : $" · {Name(partner)}");
-                var info = Label(bubble, meta, 18, mine ? TextAnchor.LowerRight : TextAnchor.LowerLeft, Muted);
-                Stretch(info.rectTransform, 10);
-                y -= h + 12;
+                Text info = Label(bubble.transform, meta, 12 * S, Dim, mine ? TextAnchor.MiddleRight : TextAnchor.MiddleLeft);
+                At(info, 12 * S, 10 * S + textH + 6 * S, bubbleW - 24 * S, 16 * S);
+                y += h + 8 * S;
             }
-            _chatList.sizeDelta = new Vector2(0, -y);
+            _chatList.sizeDelta = new Vector2(0, y);
         }
 
         private void ScrollToEnd()

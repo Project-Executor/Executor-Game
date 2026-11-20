@@ -191,6 +191,17 @@ namespace Executor.Play
             return name.Length == 0 ? null : Load<Sprite>("Guidebook/" + name);
         }
 
+        /// <summary>상점 아이템 그림: 아이템 image 값의 파일 이름으로 Resources/Items/{이름}. 없으면 null (미리 보기는 색 터미널)</summary>
+        public static Sprite Item(string image)
+        {
+            if (string.IsNullOrWhiteSpace(image)) return null;
+            string name = image.Trim().Replace('\\', '/');
+            name = name.Substring(name.LastIndexOf('/') + 1);
+            int dot = name.LastIndexOf('.');
+            if (dot > 0) name = name.Substring(0, dot);
+            return name.Length == 0 ? null : Load<Sprite>("Items/" + name);
+        }
+
         private enum Shape { Solid, Flat, Frame, Cross, Crack, Small, Bar, Diamond }
 
         private static Sprite Pixel(string path, Color32 color, Shape shape)

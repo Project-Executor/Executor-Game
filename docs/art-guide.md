@@ -147,7 +147,7 @@ Portraits/
 
 가져오기 설정은 [일러스트](#가져오기-설정-일러스트)와 같다.
 
-### 메뉴·HUD·결과 UI (시안 Executor_Export)
+### 메뉴·HUD·결과·팝업 UI (시안 Executor_Export)
 
 시안(`Executor_Export/02_ui_screens`, 1280 × 720)을 1.5배(1920 × 1080)로 옮겼다. 색·부품은 `Play/Theme.cs`, 글꼴은 Galmuri(`Resources/Fonts`).
 도트 아이콘은 시안 SVG의 점을 찍은 뒤 **8배로 키운 PNG**(16 × 16 도트 -> 128 × 128)이다. 화면 크기(72px = 4.5배 등)가 정수배가 아니라서 원본 크기를 Point로 늘리면 점이 들쭉날쭉해지므로, 크게 키워 둔 그림을 부드럽게(밉맵) 줄여 그린다. 새 아이콘도 도트 크기의 8배로 넣으면 된다.
@@ -161,6 +161,8 @@ Portraits/
 | `UI/desktop/folder.png`, `folder_locked.png` | 8 × 8 도트 (파일 64 × 64) | 24 × 24 | 스테이지 선택 Operation 트리의 레이어 폴더 (열림 / 잠김) |
 | `UI/desktop/check.png`, `lock.png`, `fragment.png`, `guidebook_note.png` | 7 × 6, 5 × 5, 4 × 5, 8 × 8 도트 (8배 파일) | 12~18 | 스테이지 노드 오른쪽 위 표시 (클리어 / 잠김) |
 | `UI/desktop/star_on.png`, `star_off.png` | 7 × 7 도트 (파일 56 × 56) | 84 × 84 | 결과 화면 별 (받은 별 / 못 받은 별) |
+| `UI/desktop/warning.png` | 12 × 12 도트 (파일 96 × 96) | 72 × 72 | 종료 확인 창의 경고 표시 |
+| `UI/desktop/entity.png`, `unknown.png` | 12 × 12 도트 (파일 96 × 96) | 60 × 60 | 도감 칸: 그림이 없는 항목 / 아직 못 만난 항목(???) |
 
 ---
 

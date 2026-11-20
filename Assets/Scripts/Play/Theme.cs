@@ -222,6 +222,62 @@ namespace Executor.Play
             return button;
         }
 
+        public const float WinBorder = 2 * S, WinTitleH = 32 * S + 2 * S;
+
+        /// <summary>
+        /// 바탕화면 창 (시안 Pop*): 뒤를 막는 판(dim이면 어둡게) + 창 틀 + 제목줄(아이콘, 제목, 창 버튼 3개 중 닫기만 동작).
+        /// body는 제목줄 아래 내용 자리. 위치·크기는 시안 px(1280x720)로 받아 1.5배한다
+        /// </summary>
+        public static RectTransform WindowFrame(Transform root, string title, string icon, float left, float top, float width, float height,
+            bool dim, Action onClose, out RectTransform body, out GameObject blocker)
+        {
+            float w = width * S, h = height * S;
+            Image back = Fill(root, "Window:" + title, dim ? Hex(0x0a0716, 0.55f) : new Color(0, 0, 0, 0), raycast: true);
+            Inset(back, 0, 0, 0, 0);
+            blocker = back.gameObject;
+            RectTransform win = Frame(back.transform, "Window", Ink, WindowLine, WinBorder, 6 * S);
+            At(win, left * S, top * S, w, h);
+
+            Image bar = Fill(win, "TitleBar", TitleBar);
+            At(bar, WinBorder, WinBorder, w - WinBorder * 2, 32 * S);
+            Image line = Fill(win, "TitleLine", Cyan);
+            At(line, WinBorder, WinBorder + 32 * S, w - WinBorder * 2, 2 * S);
+            float tx = 10 * S;
+            if (icon != null)
+            {
+                Image ic = Icon(bar.transform, "desktop/" + icon, 16 * S);
+                if (ic != null) At(ic, tx, 8 * S, 16 * S, 16 * S);
+                tx += 16 * S + 8 * S;
+            }
+            Text t = Label(bar.transform, title, 12 * S, Fg, TextAnchor.MiddleLeft, bold: true);
+            Inset(t, tx, 0, 80 * S, 0);
+            const float box = 16 * S, gap = 6 * S;
+            for (int i = 0; i < 3; i++)
+            {
+                RectTransform b = Node(bar.transform, "WindowButton" + i);
+                b.anchorMin = b.anchorMax = new Vector2(1, 0.5f);
+                b.pivot = new Vector2(1, 0.5f);
+                b.anchoredPosition = new Vector2(-(8 * S + (2 - i) * (box + gap)), 0);
+                b.sizeDelta = new Vector2(box, box);
+                Image face = Fill(b, "Face", Color.white);
+                Inset(face, 0, 0, 0, 0);
+                if (i == 2) Clickable(face, onClose, Hex(0xa3203a), Red);
+                else face.color = TrackLine;
+                if (i == 0)
+                {
+                    Image underline = Fill(b, "Min", Muted);
+                    underline.rectTransform.anchorMin = Vector2.zero;
+                    underline.rectTransform.anchorMax = new Vector2(1, 0);
+                    underline.rectTransform.offsetMin = Vector2.zero;
+                    underline.rectTransform.offsetMax = new Vector2(0, 3 * S);
+                }
+                else Border(b, i == 2 ? Red : Muted, 2 * S);
+            }
+            body = Node(win, "Body");
+            Inset(body, WinBorder, WinBorder + WinTitleH, WinBorder, WinBorder);
+            return win;
+        }
+
         /// <summary>마우스를 올리면 옅게 칠해지는 투명 버튼 바탕</summary>
         public static Button HoverArea(Transform parent, string name, Color hover, Action onClick, out Image area)
         {

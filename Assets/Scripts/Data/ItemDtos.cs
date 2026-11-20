@@ -18,6 +18,8 @@ namespace Executor.Data
             }
         }
 
+        /// <summary>상점 탭 (종류, 이름). 종류 null = 전체</summary>
+        public static readonly (string type, string label)[] Tabs = { (null, "전체"), (Skin, "스킨"), (Theme, "테마") };
     }
 
     /// <summary>상점 아이템 (판매 중인 것만, 내 보유 여부 포함)</summary>

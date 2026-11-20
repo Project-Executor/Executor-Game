@@ -389,39 +389,14 @@ namespace Executor.Play
             Inset(taskCoin, 12 * S + 12 * S + 6 * S, 0, 0, 0);
             _taskCoins.Add(taskCoin);
 
-            // 가운데: 열린 창들 (지금 창은 옅은 하늘색 + 아래 줄, 다른 창은 흐린 글자로 누르면 그 화면으로)
-            var tabs = new List<(RectTransform rt, float w)>();
-            foreach (var (name, open) in windows)
-            {
-                bool current = open == null;
-                Text tabText = Label(bar.transform, name, 12 * S, current ? Fg : Muted, TextAnchor.MiddleCenter);
-                float tabW = tabText.preferredWidth + 32 * S;
-                Image tab = Fill(bar.transform, "Tab:" + name, current ? Hex(0x22d3ee, 0.10f) : hover);
-                if (current)
-                {
-                    Image tabLine = Fill(tab.transform, "Line", Cyan);
-                    tabLine.rectTransform.anchorMin = new Vector2(0, 0);
-                    tabLine.rectTransform.anchorMax = new Vector2(1, 0);
-                    tabLine.rectTransform.offsetMin = Vector2.zero;
-                    tabLine.rectTransform.offsetMax = new Vector2(0, 2 * S);
-                }
-                else Clickable(tab, open, new Color(1, 1, 1, 0), Color.white, new Color(1, 1, 1, 0.7f));
-                tabText.transform.SetParent(tab.transform, false);
-                Inset(tabText, 0, 0, 0, 0);
-                tabs.Add((tab.rectTransform, tabW));
-            }
-            float total = 0;
-            foreach (var t in tabs) total += t.w;
-            total += 4 * S * (tabs.Count - 1);
-            float tx = -total / 2;
-            foreach (var (tabRt, w) in tabs)
-            {
-                tabRt.anchorMin = tabRt.anchorMax = new Vector2(0.5f, 0);
-                tabRt.pivot = new Vector2(0, 0);
-                tabRt.anchoredPosition = new Vector2(tx, (height - item) / 2 - 1 * S);
-                tabRt.sizeDelta = new Vector2(w, item);
-                tx += w + 4 * S;
-            }
+            // 가운데: 열린 창들
+            RectTransform tabRow = Node(bar.transform, "Tabs");
+            tabRow.anchorMin = tabRow.anchorMax = new Vector2(0.5f, 0);
+            tabRow.pivot = new Vector2(0.5f, 0);
+            tabRow.anchoredPosition = new Vector2(0, (height - item) / 2 - 1 * S);
+            tabRow.sizeDelta = new Vector2(0, item);
+            _taskbars.Add((tabRow, windows));
+            DrawTaskbarTabs(tabRow, windows, _windowTab);
 
             // 오른쪽: 설정 · 시계 · 종료
             float right = 8 * S;
@@ -436,6 +411,54 @@ namespace Executor.Play
             RectTransform settings = TaskItemRight(bar.transform, right, item, item, hover, () => OnSettings?.Invoke());
             Image gear = Icon(settings, "desktop/settings", 20 * S);
             if (gear != null) At(gear, (item - 20 * S) / 2, (item - 20 * S) / 2, 20 * S, 20 * S);
+        }
+
+        /// <summary>작업 표시줄마다 (탭 줄, 기본 창 목록)</summary>
+        private readonly List<(RectTransform row, (string name, Action open)[] windows)> _taskbars =
+            new List<(RectTransform, (string, Action)[])>();
+        /// <summary>지금 떠 있는 팝업 창의 탭 이름 (README.txt, mail.exe ...). 없으면 null</summary>
+        private string _windowTab;
+
+        /// <summary>팝업 창이 뜨거나 닫히면 작업 표시줄에 그 창 탭을 더하거나 뺀다</summary>
+        public void SetWindowTab(string name)
+        {
+            _windowTab = name;
+            foreach (var (row, windows) in _taskbars) DrawTaskbarTabs(row, windows, name);
+        }
+
+        /// <summary>
+        /// 탭 그리기: 지금 창은 옅은 하늘색 + 아래 줄, 다른 창은 흐린 글자로 누르면 그 화면으로.
+        /// 팝업 창(extra)이 떠 있으면 그것이 지금 창이고, 화면 창을 누르면 팝업을 닫는다
+        /// </summary>
+        private void DrawTaskbarTabs(RectTransform row, (string name, Action open)[] windows, string extra)
+        {
+            UiKit.Clear(row);
+            var list = new List<(string name, Action open)>();
+            foreach (var w in windows) list.Add(extra != null && w.open == null ? (w.name, (Action)ClosePopups) : w);
+            if (extra != null) list.Add((extra, null));
+            const float item = 40 * S;
+            Color hover = Hex(0xeaf2ff, 0.08f);
+            float x = 0;
+            foreach (var (name, open) in list)
+            {
+                bool current = open == null;
+                Image tab = Fill(row, "Tab:" + name, current ? Hex(0x22d3ee, 0.10f) : hover);
+                Text tabText = Label(tab.transform, name, 12 * S, current ? Fg : Muted, TextAnchor.MiddleCenter);
+                float w = tabText.preferredWidth + 32 * S;
+                Inset(tabText, 0, 0, 0, 0);
+                if (current)
+                {
+                    Image line = Fill(tab.transform, "Line", Cyan);
+                    line.rectTransform.anchorMin = new Vector2(0, 0);
+                    line.rectTransform.anchorMax = new Vector2(1, 0);
+                    line.rectTransform.offsetMin = Vector2.zero;
+                    line.rectTransform.offsetMax = new Vector2(0, 2 * S);
+                }
+                else Clickable(tab, open, new Color(1, 1, 1, 0), Color.white, new Color(1, 1, 1, 0.7f));
+                At(tab, x, 0, w, item);
+                x += w + 4 * S;
+            }
+            row.sizeDelta = new Vector2(Mathf.Max(0, x - 4 * S), item);
         }
 
         private static RectTransform TaskItem(Transform bar, float x, float width, float height, Color hover, Action onClick)

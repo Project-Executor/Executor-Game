@@ -150,9 +150,9 @@ namespace Executor.Play
                 () => ReportPanel.OpenMine(_menu.PopupRoot));
 
             _menu.OnProfile = ShowProfile;
-            _menu.OnMail = OpenMailbox;
+            _menu.OnMail = () => OpenMailbox(null);
             _menu.OnNotice = OpenNotices;
-            _menu.OnGuidebook = () => OpenGuidebook(null, 0);
+            _menu.OnGuidebook = () => OpenGuidebook(null);
             _menu.OnFriends = () => Social.Open(SocialPanel.TabMessages);
             _menu.OnShop = () => OpenShop(_shopFilter);
             // 메인의 스테이지 버튼: 가장 멀리 진행한 Operation의 스테이지 화면으로
@@ -262,7 +262,10 @@ namespace Executor.Play
             }
         }
 
-        private async void OpenMailbox()
+        private async void OpenMailbox(long? select) => await OpenMailboxAsync(select);
+
+        /// <summary>메일함을 연다 (select: 고를 메일, null이면 맨 위). 끝난 뒤 안내 창을 띄울 수 있게 Task</summary>
+        private async Task OpenMailboxAsync(long? select)
         {
             if (!PlayerSession.IsOnline)
             {
@@ -274,19 +277,12 @@ namespace Executor.Play
                 _mails = (await MailApi.GetMailsAsync()).Content;
                 if (_mode != Mode.Main) return;
                 _menu.SetMailCount(_mails.Count(m => !m.Claimed));
-                _menu.ClosePopups();
-                _menu.ShowMailbox(_mails, OpenMail, ClaimAllMail);
+                _menu.ShowMailbox(_mails, select, ClaimMail, ClaimAllMail);
             }
             catch (ApiException e)
             {
                 _menu.ShowMessage("메일", e.IsNetworkError ? "서버에 연결할 수 없어 메일을 불러오지 못했습니다." : e.Message);
             }
-        }
-
-        private void OpenMail(MailResponse mail)
-        {
-            _menu.ClosePopups();
-            _menu.ShowMail(mail, () => ClaimMail(mail));
         }
 
         private async void ClaimMail(MailResponse mail)
@@ -299,9 +295,9 @@ namespace Executor.Play
                 if (res.RewardCoin > 0) parts.Add($"코인 {res.RewardCoin}");
                 if (res.RewardItem != null) parts.Add($"{mail.RewardItem?.Name ?? "아이템"} ×{res.RewardItem.Quantity}");
                 if (res.ConvertedCoin > 0) parts.Add($"이미 가진 아이템이라 코인 {res.ConvertedCoin}으로 바꿈");
-                _menu.ClosePopups();
-                _menu.ShowMessage("메일 받기", (parts.Count > 0 ? "받았습니다.\n" + string.Join("\n", parts) : "받았습니다.")
-                                             + $"\n\n보유 코인 {res.TotalCoin}");
+                // 메일함을 다시 그려 첨부가 "받음"으로 바뀐다. 이미 가진 아이템을 코인으로 바꾼 경우만 따로 알린다
+                await OpenMailboxAsync(mail.MailId);
+                if (res.ConvertedCoin > 0) _menu.ShowMessage("메일 받기", string.Join("\n", parts));
             }
             catch (ApiException e)
             {
@@ -325,9 +321,7 @@ namespace Executor.Play
                     lines.Add($"{name} ×{item.Quantity}");
                 }
                 if (res.ConvertedCoin > 0) lines.Add($"이미 가진 아이템은 코인 {res.ConvertedCoin}으로 바꿈");
-                lines.Add("");
-                lines.Add($"보유 코인 {res.TotalCoin}");
-                _menu.ClosePopups();
+                await OpenMailboxAsync(null);
                 _menu.ShowMessage("모두 받기", string.Join("\n", lines));
             }
             catch (ApiException e)
@@ -354,7 +348,6 @@ namespace Executor.Play
             {
                 List<ShopItem> items = await ItemApi.GetShopItemsAsync(filter);
                 if (_mode != Mode.Main) return;
-                _menu.ClosePopups();
                 _menu.ShowShop(items, PlayerSession.Profile.Coin, filter, OpenShop, ConfirmPurchase);
             }
             catch (ApiException e)
@@ -383,8 +376,7 @@ namespace Executor.Play
                 PurchaseResponse res = await ItemApi.PurchaseAsync(item.ItemId);
                 ApplyCoin(res.RemainingCoin);
                 _menu.ClosePopups();
-                OpenShop(_shopFilter);
-                _menu.ShowMessage("구매 완료", $"{item.Name}을(를) 샀습니다.\n프로필에서 장착할 수 있습니다.\n\n남은 코인 {res.RemainingCoin}");
+                OpenShop(_shopFilter); // 카드가 "보유 중"으로 바뀐다. 장착은 프로필에서
             }
             catch (ApiException e)
             {
@@ -397,12 +389,13 @@ namespace Executor.Play
         private void ApplyCoin(int totalCoin)
         {
             if (PlayerSession.Profile != null) PlayerSession.Profile.Coin = totalCoin;
-            if (_mode == Mode.Main) ShowMainProfile();
+            _menu.SetPlayer(PlayerSession.DisplayName, CoinText());
         }
 
         /// <summary>공지 목록 (로그인 없이 조회). 서버에 닿지 못하면 안내만 한다</summary>
         // ---------------- 도감 ----------------
-        private async void OpenGuidebook(string category, int page)
+        /// <summary>도감 창을 연다 (select: 처음 고를 항목, null이면 해금한 첫 항목)</summary>
+        private async void OpenGuidebook(long? select)
         {
             if (!PlayerSession.IsOnline)
             {
@@ -411,10 +404,9 @@ namespace Executor.Play
             }
             try
             {
-                GuidebookListResponse list = await GuidebookApi.GetListAsync(category);
+                GuidebookListResponse list = await GuidebookApi.GetListAsync(null);
                 if (_mode != Mode.Main) return;
-                _menu.ClosePopups();
-                _menu.ShowGuidebook(list, category, page, c => OpenGuidebook(c, 0), p => OpenGuidebook(category, p), OpenGuidebookItem);
+                _menu.ShowGuidebook(list, select, OpenGuidebookItem);
             }
             catch (ApiException e)
             {
@@ -422,13 +414,14 @@ namespace Executor.Play
             }
         }
 
+        /// <summary>도감 창 오른쪽 상세를 채운다</summary>
         private async void OpenGuidebookItem(long guidebookId)
         {
             try
             {
                 GuidebookDetail d = await GuidebookApi.GetDetailAsync(guidebookId);
                 if (_mode != Mode.Main) return;
-                _menu.ShowGuidebookDetail(d, StageLabel(d.StageId), ArtCatalog.Guidebook(d.Image));
+                _menu.SetGuidebookDetail(d, StageLabel(d.StageId), ArtCatalog.Guidebook(d.Image));
             }
             catch (ApiException e)
             {
@@ -443,38 +436,24 @@ namespace Executor.Play
             foreach (ChapterInfo c in _chapters)
             {
                 StageInfo s = c.Stages.FirstOrDefault(x => x.StageId == stageId);
-                if (s != null) return $"{c.Title} {s.No}. {s.Title}";
+                if (s != null) return $"{c.LayerOrder}-{s.No} · {s.Title}";
             }
             return null;
         }
 
+        /// <summary>공지 메모장: 목록(최근 10개)과 각 내용을 받아 한 문서로 보여 준다 (로그인 없이 조회)</summary>
         private async void OpenNotices()
         {
             try
             {
-                var page = await NoticeApi.GetNoticesAsync(size: 20);
+                var page = await NoticeApi.GetNoticesAsync(size: 10);
+                NoticeDetail[] details = await Task.WhenAll(page.Content.Select(n => NoticeApi.GetNoticeAsync(n.NoticeId)));
                 if (_mode != Mode.Main) return;
-                _menu.ClosePopups();
-                _menu.ShowNotices(page.Content, OpenNotice);
+                _menu.ShowNoticeBoard(details);
             }
             catch (ApiException e)
             {
                 _menu.ShowMessage("공지사항", e.IsNetworkError ? "서버에 연결할 수 없어 공지를 불러오지 못했습니다." : e.Message);
-            }
-        }
-
-        private async void OpenNotice(long noticeId)
-        {
-            try
-            {
-                var notice = await NoticeApi.GetNoticeAsync(noticeId);
-                _menu.ClosePopups();
-                _menu.ShowNoticeDetail(notice);
-            }
-            catch (ApiException e)
-            {
-                _menu.ClosePopups();
-                _menu.ShowMessage("공지사항", e.Status == 404 ? "내려간 공지입니다." : e.IsNetworkError ? "서버에 연결할 수 없습니다." : e.Message);
             }
         }
 
@@ -1092,7 +1071,34 @@ namespace Executor.Play
         /// <summary>친구·메시지 팝업. 메인 화면에서는 메뉴 위에, 플레이 중에는 게임 화면 위에 연다</summary>
         private SocialPanel Social => _social ??= new SocialPanel(
             () => _mode == Mode.Main ? _menu.PopupRoot : _game.PopupRoot,
-            count => { _menu.SetFriendCount(count); _game.SetChatCount(count); });
+            count => { _menu.SetFriendCount(count); _game.SetChatCount(count); })
+        {
+            OnWindow = name => { if (_mode == Mode.Main || name == null) _menu.SetWindowTab(name); },
+            CompareRecords = CompareRecordsAsync,
+        };
+
+        /// <summary>
+        /// 친구 상세의 기록 비교: 가장 멀리 간 Operation의 서버 스테이지들(최대 6개)에서 친구 순위를 불러와
+        /// 나와 친구의 최소 턴을 나란히. 둘 다 기록이 없는 스테이지는 뺀다
+        /// </summary>
+        private async Task<List<(string stage, int? me, int? friend)>> CompareRecordsAsync(UserSummary friend)
+        {
+            ChapterInfo chapter = FrontierChapter();
+            var rows = new List<(string, int?, int?)>();
+            if (chapter == null) return rows;
+            var stages = chapter.Stages.Where(s => s.StageId != null).Take(6).ToList();
+            var tasks = stages.Select(s => StageApi.GetRankingsAsync(s.StageId.Value, RankingScope.Friends, 50)).ToList();
+            await Task.WhenAll(tasks);
+            for (int i = 0; i < stages.Count; i++)
+            {
+                RankingResponse res = tasks[i].Result;
+                int? me = res.Me?.BestMoves;
+                int? theirs = res.Rankings.FirstOrDefault(e => e.User?.UserId == friend.UserId)?.BestMoves;
+                if (me == null && theirs == null) continue;
+                rows.Add(($"{chapter.LayerOrder}-{stages[i].No}", me, theirs));
+            }
+            return rows;
+        }
 
         private void Update()
         {

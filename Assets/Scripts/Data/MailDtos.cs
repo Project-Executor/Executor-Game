@@ -1,10 +1,10 @@
-// 우편 (GET /api/mails, POST /api/mails/{id}/claim, POST /api/mails/claim-all). 형식: Executor-Server docs/api-spec.md 7장
+// 메일 (GET /api/mails, POST /api/mails/{id}/claim, POST /api/mails/claim-all). 형식: Executor-Server docs/api-spec.md 7장
 using System;
 using System.Collections.Generic;
 
 namespace Executor.Data
 {
-    /// <summary>우편 한 통 (만료되지 않은 것만 온다. 받은 우편도 claimed: true로 남는다)</summary>
+    /// <summary>메일 한 통 (만료되지 않은 것만 온다. 받은 메일도 claimed: true로 남는다)</summary>
     public class MailResponse
     {
         public long MailId { get; set; }

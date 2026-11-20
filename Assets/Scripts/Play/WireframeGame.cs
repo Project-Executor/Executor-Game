@@ -161,7 +161,8 @@ namespace Executor.Play
                 _chapter = FrontierChapter() ?? _chapter;
                 ShowStageSelect();
             };
-            _menu.OnMainBack = ShowTitle;
+            _menu.OnQuit = () => _menu.ShowConfirm("종료", "게임을 종료할까요?", QuitGame);
+            _menu.OnPhotoInfo = () => _menu.ShowMessage("이 사진에 대해", MainPhotoDescription);
 
             _menu.OnStageBack = ShowMain;
             _menu.OnStageSelected = no =>
@@ -244,10 +245,10 @@ namespace Executor.Play
             }
         }
 
-        // ---------------- 우편함 ----------------
+        // ---------------- 메일함 ----------------
         private List<MailResponse> _mails = new List<MailResponse>();
 
-        /// <summary>메인 화면 우편 버튼의 받지 않은 우편 수를 갱신한다</summary>
+        /// <summary>메인 화면 메일 버튼의 받지 않은 메일 수를 갱신한다</summary>
         private async void RefreshMailCount()
         {
             if (!PlayerSession.IsOnline) { _menu.SetMailCount(0); return; }
@@ -258,7 +259,7 @@ namespace Executor.Play
             }
             catch (ApiException e)
             {
-                Debug.LogWarning("[WireframeGame] 우편 수를 불러오지 못했습니다: " + e.Message);
+                Debug.LogWarning("[WireframeGame] 메일 수를 불러오지 못했습니다: " + e.Message);
             }
         }
 
@@ -266,7 +267,7 @@ namespace Executor.Play
         {
             if (!PlayerSession.IsOnline)
             {
-                _menu.ShowMessage("우편", "로그인해야 우편함을 쓸 수 있습니다.");
+                _menu.ShowMessage("메일", "로그인해야 메일함을 쓸 수 있습니다.");
                 return;
             }
             try
@@ -279,7 +280,7 @@ namespace Executor.Play
             }
             catch (ApiException e)
             {
-                _menu.ShowMessage("우편", e.IsNetworkError ? "서버에 연결할 수 없어 우편을 불러오지 못했습니다." : e.Message);
+                _menu.ShowMessage("메일", e.IsNetworkError ? "서버에 연결할 수 없어 메일을 불러오지 못했습니다." : e.Message);
             }
         }
 
@@ -300,13 +301,13 @@ namespace Executor.Play
                 if (res.RewardItem != null) parts.Add($"{mail.RewardItem?.Name ?? "아이템"} ×{res.RewardItem.Quantity}");
                 if (res.ConvertedCoin > 0) parts.Add($"이미 가진 아이템이라 코인 {res.ConvertedCoin}으로 바꿈");
                 _menu.ClosePopups();
-                _menu.ShowMessage("우편 받기", (parts.Count > 0 ? "받았습니다.\n" + string.Join("\n", parts) : "받았습니다.")
+                _menu.ShowMessage("메일 받기", (parts.Count > 0 ? "받았습니다.\n" + string.Join("\n", parts) : "받았습니다.")
                                              + $"\n\n보유 코인 {res.TotalCoin}");
             }
             catch (ApiException e)
             {
                 _menu.ClosePopups();
-                _menu.ShowMessage("우편 받기", e.IsNetworkError ? "서버에 연결할 수 없습니다." : e.Message);
+                _menu.ShowMessage("메일 받기", e.IsNetworkError ? "서버에 연결할 수 없습니다." : e.Message);
             }
             RefreshMailCount();
         }
@@ -478,9 +479,21 @@ namespace Executor.Play
             }
         }
 
+        /// <summary>메인 화면 오른쪽 위 "이 사진에 대해 자세히" 내용 (배경 사진 설명)</summary>
+        private const string MainPhotoDescription = "메인 화면 사진에 대한 설명이 들어갈 자리입니다.";
+
+        private static void QuitGame()
+        {
+#if UNITY_EDITOR
+            UnityEditor.EditorApplication.isPlaying = false;
+#else
+            Application.Quit();
+#endif
+        }
+
         private void ShowMainProfile()
         {
-            string coin = PlayerSession.IsOnline ? $"코인 {PlayerSession.Profile.Coin}" : "오프라인 (서버 기록 없음)";
+            string coin = PlayerSession.IsOnline ? $"Coin {PlayerSession.Profile.Coin}" : "오프라인 (서버 기록 없음)";
             _menu.ShowMain(PlayerSession.DisplayName, coin);
         }
 

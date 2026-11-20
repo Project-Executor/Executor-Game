@@ -222,6 +222,20 @@ namespace Executor.Play
             return sprite;
         }
 
+        /// <summary>
+        /// UI 그림 (Resources/UI/{이름}, 피그마에서 2배로 내보낸 것). 크기는 코드가 정하므로 Pixels Per Unit은 상관없다. 없으면 null
+        /// </summary>
+        public static Sprite Ui(string name)
+        {
+            string path = $"UI/{name}";
+            if (Cache.TryGetValue(path, out Sprite cached)) return cached;
+            var texture = Resources.Load<Texture2D>(path);
+            Sprite sprite = texture == null ? null
+                : Sprite.Create(texture, new Rect(0, 0, texture.width, texture.height), new Vector2(0.5f, 0.5f), 100);
+            if (sprite != null) Cache[path] = sprite;
+            return sprite;
+        }
+
         private static T Load<T>(string path) where T : Object
         {
             var asset = Resources.Load<T>(path);

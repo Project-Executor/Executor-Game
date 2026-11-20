@@ -45,7 +45,7 @@ Assets/
 │   ├── Network/     서버 호출 (ApiClient: 토큰 첨부·재발급, 기능별 *Api)
 │   ├── Play/        화면
 │   │   ├── WireframeGame.cs   게임 흐름 (메뉴 ↔ 스테이지 ↔ 결과, 입력 처리)
-│   │   ├── MenuUI.cs          시작·메인·스테이지 선택·시나리오·상점·우편·도감 등 메뉴 화면
+│   │   ├── MenuUI.cs          시작·메인·스테이지 선택·시나리오·상점·메일·도감 등 메뉴 화면
 │   │   ├── GameUI.cs          플레이 화면 (HUD, 대화창, 해킹 창, 결과, 순위)
 │   │   ├── BoardView.cs       판 그리기와 카메라
 │   │   ├── Minimap.cs         미니맵 그림

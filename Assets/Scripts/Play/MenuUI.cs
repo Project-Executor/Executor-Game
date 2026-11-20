@@ -36,7 +36,7 @@ namespace Executor.Play
         private Text _titleAccount, _titleHint;
         private Button _titleLogin, _titleLogout, _titleOffline, _titleTouch;
         private Text _profileName, _profileCoin;
-        private Button _mailButton;
+        private Text _mailBadge, _friendBadge;
         private RectTransform _stageMap;
         private Text _stageTitle;
         private ZoomPan _zoom;
@@ -95,6 +95,117 @@ namespace Executor.Play
             var fitter = go.GetComponent<AspectRatioFitter>();
             fitter.aspectMode = AspectRatioFitter.AspectMode.EnvelopeParent;
             fitter.aspectRatio = sprite.rect.width / sprite.rect.height;
+        }
+
+        /// <summary>위쪽 띠의 글자 버튼 줄 (가로로 50 간격, 글자 길이만큼)</summary>
+        private static RectTransform TextRow(RectTransform bar, Vector2 anchor, Vector2 position, TextAnchor align)
+        {
+            var go = new GameObject("Row", typeof(RectTransform), typeof(HorizontalLayoutGroup), typeof(ContentSizeFitter));
+            go.transform.SetParent(bar, false);
+            var layout = go.GetComponent<HorizontalLayoutGroup>();
+            layout.spacing = 50;
+            layout.childAlignment = align;
+            layout.childControlWidth = layout.childControlHeight = true;
+            layout.childForceExpandWidth = layout.childForceExpandHeight = false;
+            go.GetComponent<ContentSizeFitter>().horizontalFit = ContentSizeFitter.FitMode.PreferredSize;
+            var rt = (RectTransform)go.transform;
+            Place(rt, anchor, position, new Vector2(0, 50), new Vector2(anchor.x, 0.5f));
+            return rt;
+        }
+
+        /// <summary>위쪽 띠의 글자 버튼 (하늘색 24, 마우스를 올리면 밝게)</summary>
+        private static Text TextLink(RectTransform row, string text, Action onClick)
+        {
+            var t = Label(row, text, 24, TextAnchor.MiddleCenter, MainTopText);
+            t.horizontalOverflow = HorizontalWrapMode.Overflow;
+            t.raycastTarget = true;
+            var button = t.gameObject.AddComponent<Button>();
+            button.targetGraphic = t;
+            var colors = button.colors;
+            colors.highlightedColor = new Color(1.3f, 1.3f, 1.3f);
+            colors.pressedColor = new Color(0.8f, 0.8f, 0.8f);
+            button.colors = colors;
+            button.onClick.AddListener(() => onClick());
+            return t;
+        }
+
+        /// <summary>
+        /// 아이콘 버튼: 상자(그림자 포함) + 아이콘. position은 피그마 좌표(왼쪽 위 기준) 상자 왼쪽 위.
+        /// 오른쪽 위에 숫자 표시(안 읽은 메일·메시지)를 달 수 있게 숨긴 배지 글자를 돌려준다
+        /// </summary>
+        private Text IconButton(RectTransform screen, string icon, string name, Vector2 position, Action onClick, string box = "main/box")
+        {
+            var boxGo = new GameObject("Icon:" + name, typeof(RectTransform), typeof(Image), typeof(Button));
+            boxGo.transform.SetParent(screen, false);
+            var boxImage = boxGo.GetComponent<Image>();
+            boxImage.sprite = ArtCatalog.Ui(box);
+            if (boxImage.sprite == null) boxImage.color = ButtonColor;
+            var rt = (RectTransform)boxGo.transform;
+            float size = MainIconBox + MainIconShadow * 2;
+            Place(rt, new Vector2(0, 1), new Vector2(position.x - MainIconShadow, -(position.y - MainIconShadow)), new Vector2(size, size), new Vector2(0, 1));
+            var button = boxGo.GetComponent<Button>();
+            var colors = button.colors;
+            colors.highlightedColor = new Color(0.85f, 0.95f, 1f);
+            colors.pressedColor = new Color(0.7f, 0.7f, 0.75f);
+            button.colors = colors;
+            button.onClick.AddListener(() => onClick());
+
+            var iconGo = new GameObject("Glyph", typeof(RectTransform), typeof(Image));
+            iconGo.transform.SetParent(boxGo.transform, false);
+            var iconImage = iconGo.GetComponent<Image>();
+            iconImage.raycastTarget = false;
+            iconImage.sprite = ArtCatalog.Ui("main/" + icon);
+            Place(iconGo.GetComponent<RectTransform>(), new Vector2(0, 1), new Vector2(MainIconShadow, -MainIconShadow),
+                new Vector2(MainIconBox, MainIconBox), new Vector2(0, 1));
+            if (iconImage.sprite == null)
+            {
+                // 그림이 없으면 글자로
+                Object.Destroy(iconGo);
+                var fallback = Label(boxGo.transform, name, 26, TextAnchor.MiddleCenter, bold: true);
+                Stretch(fallback.rectTransform, MainIconShadow);
+            }
+
+            // 숫자 배지 (상자 오른쪽 위 모서리)
+            var badgeBg = Panel(boxGo.transform, "Badge", Bad);
+            badgeBg.GetComponent<Image>().sprite = CircleSprite();
+            badgeBg.GetComponent<Image>().raycastTarget = false;
+            Place(badgeBg, new Vector2(0, 1), new Vector2(MainIconShadow + MainIconBox - 8, -(MainIconShadow + 8)), new Vector2(48, 48),
+                new Vector2(0.5f, 0.5f));
+            var badge = Label(badgeBg, "", 24, TextAnchor.MiddleCenter, Color.white, bold: true);
+            Stretch(badge.rectTransform);
+            badgeBg.gameObject.SetActive(false);
+            return badge;
+        }
+
+        private static Sprite _circle;
+
+        /// <summary>배지용 동그라미 (코드로 한 번 만든다)</summary>
+        private static Sprite CircleSprite()
+        {
+            if (_circle != null) return _circle;
+            const int n = 64;
+            var texture = new Texture2D(n, n, TextureFormat.RGBA32, false) { filterMode = FilterMode.Bilinear };
+            var pixels = new Color32[n * n];
+            float r = n / 2f;
+            for (int y = 0; y < n; y++)
+            for (int x = 0; x < n; x++)
+            {
+                float d = Mathf.Sqrt((x + 0.5f - r) * (x + 0.5f - r) + (y + 0.5f - r) * (y + 0.5f - r));
+                byte a = (byte)(Mathf.Clamp01(r - d) * 255);
+                pixels[y * n + x] = new Color32(255, 255, 255, a);
+            }
+            texture.SetPixels32(pixels);
+            texture.Apply();
+            _circle = Sprite.Create(texture, new Rect(0, 0, n, n), new Vector2(0.5f, 0.5f), 100);
+            return _circle;
+        }
+
+        private static void SetBadge(Text badge, int count)
+        {
+            if (badge == null) return;
+            badge.transform.parent.gameObject.SetActive(count > 0);
+            badge.text = count > 99 ? "99+" : count.ToString();
+            badge.fontSize = count > 99 ? 16 : count > 9 ? 20 : 24;
         }
 
         private static Button SettingsButton(Transform parent, Action onClick)
@@ -191,8 +302,15 @@ namespace Executor.Play
         }
 
         // ================= 메인 화면 =================
-        public Action OnProfile, OnMail, OnShop, OnNotice, OnGuidebook, OnFriends, OnStages, OnMainBack;
-        private Button _friendButton;
+        public Action OnProfile, OnMail, OnShop, OnNotice, OnGuidebook, OnFriends, OnStages, OnPhotoInfo, OnQuit;
+
+        // 피그마 메인 화면(1920x1080) 값
+        private static readonly Color MainTopBar = new Color(2 / 255f, 4 / 255f, 15 / 255f, 0.75f);
+        private static readonly Color MainTopText = new Color32(0x8e, 0xd4, 0xff, 0xff);
+        private const float MainBackgroundAlpha = 0.4f;
+        private const float MainIconBox = 150;
+        /// <summary>버튼 상자 그림은 그림자까지 담아 사방 10px 크다 (180x180, 2배 그림 360px)</summary>
+        private const float MainIconShadow = 10;
 
         public void ShowMain(string nickname, string coin)
         {
@@ -202,56 +320,47 @@ namespace Executor.Play
             _profileCoin.text = coin;
         }
 
+        /// <summary>
+        /// 메인 화면 (피그마 "Slide 16:9 - 1"). 흰 바탕에 배경 사진(40%), 위쪽 띠(플레이어명·코인 / 설정·종료),
+        /// 왼쪽 아이콘 버튼 2열(공지·도감 / 메일·상점 / 친구), 오른쪽 위 사진 설명 버튼, 오른쪽 아래 스테이지.
+        /// 그림: Resources/UI/main/*.png (피그마에서 2배로 내보냄), 배경 Resources/Illustrations/main_background
+        /// </summary>
         private GameObject BuildMain()
         {
-            var screen = Panel(_root, "Main", Background);
+            var screen = Panel(_root, "Main", new Color32(0xfe, 0xff, 0xff, 0xff));
             Stretch(screen);
+            Cover(screen, ArtCatalog.Illustration("main_background"));
+            var photo = screen.Find("Illustration")?.GetComponent<Image>();
+            if (photo != null) photo.color = new Color(1, 1, 1, MainBackgroundAlpha);
 
-            // 위쪽 줄: 프로필(왼쪽), 설정(오른쪽). 높이 120으로 맞춤
-            var profile = Button(screen, "", () => OnProfile?.Invoke(), 28);
-            Place(profile, new Vector2(0, 1), new Vector2(Margin, -Margin), new Vector2(440, 120), new Vector2(0, 1));
-            _profileName = profile.GetComponentInChildren<Text>();
-            _profileName.alignment = TextAnchor.UpperLeft;
-            _profileName.rectTransform.offsetMin = new Vector2(28, 16);
-            _profileName.rectTransform.offsetMax = new Vector2(-28, -20);
-            _profileCoin = Label(profile.transform, "", 24, TextAnchor.LowerLeft, Muted);
-            Stretch(_profileCoin.rectTransform);
-            _profileCoin.rectTransform.offsetMin = new Vector2(28, 18);
-            _profileCoin.rectTransform.offsetMax = new Vector2(-28, -16);
-            SettingsButton(screen, () => OnSettings?.Invoke());
-            // 프로필 옆: 친구·메시지 (안 읽은 메시지 + 받은 요청 수를 표시)
-            _friendButton = Button(screen, "친구", () => OnFriends?.Invoke(), 26);
-            Place(_friendButton, new Vector2(0, 1), new Vector2(Margin + 440 + Gap, -Margin), new Vector2(200, 120), new Vector2(0, 1));
+            // 위쪽 띠 (높이 50): 왼쪽 플레이어명·코인 (누르면 프로필), 오른쪽 설정·종료. 글자 24, 간격 50
+            var bar = Panel(screen, "TopBar", MainTopBar);
+            Place(bar, new Vector2(0, 1), Vector2.zero, new Vector2(0, 50), new Vector2(0, 1));
+            bar.anchorMax = new Vector2(1, 1);
+            bar.sizeDelta = new Vector2(0, 50);
+            var left = TextRow(bar, new Vector2(0, 0.5f), new Vector2(50, 0), TextAnchor.MiddleLeft);
+            _profileName = TextLink(left, "", () => OnProfile?.Invoke());
+            _profileCoin = TextLink(left, "", () => OnProfile?.Invoke());
+            var right = TextRow(bar, new Vector2(1, 0.5f), new Vector2(-50, 0), TextAnchor.MiddleRight);
+            TextLink(right, "설정", () => OnSettings?.Invoke());
+            TextLink(right, "종료", () => OnQuit?.Invoke());
 
-            // 왼쪽 줄: 우편, 상점, 공지, 도감 (설정 버튼과 같은 120x120)
-            float y = -(Margin + 120 + Gap);
-            foreach (var (label, action) in new (string, Action)[]
-                     {
-                         ("우편", () => OnMail?.Invoke()), ("상점", () => OnShop?.Invoke()), ("공지", () => OnNotice?.Invoke()),
-                         ("도감", () => OnGuidebook?.Invoke())
-                     })
-            {
-                var b = Button(screen, label, action, 26);
-                Place(b, new Vector2(0, 1), new Vector2(Margin, y), SettingsSize, new Vector2(0, 1));
-                if (label == "우편") _mailButton = b;
-                y -= 120 + Gap;
-            }
+            // 왼쪽 아이콘 버튼 (150x150, 간격 30): 공지 도감 / 메일 상점 / 친구
+            IconButton(screen, "notice", "공지", new Vector2(75, 125), () => OnNotice?.Invoke());
+            IconButton(screen, "guidebook", "도감", new Vector2(255, 125), () => OnGuidebook?.Invoke());
+            _mailBadge = IconButton(screen, "mail", "메일", new Vector2(75, 305), () => OnMail?.Invoke());
+            IconButton(screen, "shop", "상점", new Vector2(255, 305), () => OnShop?.Invoke());
+            _friendBadge = IconButton(screen, "friends", "친구", new Vector2(75, 485), () => OnFriends?.Invoke());
 
-            // 가운데: 시나리오 일러스트 (화면 정가운데)
-            var art = Panel(screen, "ScenarioArt", new Color32(0x16, 0x22, 0x32, 0xff), Muted);
-            Place(art, new Vector2(0.5f, 0.5f), new Vector2(0, 0), new Vector2(1120, 600));
-            var artText = Label(art, "시나리오에 따른 화면 일러스트\n(이미지 자리)", 30, TextAnchor.MiddleCenter, Muted);
-            Stretch(artText.rectTransform);
-            Sprite mainArt = ArtCatalog.Illustration("main");
-            if (mainArt != null)
-            {
-                artText.gameObject.SetActive(false);
-                Cover(art, mainArt);
-            }
+            // 오른쪽 위: 사진 설명 (반투명 상자 + 아래 글자)
+            IconButton(screen, "photo", "사진 설명", new Vector2(1720, 128), () => OnPhotoInfo?.Invoke(), "main/photo_box");
+            var caption = Label(screen, "이 사진에\n대해 자세히", 28, TextAnchor.UpperCenter, Color.white);
+            Place(caption, new Vector2(0, 1), new Vector2(1795, -290), new Vector2(240, 80), new Vector2(0.5f, 1));
+            var shadow = caption.gameObject.AddComponent<Shadow>();
+            shadow.effectColor = new Color(0, 0, 0, 0.8f);
+            shadow.effectDistance = new Vector2(1, -1);
 
-            // 아래쪽 줄: 시작 화면(왼쪽), 스테이지(오른쪽)
-            var back = Button(screen, "시작 화면", () => OnMainBack?.Invoke(), 24);
-            Place(back, new Vector2(0, 0), new Vector2(Margin, Margin), new Vector2(220, 64), new Vector2(0, 0));
+            // 오른쪽 아래: 스테이지
             var stages = Button(screen, "스테이지", () => OnStages?.Invoke(), 40);
             Place(stages, new Vector2(1, 0), new Vector2(-Margin, Margin), new Vector2(320, 180), new Vector2(1, 0));
             return screen.gameObject;
@@ -615,32 +724,20 @@ namespace Executor.Play
             Stretch(t.rectTransform);
         }
 
-        /// <summary>메인 화면 친구 버튼에 안 읽은 메시지 + 받은 친구 요청 수를 표시한다</summary>
-        public void SetFriendCount(int count)
-        {
-            if (_friendButton == null) return;
-            SetButtonText(_friendButton, count > 0 ? $"친구\n({count})" : "친구");
-            var label = _friendButton.GetComponentInChildren<Text>();
-            if (label != null) label.color = count > 0 ? Warn : TextColor;
-        }
+        /// <summary>메인 화면 친구 버튼에 안 읽은 메시지 + 받은 친구 요청 수를 표시한다 (0이면 숨김)</summary>
+        public void SetFriendCount(int count) => SetBadge(_friendBadge, count);
 
-        /// <summary>메인 화면 우편 버튼에 받지 않은 우편 수를 표시한다 (0이면 "우편"만)</summary>
-        public void SetMailCount(int unclaimed)
-        {
-            if (_mailButton == null) return;
-            SetButtonText(_mailButton, unclaimed > 0 ? $"우편\n({unclaimed})" : "우편");
-            var label = _mailButton.GetComponentInChildren<Text>();
-            if (label != null) label.color = unclaimed > 0 ? Warn : TextColor;
-        }
+        /// <summary>메인 화면 메일 버튼에 받지 않은 메일 수를 표시한다 (0이면 숨김)</summary>
+        public void SetMailCount(int unclaimed) => SetBadge(_mailBadge, unclaimed);
 
-        /// <summary>우편함 팝업: 최신순 목록(누르면 자세히) + 모두 받기</summary>
+        /// <summary>메일함 팝업: 최신순 목록(누르면 자세히) + 모두 받기</summary>
         public void ShowMailbox(IReadOnlyList<Data.MailResponse> mails, Action<Data.MailResponse> onOpen, Action onClaimAll)
         {
             int unclaimed = mails.Count(m => !m.Claimed);
-            Popup(_popupRoot, $"우편함 · 받지 않은 우편 {unclaimed}통", new Vector2(1100, 820), out RectTransform body);
+            Popup(_popupRoot, $"메일함 · 받지 않은 메일 {unclaimed}통", new Vector2(1100, 820), out RectTransform body);
             if (mails.Count == 0)
             {
-                var empty = Label(body, "우편이 없습니다.", 28, TextAnchor.MiddleCenter, Muted);
+                var empty = Label(body, "메일이 없습니다.", 28, TextAnchor.MiddleCenter, Muted);
                 Stretch(empty.rectTransform);
                 return;
             }
@@ -842,7 +939,7 @@ namespace Executor.Play
             Place(no, new Vector2(1, 0), new Vector2(-216, 0), new Vector2(200, 68), new Vector2(1, 0));
         }
 
-        /// <summary>우편 자세히 팝업. 받지 않았으면 받기 버튼</summary>
+        /// <summary>메일 자세히 팝업. 받지 않았으면 받기 버튼</summary>
         public void ShowMail(Data.MailResponse mail, Action onClaim)
         {
             Popup(_popupRoot, mail.Title, new Vector2(1000, 640), out RectTransform body);
@@ -857,7 +954,7 @@ namespace Executor.Play
             Place(reward, new Vector2(0, 0), new Vector2(0, 88), new Vector2(920, 40), new Vector2(0, 0));
             if (mail.Claimed)
             {
-                var done = Label(body, "이미 받은 우편입니다.", 24, TextAnchor.MiddleRight, Muted);
+                var done = Label(body, "이미 받은 메일입니다.", 24, TextAnchor.MiddleRight, Muted);
                 Place(done, new Vector2(1, 0), Vector2.zero, new Vector2(400, 72), new Vector2(1, 0));
             }
             else

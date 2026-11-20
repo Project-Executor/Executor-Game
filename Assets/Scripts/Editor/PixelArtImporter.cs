@@ -18,7 +18,21 @@ namespace Executor.EditorTools
 
         private void OnPreprocessTexture()
         {
-            if (!assetPath.Replace('\\', '/').StartsWith("Assets/Resources/Pixel/")) return;
+            string path = assetPath.Replace('\\', '/');
+            if (path.StartsWith("Assets/Resources/UI/"))
+            {
+                // UI 그림 (피그마에서 2배로 내보낸 아이콘·버튼): 압축하면 테두리가 뭉개지므로 압축 없이, 반으로 줄여 그리니 밉맵
+                var ui = (TextureImporter)assetImporter;
+                ui.textureType = TextureImporterType.Sprite;
+                ui.spriteImportMode = SpriteImportMode.Single;
+                ui.filterMode = FilterMode.Trilinear;
+                ui.textureCompression = TextureImporterCompression.Uncompressed;
+                ui.mipmapEnabled = true;
+                ui.alphaIsTransparency = true;
+                ui.wrapMode = TextureWrapMode.Clamp;
+                return;
+            }
+            if (!path.StartsWith("Assets/Resources/Pixel/")) return;
             var importer = (TextureImporter)assetImporter;
             importer.GetSourceTextureWidthAndHeight(out int width, out int height);
             bool small = Mathf.Max(width, height) <= SmallArtMax;

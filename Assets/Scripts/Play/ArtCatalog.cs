@@ -48,6 +48,12 @@ namespace Executor.Play
         public static readonly Color32 MapBackground = new Color32(0x0d, 0x0d, 0x15, 0xff);
 
         public static Sprite Wall => Pixel("tiles/wall", MapBackground, Shape.Flat);
+
+        /// <summary>
+        /// 바로 아래 칸이 바닥인 벽(바닥에서 보면 위쪽 벽 한 줄)에 쓰는 그림: Pixel/tiles/wall_top.png. 없으면 null (그냥 벽).
+        /// 세로로 긴 그림이면 아래가 칸 바닥에 닿고 위로 솟는다
+        /// </summary>
+        public static Sprite WallTop => CellSprite("Pixel/tiles/wall_top");
         /// <summary>복구된 컴퓨터 (Resources/Pixel/objects/computerRestored)</summary>
         public static Sprite ComputerRestored => Pixel("objects/computerRestored", new Color32(0x5f, 0xd1, 0xb0, 0xff), Shape.Frame);
         public static Sprite Player => Pixel("player", new Color32(0x4f, 0xd1, 0xff, 0xff), Shape.Diamond);

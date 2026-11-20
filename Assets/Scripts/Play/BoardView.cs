@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using Executor.Data;
 using Executor.Game;
 using UnityEngine;
@@ -66,7 +67,9 @@ namespace Executor.Play
             for (int x = 0; x < board.Width; x++)
             {
                 var pos = new GridPos(x, y);
-                Spawn(board.IsWall(pos) ? "wall" : "floor", board.IsWall(pos) ? ArtCatalog.Wall : ArtCatalog.Floor, pos, 0);
+                Sprite tile = board.IsWall(pos) ? WallSprite(board, pos) : ArtCatalog.Floor;
+                // 위쪽 벽 그림은 세로로 길면 윗칸까지 솟으므로 다른 타일보다 위에
+                Spawn(board.IsWall(pos) ? "wall" : "floor", tile, pos, tile != null && tile == ArtCatalog.WallTop ? 1 : 0);
             }
             foreach (BoardObject obj in board.Objects)
             {
@@ -110,7 +113,7 @@ namespace Executor.Play
                 {
                     // 가짜 벽: 드러난 뒤에도 화면에서는 계속 진짜 벽과 똑같이 그린다 (드러남은 미니맵에만 표시)
                     sr.gameObject.SetActive(!obj.IsRemoved);
-                    sr.sprite = ArtCatalog.Wall;
+                    sr.sprite = WallSprite(_board, obj.Pos);
                 }
                 else sr.gameObject.SetActive(!obj.IsRemoved && obj.IsRevealed);
                 // 컴퓨터: 감염 / 복구
@@ -145,6 +148,19 @@ namespace Executor.Play
         /// 아랫줄의 것을 가리지 않게 한다. 같은 줄이면 플레이어가 오브젝트 앞
         /// </summary>
         private static int SortOrder(int row, bool player) => 10 + row * 2 + (player ? 1 : 0);
+
+        /// <summary>화면에서 벽으로 보이는 칸: 진짜 벽 + 가짜 벽 (가짜 벽은 드러난 뒤에도 화면에서는 벽)</summary>
+        private static bool LooksLikeWall(Board board, GridPos p) =>
+            board.IsWall(p) || board.Objects.Any(o => o.Type == MapObjectTypes.FakeWall && !o.IsRemoved && o.Pos.Equals(p));
+
+        /// <summary>벽 그림: 바로 아래 칸이 바닥이면(위쪽 벽 한 줄) wall_top 그림, 아니면 보통 벽</summary>
+        private static Sprite WallSprite(Board board, GridPos p)
+        {
+            Sprite top = ArtCatalog.WallTop;
+            if (top == null) return ArtCatalog.Wall;
+            var below = new GridPos(p.X, p.Y + 1);
+            return board.IsInside(below) && !LooksLikeWall(board, below) ? top : ArtCatalog.Wall;
+        }
 
         /// <summary>워프: 미끄러지지 않고 바로 그 상태로 옮긴다 (카메라도)</summary>
         public void SnapToBoard()

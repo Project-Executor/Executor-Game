@@ -161,7 +161,7 @@ namespace Executor.Play
                 _chapter = FrontierChapter() ?? _chapter;
                 ShowStageSelect();
             };
-            _menu.OnQuit = () => _menu.ShowConfirm("종료", "게임을 종료할까요?", QuitGame);
+            _menu.OnQuit = () => _menu.ShowQuit(ShowTitle, QuitGame);
             _menu.OnPhotoInfo = () => _menu.ShowMessage("이 사진에 대해", MainPhotoDescription);
 
             _menu.OnStageBack = ShowMain;

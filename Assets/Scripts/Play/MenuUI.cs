@@ -926,6 +926,21 @@ namespace Executor.Play
             }
         }
 
+        /// <summary>메인 화면 종료 팝업: 시작 화면으로 / 게임 종료 / 취소</summary>
+        public void ShowQuit(Action toTitle, Action quit)
+        {
+            Popup(_popupRoot, "종료", new Vector2(760, 420), out RectTransform body);
+            var t = Label(body, "시작 화면으로 돌아가거나 게임을 종료할 수 있습니다.", 26, TextAnchor.MiddleCenter);
+            Stretch(t.rectTransform);
+            t.rectTransform.offsetMin = new Vector2(0, 90);
+            var exit = Button(body, "게임 종료", () => quit(), 24);
+            Place(exit, new Vector2(1, 0), Vector2.zero, new Vector2(200, 68), new Vector2(1, 0));
+            var title = Button(body, "시작 화면으로", () => { ClosePopups(); toTitle(); }, 24);
+            Place(title, new Vector2(1, 0), new Vector2(-216, 0), new Vector2(200, 68), new Vector2(1, 0));
+            var cancel = Button(body, "취소", () => ClosePopups(), 24, new Color32(0x22, 0x26, 0x2e, 0xff));
+            Place(cancel, new Vector2(1, 0), new Vector2(-432, 0), new Vector2(200, 68), new Vector2(1, 0));
+        }
+
         /// <summary>확인 팝업 (예 / 아니오)</summary>
         public void ShowConfirm(string title, string text, Action onYes)
         {

@@ -827,7 +827,9 @@ namespace Executor.Play
             _view.Build(_board);
             WordBank.Prefetch(_board.Objects.Where(o => o.Type == MapObjectTypes.Computer && o.WordListId != null)
                 .Select(o => o.WordListId.Value).Distinct());
-            _game.ShowHud($"{stage.No}. {stage.Title}", DefaultQuest, 0, 0);
+            string hudPath = _chapter == null ? "" : $"{_chapter.LayerLabel} · {_chapter.Title}";
+            string hudTitle = _chapter == null ? $"{stage.No} · {stage.Title}" : $"{_chapter.LayerOrder}-{stage.No} · {stage.Title}";
+            _game.ShowHud(hudPath, hudTitle, DefaultQuest);
             UpdateHud();
 
             if (withIntro && stage.Map.Story?.Intro?.Count > 0) PlayStory(stage.Map.Story.Intro, BeginPlay);
@@ -899,9 +901,10 @@ namespace Executor.Play
 
         private void ShowGuides(IReadOnlyList<string> texts)
         {
+            // 안내는 quest.txt 아래 칸에 (최근 2개)
             foreach (string text in texts)
             {
-                _game.Toast(text);
+                _game.AddGuide(text);
                 _questGuides.Add(text);
             }
             if (texts.Count == 0) return;
@@ -913,8 +916,10 @@ namespace Executor.Play
 
         private void UpdateHud()
         {
-            _game.SetTurns(_board.RemainingTurns, _board.Keys.Values.Sum());
-            _game.SetCollect(_board.HiddenCollected, _board.HiddenTotal);
+            _game.SetTurns(_board.RemainingTurns, _board.SegmentLimit, _board.CurrentOrder, _board.CheckpointCount + 1);
+            var warps = _board.WarpPoints;
+            _game.SetCheckpoints(Enumerable.Range(0, _board.CheckpointCount + 1).Select(o => warps.Contains(o)).ToList());
+            _game.SetCollect(_board.HiddenCollected, _board.HiddenTotal, _board.Keys.Values.Sum());
             _minimapTexture = Minimap.Render(_board, _minimapTexture);
             _game.SetMinimap(_minimapTexture);
             _game.SetQuestStars(QuestStars());
@@ -1244,7 +1249,7 @@ namespace Executor.Play
         {
             foreach (BoardObject o in _board.LastEncounters)
             {
-                _game.Toast($"이상 개체 발견: {(string.IsNullOrEmpty(o.Name) ? "알 수 없는 개체" : o.Name)} (도감에 기록)");
+                _game.Toast($"<color=#c3a6ff>도감 기록</color> · {(string.IsNullOrEmpty(o.Name) ? "알 수 없는 개체" : o.Name)}", GameUI.GuidebookAccent);
             }
         }
 

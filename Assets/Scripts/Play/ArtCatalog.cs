@@ -45,7 +45,7 @@ namespace Executor.Play
         /// 스테이지 화면 바탕색. 벽도 같은 색으로 테두리 없이 칠해 벽이 블록이 아니라 맵 바깥(빈 공간)처럼 보이게 한다 —
         /// 바닥만 길처럼 떠 보인다. tiles/wall.png를 넣으면 그 그림을 쓴다
         /// </summary>
-        public static readonly Color32 MapBackground = new Color32(0x0d, 0x0d, 0x15, 0xff);
+        public static readonly Color32 MapBackground = new Color32(0x0a, 0x07, 0x16, 0xff); // 시안의 바탕(공허)
 
         public static Sprite Wall => Pixel("tiles/wall", MapBackground, Shape.Flat);
 

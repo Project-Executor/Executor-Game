@@ -150,16 +150,16 @@ Portraits/
 ### 메인·스테이지 선택 UI (시안 Executor_Export)
 
 시안(`Executor_Export/02_ui_screens`, 1280 × 720)을 1.5배(1920 × 1080)로 옮겼다. 색·부품은 `Play/Theme.cs`, 글꼴은 Galmuri(`Resources/Fonts`).
-도트 아이콘은 시안 SVG의 점을 그대로 1px씩 찍은 원본 크기 PNG이고, 화면에서 Point 필터로 키운다 (`Resources/UI/` 아래 64px 이하 그림은 자동으로 Point).
+도트 아이콘은 시안 SVG의 점을 찍은 뒤 **8배로 키운 PNG**(16 × 16 도트 -> 128 × 128)이다. 화면 크기(72px = 4.5배 등)가 정수배가 아니라서 원본 크기를 Point로 늘리면 점이 들쭉날쭉해지므로, 크게 키워 둔 그림을 부드럽게(밉맵) 줄여 그린다. 새 아이콘도 도트 크기의 8배로 넣으면 된다.
 
 | 파일 | 크기 | 화면에서 | 내용 |
 | --- | --- | --- | --- |
-| `UI/desktop/{notice,guidebook,mail,shop,friends}.png` | 16 × 16 | 72 × 72 | 바탕화면 아이콘 (README.txt=공지, 도감, 메일함, store.exe=상점, 친구) |
-| `UI/desktop/delta.png` | 10 × 10 | 60 × 60 | 델타 알림 얼굴 |
-| `UI/desktop/start.png` | 5 × 5 | 30 × 30 | 작업 표시줄 EXECUTOR (시작 화면으로) |
-| `UI/desktop/settings.png`, `power.png` | 10 × 10 | 30 × 30 | 작업 표시줄 설정, 종료 |
-| `UI/desktop/folder.png`, `folder_locked.png` | 8 × 8 | 24 × 24 | 스테이지 선택 Operation 트리의 레이어 폴더 (열림 / 잠김) |
-| `UI/desktop/check.png`, `lock.png` | 7 × 6, 5 × 5 | 12~18 | 스테이지 노드 오른쪽 위 표시 (클리어 / 잠김) |
+| `UI/desktop/{notice,guidebook,mail,shop,friends}.png` | 16 × 16 도트 (파일 128 × 128) | 72 × 72 | 바탕화면 아이콘 (README.txt=공지, 도감, 메일함, store.exe=상점, 친구) |
+| `UI/desktop/delta.png` | 10 × 10 도트 (파일 80 × 80) | 60 × 60 | 델타 알림 얼굴 |
+| `UI/desktop/start.png` | 5 × 5 도트 (파일 40 × 40) | 30 × 30 | 작업 표시줄 EXECUTOR (시작 화면으로) |
+| `UI/desktop/settings.png`, `power.png` | 10 × 10 도트 (파일 80 × 80) | 30 × 30 | 작업 표시줄 설정, 종료 |
+| `UI/desktop/folder.png`, `folder_locked.png` | 8 × 8 도트 (파일 64 × 64) | 24 × 24 | 스테이지 선택 Operation 트리의 레이어 폴더 (열림 / 잠김) |
+| `UI/desktop/check.png`, `lock.png`, `fragment.png`, `guidebook_note.png` | 7 × 6, 5 × 5, 4 × 5, 8 × 8 도트 (8배 파일) | 12~18 | 스테이지 노드 오른쪽 위 표시 (클리어 / 잠김) |
 
 ---
 

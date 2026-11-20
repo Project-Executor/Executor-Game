@@ -21,15 +21,14 @@ namespace Executor.EditorTools
             string path = assetPath.Replace('\\', '/');
             if (path.StartsWith("Assets/Resources/UI/"))
             {
-                // UI 그림: 작은 도트 아이콘(16x16 등)은 Point로 크게 늘려 그리고, 큰 그림은 부드럽게. 둘 다 압축 없이
+                // UI 그림: 도트 아이콘은 8배로 미리 키워 둔 그림(16x16 -> 128x128)이다. 화면 크기(예: 72px = 4.5배)가
+                // 정수배가 아니어도 점 크기가 들쭉날쭉하지 않도록 Point가 아니라 부드럽게 줄여 그린다. 압축 없이
                 var ui = (TextureImporter)assetImporter;
-                ui.GetSourceTextureWidthAndHeight(out int uw, out int uh);
-                bool dot = Mathf.Max(uw, uh) <= SmallArtMax;
                 ui.textureType = TextureImporterType.Sprite;
                 ui.spriteImportMode = SpriteImportMode.Single;
-                ui.filterMode = dot ? FilterMode.Point : FilterMode.Trilinear;
+                ui.filterMode = FilterMode.Trilinear;
                 ui.textureCompression = TextureImporterCompression.Uncompressed;
-                ui.mipmapEnabled = !dot;
+                ui.mipmapEnabled = true;
                 ui.alphaIsTransparency = true;
                 ui.wrapMode = TextureWrapMode.Clamp;
                 return;

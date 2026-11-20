@@ -235,14 +235,13 @@ namespace Executor.Play
         }
 
         /// <summary>
-        /// UI 그림 (Resources/UI/{이름}). 64px 이하는 도트 아이콘으로 보고 Point 필터. 크기는 코드가 정하므로 Pixels Per Unit은 상관없다. 없으면 null
+        /// UI 그림 (Resources/UI/{이름}). 도트 아이콘은 8배로 키워 둔 그림을 부드럽게 줄여 그린다. 크기는 코드가 정하므로 Pixels Per Unit은 상관없다. 없으면 null
         /// </summary>
         public static Sprite Ui(string name)
         {
             string path = $"UI/{name}";
             if (Cache.TryGetValue(path, out Sprite cached)) return cached;
             var texture = Resources.Load<Texture2D>(path);
-            if (texture != null && Mathf.Max(texture.width, texture.height) <= 64) texture.filterMode = FilterMode.Point; // 도트 아이콘
             Sprite sprite = texture == null ? null
                 : Sprite.Create(texture, new Rect(0, 0, texture.width, texture.height), new Vector2(0.5f, 0.5f), 100);
             if (sprite != null) Cache[path] = sprite;

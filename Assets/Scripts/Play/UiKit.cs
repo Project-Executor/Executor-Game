@@ -26,14 +26,17 @@ namespace Executor.Play
 
         public static Font Regular { get; private set; }
         public static Font Bold { get; private set; }
+        /// <summary>고정폭 (터미널 글자, 숫자)</summary>
+        public static Font Mono { get; private set; }
 
-        /// <summary>Pretendard (Resources/Fonts, SIL OFL). 없으면 OS 한글 폰트</summary>
+        /// <summary>Galmuri 도트 글꼴 (Resources/Fonts, SIL OFL). 없으면 OS 한글 글꼴</summary>
         public static void LoadFonts()
         {
             if (Regular != null) return;
             Font os = Font.CreateDynamicFontFromOSFont(new[] { "Malgun Gothic", "맑은 고딕", "Apple SD Gothic Neo", "Noto Sans CJK KR", "Arial" }, 32);
-            Regular = Resources.Load<Font>("Fonts/Pretendard-Regular") ?? os;
-            Bold = Resources.Load<Font>("Fonts/Pretendard-Bold") ?? Regular;
+            Regular = Resources.Load<Font>("Fonts/Galmuri11") ?? os;
+            Bold = Resources.Load<Font>("Fonts/Galmuri11-Bold") ?? Regular;
+            Mono = Resources.Load<Font>("Fonts/GalmuriMono11") ?? Regular;
         }
 
         /// <summary>화면 전체 캔버스. sortOrder가 클수록 위에 그려진다</summary>

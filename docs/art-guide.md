@@ -20,8 +20,8 @@
 | 대화 스탠딩 일러스트 | **1200 × 2000** (세로 2000 권장) | 세로 1000 | `Portraits/{인물}/{표정}.png` | [일러스트](#가져오기-설정-일러스트) |
 | 시작 화면 배경 | **1920 × 1080** | 화면 전체 | `Illustrations/title.png` | 일러스트 |
 | 시작 화면 로고 | **760 × 300 안** (가로로 긴 로고) | 760 × 300 상자 안 | `Illustrations/title_logo.png` | 일러스트 |
-| 메인 화면 배경 사진 | **1920 × 1080 이상** (지금 2560 × 1441) | 화면 전체, 흰 바탕 위 40% | `Illustrations/main_background.jpg` | 일러스트 |
-| 메인 화면 아이콘 버튼 | 피그마에서 2배로 내보냄 | 상자 150 × 150 | `UI/main/*.png` | 아래 3장 |
+| 메인 화면 바탕화면 | **1920 × 1080** | 화면 전체 | `Illustrations/main_desktop.jpg` | 일러스트 (시안 그대로) |
+| 바탕화면·작업 표시줄 아이콘 | **16 × 16** 등 도트 원본 크기 | 72 × 72 (아이콘), 30 × 30 (작업 표시줄) | `UI/desktop/*.png` | 아래 표 |
 | 도감 그림 | **512 × 512** | 344 × 344 | `Guidebook/{이름}.png` | 일러스트 |
 
 ---
@@ -139,7 +139,7 @@ Portraits/
 | --- | --- | --- | --- |
 | `Illustrations/title.png` | 1920 × 1080 | 시작 화면 전체를 덮는다 | 비율이 다르면 넘치는 쪽을 잘라 낸다 |
 | `Illustrations/title_logo.png` | 760 × 300 안 | 화면 가운데 위쪽 760 × 300 상자 안, **비율 유지** | 배경 투명. 지금 그림은 761 × 196 |
-| `Illustrations/main_background.jpg` | 1920 × 1080 이상 | 메인 화면 전체를 덮고, 흰 바탕 위에 40%로 옅게 보인다 | 비율이 다르면 잘라 낸다. png도 된다 |
+| `Illustrations/main_desktop.jpg` | 1920 × 1080 | 메인 화면 전체 | 흐린 학교 사진 + 어둡게 + 균열·글리치까지 한 장에 그린 것 (시안 Main.html 배경을 1.5배로 찍음) |
 | `Guidebook/{이름}.png` | 512 × 512 | 도감 상세 왼쪽 360 × 360 상자 (안쪽 344 × 344), **비율 유지** | 정사각형 권장 |
 
 - 시작 화면은 아래쪽에 "화면을 클릭해 게임을 시작하세요" 문구와 버튼이 올라가므로, **아래 1/4에는 중요한 것을 그리지 않는다.**
@@ -147,19 +147,19 @@ Portraits/
 
 가져오기 설정은 [일러스트](#가져오기-설정-일러스트)와 같다.
 
-### 메인 화면 UI (피그마)
+### 메인·스테이지 선택 UI (시안 Executor_Export)
 
-피그마 "Executor" 파일의 메인 화면(Slide 16:9 - 1)을 그대로 옮겼다. 그림은 모두 **2배** 크기이고 배경이 투명하다.
+시안(`Executor_Export/02_ui_screens`, 1280 × 720)을 1.5배(1920 × 1080)로 옮겼다. 색·부품은 `Play/Theme.cs`, 글꼴은 Galmuri(`Resources/Fonts`).
+도트 아이콘은 시안 SVG의 점을 그대로 1px씩 찍은 원본 크기 PNG이고, 화면에서 Point 필터로 키운다 (`Resources/UI/` 아래 64px 이하 그림은 자동으로 Point).
 
-| 파일 | 그림 크기 | 화면에서 | 내용 |
+| 파일 | 크기 | 화면에서 | 내용 |
 | --- | --- | --- | --- |
-| `UI/main/box.png` | 360 × 360 | 180 × 180 (상자 150 + 그림자 여유 사방 10) | 아이콘 버튼 상자 (테두리·안쪽 그림자·그림자 포함) |
-| `UI/main/photo_box.png` | 360 × 360 | 180 × 180 | 오른쪽 위 사진 설명 버튼의 반투명 상자 |
-| `UI/main/{notice,guidebook,mail,shop,friends,photo}.png` | 300 × 300 | 150 × 150 (상자와 같은 자리) | 아이콘. 상자 기준 위치까지 들어 있어 상자에 그대로 겹친다 |
-
-- 상자 그림은 상자 왼쪽 위에서 위·왼쪽으로 10px 더 넓게 잘랐다 (그림자가 오른쪽 아래로 10px 나간다). 코드의 `MainIconShadow = 10`.
-- 아이콘을 바꿀 때는 300 × 300 투명 PNG에 150 × 150 상자를 2배로 본 자리에 맞춰 그리면 된다.
-- `Resources/UI/` 아래 그림은 압축 없이, 밉맵을 켜서 자동으로 가져온다 (`Editor/PixelArtImporter.cs`).
+| `UI/desktop/{notice,guidebook,mail,shop,friends}.png` | 16 × 16 | 72 × 72 | 바탕화면 아이콘 (README.txt=공지, 도감, 메일함, store.exe=상점, 친구) |
+| `UI/desktop/delta.png` | 10 × 10 | 60 × 60 | 델타 알림 얼굴 |
+| `UI/desktop/start.png` | 5 × 5 | 30 × 30 | 작업 표시줄 EXECUTOR (시작 화면으로) |
+| `UI/desktop/settings.png`, `power.png` | 10 × 10 | 30 × 30 | 작업 표시줄 설정, 종료 |
+| `UI/desktop/folder.png`, `folder_locked.png` | 8 × 8 | 24 × 24 | 스테이지 선택 Operation 트리의 레이어 폴더 (열림 / 잠김) |
+| `UI/desktop/check.png`, `lock.png` | 7 × 6, 5 × 5 | 12~18 | 스테이지 노드 오른쪽 위 표시 (클리어 / 잠김) |
 
 ---
 

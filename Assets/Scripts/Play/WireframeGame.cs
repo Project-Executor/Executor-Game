@@ -162,7 +162,8 @@ namespace Executor.Play
                 ShowStageSelect();
             };
             _menu.OnQuit = () => _menu.ShowQuit(ShowTitle, QuitGame);
-            _menu.OnPhotoInfo = () => _menu.ShowMessage("이 사진에 대해", MainPhotoDescription);
+            _menu.OnMainTitle = ShowTitle;
+            _menu.OnContinue = ContinueGame;
 
             _menu.OnStageBack = ShowMain;
             _menu.OnStageSelected = no =>
@@ -170,8 +171,6 @@ namespace Executor.Play
                 StageInfo s = _chapter?.Stages.FirstOrDefault(x => x.No == no);
                 if (s != null && StageProgress.IsStageUnlocked(_chapter, s)) StartStage(s, true);
             };
-            _menu.OnProgress = ShowProgress;
-            _menu.OnScenario = ShowNavigator;
             _menu.OnChapterSelected = id =>
             {
                 ChapterInfo c = _chapters.FirstOrDefault(x => x.Id == id);
@@ -479,9 +478,6 @@ namespace Executor.Play
             }
         }
 
-        /// <summary>메인 화면 오른쪽 위 "이 사진에 대해 자세히" 내용 (배경 사진 설명)</summary>
-        private const string MainPhotoDescription = "메인 화면 사진에 대한 설명이 들어갈 자리입니다.";
-
         private static void QuitGame()
         {
 #if UNITY_EDITOR
@@ -491,10 +487,65 @@ namespace Executor.Play
 #endif
         }
 
+        /// <summary>
+        /// 메인 화면 내용: 가장 멀리 간 Operation이 속한 구역(레이어)의 진행(클리어 수, 별), 마지막으로 클리어한 스테이지
+        /// </summary>
         private void ShowMainProfile()
         {
-            string coin = PlayerSession.IsOnline ? $"Coin {PlayerSession.Profile.Coin}" : "오프라인 (서버 기록 없음)";
-            _menu.ShowMain(PlayerSession.DisplayName, coin);
+            var info = new MenuUI.MainInfo
+            {
+                Nickname = PlayerSession.DisplayName,
+                Coin = CoinText(),
+            };
+            ChapterInfo frontier = FrontierChapter();
+            if (frontier != null)
+            {
+                info.Zone = string.IsNullOrEmpty(frontier.LayerName) ? frontier.LayerLabel : frontier.LayerName;
+                bool online = PlayerSession.IsOnline;
+                if (online) info.Stars = 0;
+                foreach (ChapterInfo c in _chapters.Where(c => c.LayerId == frontier.LayerId))
+                foreach (StageInfo s in c.Stages)
+                {
+                    info.Total++;
+                    if (StageProgress.IsCleared(c.Id, s.No)) info.Cleared++;
+                    var stars = online ? StageProgress.RemoteOf(c.Id, s.No)?.Stars : null;
+                    if (stars != null)
+                    {
+                        info.Stars += stars.Count;
+                        info.MaxStars += stars.Max;
+                    }
+                }
+            }
+            // 마지막 기록: 진행 순서로 가장 뒤에 있는 클리어한 스테이지
+            foreach (ChapterInfo c in _chapters ?? new List<ChapterInfo>())
+            foreach (StageInfo s in c.Stages)
+            {
+                if (!StageProgress.IsCleared(c.Id, s.No)) continue;
+                info.LastStage = $"{s.No}. {s.Title}";
+                var stars = PlayerSession.IsOnline ? StageProgress.RemoteOf(c.Id, s.No)?.Stars : null;
+                info.LastStars = stars?.Count ?? -1;
+                info.LastMaxStars = stars?.Max ?? 0;
+            }
+            _menu.ShowMain(info);
+        }
+
+        /// <summary>▶ 이어하기: 진행 순서로 처음 나오는, 열렸지만 아직 클리어하지 않은 스테이지. 모두 클리어했으면 스테이지 선택</summary>
+        private void ContinueGame()
+        {
+            if (_chapters == null) return;
+            foreach (ChapterInfo c in _chapters)
+            {
+                if (!c.IsAvailable || !StageProgress.IsChapterUnlocked(_chapters, c)) continue;
+                foreach (StageInfo s in c.Stages)
+                {
+                    if (!StageProgress.IsStageUnlocked(c, s) || StageProgress.IsCleared(c.Id, s.No)) continue;
+                    _chapter = c;
+                    StartStage(s, true);
+                    return;
+                }
+            }
+            _chapter = FrontierChapter() ?? _chapter;
+            ShowStageSelect();
         }
 
         /// <summary>프로필: 정보·기록, 닉네임·자기소개 수정, 스킨·테마 장착</summary>
@@ -585,36 +636,87 @@ namespace Executor.Play
             _mode = Mode.StageSelect;
             Block();
             HideGame();
-            if (_chapter == null) { _menu.ShowStageSelect("", "Operation 없음", new List<MenuUI.StageNode>()); return; }
-            string subtitle = string.IsNullOrEmpty(_chapter.Subtitle) ? "" : $" · {_chapter.Subtitle}";
-            _menu.ShowStageSelect(_chapter.Id, $"{_chapter.LayerLabel} › {_chapter.Title}{subtitle}", _chapter.Stages.Select(s => new MenuUI.StageNode
+            _menu.SetPlayer(PlayerSession.DisplayName, CoinText());
+            var screen = new MenuUI.StageScreen { Tree = ChapterTree() };
+            if (_chapter == null)
             {
-                No = s.No,
-                Title = s.Title.Replace("시뮬레이션 ", ""),
-                Unlocked = StageProgress.IsStageUnlocked(_chapter, s),
-                Cleared = StageProgress.IsCleared(_chapter.Id, s.No),
-                Detail = StageProgress.IsCleared(_chapter.Id, s.No) ? StageDetail(_chapter, s) : null,
-            }).ToList());
+                screen.ChapterId = "";
+                screen.Title = "Operation 없음";
+                screen.Path = new List<string> { "C:", "Executor" };
+                _menu.ShowStageSelect(screen);
+                return;
+            }
+            screen.ChapterId = _chapter.Id;
+            screen.Title = _chapter.Title;
+            screen.Subtitle = !string.IsNullOrEmpty(_chapter.Subtitle) ? _chapter.Subtitle : _chapter.LayerDescription;
+            screen.Path = new List<string>
+            {
+                "C:", "Executor", Folder($"Layer{_chapter.LayerOrder}_{_chapter.LayerName}"), Folder(_chapter.Title),
+            };
+            screen.HasStory = _chapter.Story.Count > 0;
+            bool nextMarked = false;
+            foreach (StageInfo s in _chapter.Stages)
+            {
+                bool unlocked = StageProgress.IsStageUnlocked(_chapter, s);
+                bool cleared = StageProgress.IsCleared(_chapter.Id, s.No);
+                bool next = !nextMarked && unlocked && !cleared;
+                nextMarked |= next;
+                int best = StageProgress.BestMoves(_chapter.Id, s.No);
+                var stars = PlayerSession.IsOnline ? StageProgress.RemoteOf(_chapter.Id, s.No)?.Stars : null;
+                StageInfo stage = s;
+                screen.Nodes.Add(new MenuUI.StageNode
+                {
+                    No = s.No,
+                    Title = s.Title.Replace("시뮬레이션 ", ""),
+                    Unlocked = unlocked,
+                    Cleared = cleared,
+                    Next = next,
+                    Detail = !unlocked ? "잠김" : cleared && best > 0 ? $"최고 {best}턴" : $"기준 {s.Par}턴",
+                    Code = $"{_chapter.LayerOrder}-{s.No}",
+                    Description = s.Map?.Guides?.FirstOrDefault(g => !string.IsNullOrEmpty(g.Text))?.Text,
+                    Par = s.Par,
+                    Best = cleared && best > 0 ? best : (int?)null,
+                    Stars = stars == null ? null : $"{stars.Count} / {stars.Max}",
+                    StarLines = StarLines(stage),
+                    Preview = () => stage.Map == null ? null : Minimap.Render(new Board(stage.Map, stage.Par), null, true),
+                });
+            }
+            _menu.ShowStageSelect(screen);
         }
 
-        /// <summary>스테이지 선택의 기록 줄: "최고 22턴 · 별 2/3" (서버 기록이면 별까지)</summary>
-        private static string StageDetail(ChapterInfo chapter, StageInfo stage)
+        /// <summary>주소칸의 폴더 이름: 띄어쓰기를 _로</summary>
+        private static string Folder(string name) => (name ?? "").Trim().Replace(' ', '_');
+
+        private static string CoinText() => PlayerSession.IsOnline && PlayerSession.Profile != null ? PlayerSession.Profile.Coin.ToString() : "오프라인";
+
+        /// <summary>스테이지 정보의 별 조건 줄. 맵이 아직 없으면(서버 맵은 시작할 때 받는다) ★1만</summary>
+        private static List<string> StarLines(StageInfo stage)
         {
-            string text = $"최고 {StageProgress.BestMoves(chapter.Id, stage.No)}턴";
-            var stars = StageProgress.RemoteOf(chapter.Id, stage.No)?.Stars;
-            return stars == null ? text : $"{text} · 별 {stars.Count}/{stars.Max}";
+            var lines = new List<string>();
+            if (stage.Map == null || stage.Tutorial)
+            {
+                lines.Add("<color=#ffd84a>★1</color> 출구에 도착");
+                if (stage.Tutorial) lines.Add("<color=#4b5675>★2 · ★3 은 본 스테이지부터</color>");
+                return lines;
+            }
+            var board = new Board(stage.Map, stage.Par);
+            for (int n = 1; n <= board.StarCount; n++) lines.Add($"<color=#ffd84a>★{n}</color> {StarTypes.Text(board, n)}");
+            return lines;
         }
 
-        /// <summary>시나리오 버튼: 오른쪽 챕터 내비게이터</summary>
-        private void ShowNavigator()
+        /// <summary>왼쪽 Operation 트리: 레이어 폴더 > Operation (클리어 수, 진행 상태)</summary>
+        private List<MenuUI.ChapterEntry> ChapterTree()
         {
             ChapterInfo frontier = FrontierChapter();
-            _menu.ShowNavigator(_chapters.Select(c =>
+            return (_chapters ?? new List<ChapterInfo>()).Select(c =>
             {
                 bool unlocked = StageProgress.IsChapterUnlocked(_chapters, c);
+                int cleared = StageProgress.ClearedCount(c);
                 string status = !c.IsAvailable ? "준비 중"
-                              : !unlocked ? "잠김 · 앞 Operation을 모두 클리어하면 열립니다"
-                              : $"클리어 {StageProgress.ClearedCount(c)} / {c.Stages.Count}";
+                              : !unlocked ? "잠김"
+                              : cleared >= c.Stages.Count ? $"클리어 완료 · {cleared}/{c.Stages.Count}"
+                              : cleared > 0 || c == frontier ? $"진행 중 · 클리어 {cleared}/{c.Stages.Count}"
+                              : $"클리어 {cleared}/{c.Stages.Count}";
                 return new MenuUI.ChapterEntry
                 {
                     Id = c.Id,
@@ -624,32 +726,19 @@ namespace Executor.Play
                     LayerLabel = c.LayerLabel,
                     LayerDescription = c.LayerDescription,
                     Status = status,
+                    Cleared = cleared,
+                    Total = c.Stages.Count,
                     Selectable = c.IsAvailable && unlocked,
                     HasStory = unlocked && c.Story.Count > 0,
                     Current = c == _chapter,
                     Frontier = c == frontier,
                 };
-            }).ToList());
+            }).ToList();
         }
 
         /// <summary>가장 멀리 진행한 Operation = 열린 Operation 중 (진행 순서로) 마지막. 없으면 null</summary>
         private ChapterInfo FrontierChapter() =>
             _chapters?.LastOrDefault(c => c.IsAvailable && StageProgress.IsChapterUnlocked(_chapters, c));
-
-        private void ShowProgress()
-        {
-            if (_chapter == null || !_chapter.IsAvailable) { _menu.ShowMessage("진행 상황", "준비 중인 Operation입니다."); return; }
-            int cleared = StageProgress.ClearedCount(_chapter);
-            var lines = new List<string> { $"{_chapter.Title} · 클리어 {cleared} / {_chapter.Stages.Count}", "" };
-            foreach (StageInfo s in _chapter.Stages)
-            {
-                string state = StageProgress.IsCleared(_chapter.Id, s.No)
-                    ? $"클리어 · 최소 {StageProgress.BestMoves(_chapter.Id, s.No)}턴 사용 (제한 {s.Par})"
-                    : StageProgress.IsStageUnlocked(_chapter, s) ? "도전 가능" : "잠김";
-                lines.Add($"{s.No}. {s.Title} — {state}");
-            }
-            _menu.ShowList("진행 상황", lines);
-        }
 
         private void HideGame()
         {
@@ -1021,12 +1110,8 @@ namespace Executor.Play
 
                 case Mode.StageSelect:
                     if (_menu.HasPopup) break;
-                    if (_menu.IsNavigatorOpen)
-                    {
-                        if (k.escapeKey.wasPressedThisFrame) _menu.CloseNavigator();
-                        break;
-                    }
                     if (k.escapeKey.wasPressedThisFrame) { ShowMain(); return; }
+                    if (enter) { _menu.StartSelectedStage(); return; }
                     // 확대: + / - (숫자 패드 포함), 0 맞춤
                     if (k.equalsKey.wasPressedThisFrame || k.numpadPlusKey.wasPressedThisFrame) _menu.ZoomStageMap(1.25f);
                     if (k.minusKey.wasPressedThisFrame || k.numpadMinusKey.wasPressedThisFrame) _menu.ZoomStageMap(0.8f);
@@ -1035,7 +1120,7 @@ namespace Executor.Play
                     {
                         if (k[Key.Digit1 + i].wasPressedThisFrame || k[Key.Numpad1 + i].wasPressedThisFrame)
                         {
-                            _menu.OnStageSelected(_chapter.Stages[i].No);
+                            _menu.SelectStage(_chapter.Stages[i].No);
                             return;
                         }
                     }

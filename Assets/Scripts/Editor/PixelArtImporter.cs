@@ -21,13 +21,15 @@ namespace Executor.EditorTools
             string path = assetPath.Replace('\\', '/');
             if (path.StartsWith("Assets/Resources/UI/"))
             {
-                // UI 그림 (피그마에서 2배로 내보낸 아이콘·버튼): 압축하면 테두리가 뭉개지므로 압축 없이, 반으로 줄여 그리니 밉맵
+                // UI 그림: 작은 도트 아이콘(16x16 등)은 Point로 크게 늘려 그리고, 큰 그림은 부드럽게. 둘 다 압축 없이
                 var ui = (TextureImporter)assetImporter;
+                ui.GetSourceTextureWidthAndHeight(out int uw, out int uh);
+                bool dot = Mathf.Max(uw, uh) <= SmallArtMax;
                 ui.textureType = TextureImporterType.Sprite;
                 ui.spriteImportMode = SpriteImportMode.Single;
-                ui.filterMode = FilterMode.Trilinear;
+                ui.filterMode = dot ? FilterMode.Point : FilterMode.Trilinear;
                 ui.textureCompression = TextureImporterCompression.Uncompressed;
-                ui.mipmapEnabled = true;
+                ui.mipmapEnabled = !dot;
                 ui.alphaIsTransparency = true;
                 ui.wrapMode = TextureWrapMode.Clamp;
                 return;

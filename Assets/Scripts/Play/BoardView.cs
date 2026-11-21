@@ -75,6 +75,7 @@ namespace Executor.Play
                 if (unlit != null) _material = new Material(unlit);
             }
 
+            ArtCatalog.MapTheme = board.Data.Theme; // 챕터별 맵 세트 (helloworld, undercity ...)
             _mapSet = ArtCatalog.HasMapSet;
             if (_mapSet) BuildMapSetTiles(board);
             else
@@ -319,7 +320,7 @@ namespace Executor.Play
             if (ArtCatalog.HasMapSet)
             {
                 Sprite tile = ArtCatalog.WallTile(WallLike(board, new GridPos(p.X, p.Y - 1)), WallLike(board, new GridPos(p.X + 1, p.Y)),
-                    WallLike(board, new GridPos(p.X, p.Y + 1)), WallLike(board, new GridPos(p.X - 1, p.Y)));
+                    WallLike(board, new GridPos(p.X, p.Y + 1)), WallLike(board, new GridPos(p.X - 1, p.Y)), p.X, p.Y);
                 if (tile != null) return tile;
             }
             Sprite top = ArtCatalog.WallTop;

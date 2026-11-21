@@ -6,7 +6,7 @@
   "rewardCoin": 0,
   "mapData": {
     "version": 1,
-    "theme": "hologram",
+    "theme": "helloworld",
     "width": 19,
     "height": 5,
     "tiles": [

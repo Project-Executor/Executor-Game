@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.EventSystems;
 using UnityEngine.UI;
 using static Executor.Play.Theme;
 
@@ -190,7 +191,17 @@ namespace Executor.Play
                 At(row, 380 * S, top, w, h);
                 Image hit = Fill(row, "Hit", new Color(0, 0, 0, 0), raycast: true);
                 Inset(hit, 0, 0, 0, 0);
-                Clickable(hit, () => PickChoice(index), new Color(1, 1, 1, 0), Hex(0x22d3ee, selected ? 0 : 0.10f));
+                Clickable(hit, () => PickChoice(index), new Color(1, 1, 1, 0), new Color(1, 1, 1, 0));
+                // 마우스를 올린 선택지가 고른 것(하늘색)이 된다. 같은 칸이면 다시 그리지 않는다 (새로 그린 칸에도 enter가 오므로)
+                var trigger = hit.gameObject.AddComponent<EventTrigger>();
+                var enter = new EventTrigger.Entry { eventID = EventTriggerType.PointerEnter };
+                enter.callback.AddListener(_ =>
+                {
+                    if (_choiceSelected == index) return;
+                    _choiceSelected = index;
+                    DrawChoices();
+                });
+                trigger.triggers.Add(enter);
                 Text num = Label(row, (i + 1).ToString(), 12 * S, selected ? Ink : Fg, TextAnchor.MiddleLeft, UiKit.Mono);
                 num.color = new Color(num.color.r, num.color.g, num.color.b, 0.7f);
                 At(num, 20 * S, 0, 20 * S, h);

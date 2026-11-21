@@ -365,16 +365,21 @@ namespace Executor.Play
                 _menu.ShowMessage("상점", "로그인해야 상점을 쓸 수 있습니다.");
                 return;
             }
-            _shopFilter = filter;
             try
             {
                 List<ShopItem> items = await ItemApi.GetShopItemsAsync(filter);
                 if (_mode != Mode.Main) return;
+                _shopFilter = filter; // 불러온 탭만 기억한다 (실패한 탭을 기억하면 상점 버튼이 계속 실패한다)
                 _menu.ShowShop(items, PlayerSession.Profile.Coin, filter, OpenShop, ConfirmPurchase);
             }
             catch (ApiException e)
             {
-                _menu.ShowMessage("상점", e.IsNetworkError ? "서버에 연결할 수 없어 상점을 불러오지 못했습니다." : e.Message);
+                if (filter != null && _shopFilter == filter) _shopFilter = null;
+                string message = e.IsNetworkError ? "서버에 연결할 수 없어 상점을 불러오지 못했습니다."
+                    : e.Code == "INVALID_INPUT" && filter != null
+                        ? $"서버가 아직 이 종류({filter})를 모릅니다.\n서버를 새 버전으로 배포하면 보입니다."
+                        : e.Message;
+                _menu.ShowMessage("상점", message);
             }
         }
 

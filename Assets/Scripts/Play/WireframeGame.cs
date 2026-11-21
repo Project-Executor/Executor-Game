@@ -59,6 +59,7 @@ namespace Executor.Play
 
         private void Start()
         {
+            GameSettings.ApplyScreen(onlyIfSaved: true);
             if (Camera.main == null)
             {
                 var cam = new GameObject("Main Camera", typeof(Camera)) { tag = "MainCamera" };
@@ -146,9 +147,7 @@ namespace Executor.Play
             _menu.OnTitleLogout = Logout;
             _menu.OnTitleOffline = () => { PlayerSession.StartOffline(); ReloadChapters(); ShowTitle(); };
             _menu.OnTitleQuit = () => _menu.ShowQuitConfirm(QuitGame);
-            _menu.OnSettings = () => _menu.ShowSettings(PlayerSession.DisplayName, PlayerSession.IsOnline, Logout,
-                () => ReportPanel.Open(_menu.PopupRoot, new ReportPanel.Target { PreferCategory = "버그 제보" }),
-                () => ReportPanel.OpenMine(_menu.PopupRoot));
+            _menu.OnSettings = () => _menu.ShowSettings(SettingsActions(_menu.PopupRoot, null));
 
             _menu.OnProfile = ShowProfile;
             _menu.OnMail = () => OpenMailbox(null);
@@ -778,8 +777,18 @@ namespace Executor.Play
         // ================= 게임 =================
         private void WireGame()
         {
-            _game.OnSettings = ShowPauseMenu;
+            _game.OnSettings = () => { if (_board != null) _game.ShowSettings(SettingsActions(_game.PopupRoot, ReportThisStage)); };
+            GameSettings.Changed += () => { if (_board != null) UpdateHud(); };
             _game.OnCheckNickname = CheckNickname;
+            _game.OnSubmitNickname = () => { if (AskingName) SubmitName(); };
+            _game.OnNarrationNext = () => { if (_mode == Mode.Story && !AskingName) NextStoryStep(); };
+            _game.OnNarrationSkip = SkipStory;
+            _game.OnDialogueNext = NextLine;
+            _game.OnDialogueSkip = () =>
+            {
+                if (_mode == Mode.Story) SkipStory();
+                else if (_mode == Mode.Dialogue) SkipDialogue();
+            };
             _game.OnChat = () => Social.Open(SocialPanel.TabMessages);
             _game.OnCollect = () =>
             {
@@ -809,14 +818,23 @@ namespace Executor.Play
         private void ShowPauseMenu()
         {
             if (_board == null || _game.HasPopup) return;
-            var buttons = new List<(string, System.Action)> { ("계속하기", null) };
-            if (_board.CheckpointCount > 0) buttons.Add(("체크포인트로 이동 (Q)", () => ShowWarpMenu()));
-            buttons.Add(("다시 하기 (R)", () => StartStage(_stage, false)));
-            buttons.Add(("스테이지 선택", ShowStageSelect));
-            buttons.Add(("메인으로", ShowMain));
-            if (PlayerSession.IsOnline) buttons.Add(("버그 제보", ReportThisStage));
-            _game.ShowMenu("일시 정지", buttons);
+            string code = _chapter == null ? $"{_stage.No}" : $"{_chapter.LayerOrder}-{_stage.No}";
+            _game.ShowPause($"{code} · {_stage.Title}", _board.RemainingTurns == null ? "남은 턴 ∞" : $"남은 턴 {_board.RemainingTurns}",
+                () => StartStage(_stage, false), ShowStageSelect,
+                () => _game.ShowSettings(SettingsActions(_game.PopupRoot, ReportThisStage)), ShowMain);
         }
+
+        /// <summary>설정 창의 계정 탭: 로그아웃, 버그 제보(플레이 중이면 이 스테이지 대상), 내 신고</summary>
+        private SettingsWindow.Actions SettingsActions(Transform popupRoot, System.Action stageReport) => new SettingsWindow.Actions
+        {
+            Account = PlayerSession.IsOnline
+                ? $"{PlayerSession.DisplayName} <color=#8b98b8>· {PlayerSession.Profile?.Email}</color>"
+                : PlayerSession.IsOffline ? "오프라인 테스트 중" : "로그인하지 않음",
+            LoggedIn = PlayerSession.IsOnline,
+            Logout = Logout,
+            BugReport = stageReport ?? (() => ReportPanel.Open(popupRoot, new ReportPanel.Target { PreferCategory = "버그 제보" })),
+            MyReports = () => ReportPanel.OpenMine(popupRoot),
+        };
 
         /// <summary>일시 정지 메뉴의 버그 제보: 서버 스테이지면 이 스테이지를 대상으로</summary>
         private void ReportThisStage()
@@ -1039,6 +1057,7 @@ namespace Executor.Play
             _storyIndex = -1;
             _afterStory = after;
             _mode = Mode.Story;
+            _game.BeginDialogue(ArtCatalog.Portrait("player", null, out _), null);
             Block();
             NextStoryStep();
         }
@@ -1066,8 +1085,21 @@ namespace Executor.Play
                 return;
             }
             _game.HideDialogue();
-            _game.ShowNarration(TextFormat.Apply(step.Text, PlayerSession.Nickname),
-                StoryTypes.IsNicknameInput(step.Type), PlayerSession.Nickname);
+            if (StoryTypes.IsNicknameInput(step.Type)) _game.ShowNameInput(PlayerSession.Nickname);
+            else _game.ShowNarration(TextFormat.Apply(step.Text, PlayerSession.Nickname), _storyIndex, _story.Count, step.Background);
+        }
+
+        /// <summary>나레이션 건너뛰기: 닉네임을 아직 정하지 않았으면 입력 단계까지, 아니면 이야기 끝까지</summary>
+        private void SkipStory()
+        {
+            if (_mode != Mode.Story || _story == null) return;
+            int target = _story.Count;
+            for (int i = _storyIndex + 1; i < _story.Count; i++)
+            {
+                if (StoryTypes.IsNicknameInput(_story[i].Type) && !PlayerSession.HasNickname) { target = i; break; }
+            }
+            _storyIndex = target - 1;
+            NextStoryStep();
         }
 
         private bool AskingName => _mode == Mode.Story && _storyIndex < _story.Count
@@ -1155,7 +1187,8 @@ namespace Executor.Play
             if (k == null || Time.frameCount == _blockInputFrame) return;
             bool enter = k.enterKey.wasPressedThisFrame || k.numpadEnterKey.wasPressedThisFrame;
             bool next = k.eKey.wasPressedThisFrame || k.spaceKey.wasPressedThisFrame || enter
-                        || (Mouse.current != null && Mouse.current.leftButton.wasPressedThisFrame);
+                        || (Mouse.current != null && Mouse.current.leftButton.wasPressedThisFrame
+                            && !_game.PointerOnDialogueControls(Mouse.current.position.ReadValue()));
 
             switch (_mode)
             {
@@ -1186,17 +1219,24 @@ namespace Executor.Play
                     break;
 
                 case Mode.Story:
-                    if (AskingName) { if (enter) SubmitName(); }
-                    else if (next)
+                    if (_game.HasPopup)
                     {
-                        if (_game.IsTyping) _game.CompleteLine();
-                        else NextStoryStep();
+                        if (k.escapeKey.wasPressedThisFrame) _game.ClosePopups();
+                        return;
                     }
+                    if (AskingName) { if (enter) SubmitName(); }
+                    else if (next) NextLine();
                     break;
 
                 case Mode.Playing:
                     if (_game.HasPopup)
                     {
+                        if (_game.IsWarpOpen)
+                        {
+                            if (k.leftArrowKey.wasPressedThisFrame || k.aKey.wasPressedThisFrame) _game.MoveWarpSelection(-1);
+                            else if (k.rightArrowKey.wasPressedThisFrame || k.dKey.wasPressedThisFrame) _game.MoveWarpSelection(1);
+                            else if (k.enterKey.wasPressedThisFrame || k.numpadEnterKey.wasPressedThisFrame) { _game.ConfirmWarp(); return; }
+                        }
                         if (k.escapeKey.wasPressedThisFrame) _game.ClosePopups();
                         return;
                     }
@@ -1219,6 +1259,11 @@ namespace Executor.Play
                     break;
 
                 case Mode.Dialogue:
+                    if (_game.HasPopup)
+                    {
+                        if (k.escapeKey.wasPressedThisFrame) _game.ClosePopups();
+                        return;
+                    }
                     if (_dialogue.HasChoices && !_game.IsTyping)
                     {
                         if (!_choicesShown)
@@ -1226,6 +1271,9 @@ namespace Executor.Play
                             _choicesShown = true;
                             _game.ShowChoices(_dialogue.Choices.Select(c => c.Text).ToList(), Choose);
                         }
+                        if (k.wKey.wasPressedThisFrame || k.upArrowKey.wasPressedThisFrame) { _game.MoveChoice(-1); return; }
+                        if (k.sKey.wasPressedThisFrame || k.downArrowKey.wasPressedThisFrame) { _game.MoveChoice(1); return; }
+                        if (enter || k.eKey.wasPressedThisFrame || k.spaceKey.wasPressedThisFrame) { _game.ConfirmChoice(); return; }
                         for (int i = 0; i < _dialogue.Choices.Count && i < 9; i++)
                         {
                             if (k[Key.Digit1 + i].wasPressedThisFrame || k[Key.Numpad1 + i].wasPressedThisFrame)
@@ -1235,11 +1283,7 @@ namespace Executor.Play
                             }
                         }
                     }
-                    else if (next)
-                    {
-                        if (_game.IsTyping) _game.CompleteLine();
-                        else { _dialogue.Advance(); ShowDialogueNode(); }
-                    }
+                    else if (next) NextLine();
                     break;
 
                 case Mode.Hacking:
@@ -1316,18 +1360,39 @@ namespace Executor.Play
                 _game.Toast("이 스테이지에는 체크포인트가 없습니다.");
                 return;
             }
-            var buttons = new List<(string, System.Action)>();
-            foreach (int order in _board.WarpPoints)
+            var warps = _board.WarpPoints;
+            var cards = new List<GameUI.WarpCard>();
+            for (int order = Board.StartOrder; order <= _board.CheckpointCount; order++)
             {
-                string name = order == Board.StartOrder ? "시작 지점" : $"체크포인트 {order}";
-                bool? stable = order == Board.StartOrder ? null : _board.StabilityOf(order);
-                string tag = stable == null ? "" : stable.Value ? " · 안정" : " · 불안정";
-                string here = order == _board.CurrentOrder ? " (지금 구간)" : "";
-                int target = order;
-                buttons.Add(($"{name}{tag}{here}", () => Warp(target)));
+                string name = order == Board.StartOrder ? "시작" : $"체크포인트 {order}";
+                bool reachable = warps.Contains(order);
+                bool? stable = order == Board.StartOrder ? true : _board.StabilityOf(order);
+                int? best = _board.SegmentBestOf(order), limit = _board.SegmentLimitOf(order);
+                string detail = order == Board.StartOrder
+                    ? "<b>시작</b>\n스테이지 처음 상태로 돌아가 구간 0부터 다시 해요."
+                    : stable == null ? $"<b>{name} · 미도착</b>\n아직 도착하지 않아 워프할 수 없어요."
+                    : stable.Value ? $"<b><color=#5cf08a>{name} · 안정</color></b>\n기준 턴 안에 도착했어요. 여기서부터 구간 {order}를 다시 할 수 있어요."
+                    : $"<b><color=#ff4d5e>{name} · 불안정</color></b>\n기준보다 늦게 도착했어요. 앞 지점으로 워프해 다시 오면 <color=#5cf08a>안정</color>으로 바뀔 수 있어요.";
+                cards.Add(new GameUI.WarpCard
+                {
+                    Order = order,
+                    Name = name,
+                    Segment = $"구간 {order}",
+                    Stable = reachable || order != Board.StartOrder ? stable : null,
+                    Record = $"{(best?.ToString() ?? "—")} / {(limit?.ToString() ?? "∞")}",
+                    Reachable = reachable,
+                    Detail = detail,
+                });
             }
-            buttons.Add(("닫기", null));
-            _game.ShowMenu($"워프 · 불안정 {_board.UnstableCount}개 · 워프 {_board.Rewinds}번", buttons);
+            cards.Add(new GameUI.WarpCard
+            {
+                Order = Board.ExitOrder,
+                Name = "출구",
+                Stable = _board.StabilityOf(Board.ExitOrder),
+                Reachable = false,
+                Detail = "<b>출구</b>\n출구에 도착하면 클리어예요.",
+            });
+            _game.ShowWarp(cards, _board.CurrentOrder, Warp);
         }
 
         private void Warp(int order)
@@ -1349,6 +1414,16 @@ namespace Executor.Play
         }
 
         // ---------------- 타자 해킹 ----------------
+        /// <summary>해킹 결과 창이 떠 있는지 (성공·실패). 떠 있는 동안은 결과 창 키만 받는다</summary>
+        private bool _hackResultShown;
+        private bool _hackResultSuccess;
+        private BoardObject _hackResultTarget;
+
+        /// <summary>이 컴퓨터를 빨리 복구해야 하는 별 (없으면 0)</summary>
+        private int HackStarOf(BoardObject computer) =>
+            _stage.Tutorial ? 0 : Enumerable.Range(2, 2).FirstOrDefault(n => n <= StarCountShown()
+                && StarTypes.Normalize(_board.StarConditionOf(n).Type) == StarTypes.Hack && _board.ComputerOf(_board.StarConditionOf(n)) == computer);
+
         private void StartHack(BoardObject computer)
         {
             if (computer.IsRestored) { _game.Toast("이미 복구된 컴퓨터입니다."); return; }
@@ -1356,88 +1431,115 @@ namespace Executor.Play
             _hackTarget = computer;
             _hacking = new TypingChallenge(WordBank.Get(computer.WordListId), computer.WordCount, computer.TimeLimit);
             _hackStartFrame = Time.frameCount;
+            _hackResultShown = false;
             _mode = Mode.Hacking;
             Block();
-            _game.ShowHack(string.IsNullOrEmpty(computer.Name) ? "감염된 컴퓨터" : computer.Name);
-            _game.UpdateHack(HackWordsText(), _hacking.TimeLeft, _hacking.TimeLimit, "", true);
+            string name = string.IsNullOrEmpty(computer.Name) ? "감염된 PC" : computer.Name;
+            int star = HackStarOf(computer);
+            string goal = star > 0 ? $"★{star} 목표 {_board.StarConditionOf(star).Seconds ?? 0:0.#}초 안에 복구" : null;
+            _game.ShowHack(name, $"{name} · 단어 {_hacking.Words.Count}개를 모두 입력하면 복구", goal);
+            _game.UpdateHack(_hacking.Words, _hacking.Index, _hacking.TimeLeft, _hacking.TimeLimit);
             UpdateHud();
         }
 
         private void UpdateHacking(Keyboard k)
         {
+            if (_hackResultShown)
+            {
+                // 결과 창: 성공은 Enter·E·Esc로 계속, 실패는 E 다시 도전 / Esc 닫기
+                bool enter = k.enterKey.wasPressedThisFrame || k.numpadEnterKey.wasPressedThisFrame;
+                if (_hackResultSuccess && (enter || k.eKey.wasPressedThisFrame || k.escapeKey.wasPressedThisFrame)) CloseHackResult();
+                else if (!_hackResultSuccess && k.escapeKey.wasPressedThisFrame) CloseHackResult();
+                else if (!_hackResultSuccess && k.eKey.wasPressedThisFrame) RetryHack();
+                return;
+            }
             // 해킹을 연 E 키가 입력칸에 들어가지 않게 처음 두 프레임은 비운다
             if (Time.frameCount <= _hackStartFrame + 1 && _game.HackInput.Length > 0) _game.ClearHackInput();
             _hacking.Tick(Time.deltaTime);
-            string status = null;
-            bool good = true;
-            if (k.escapeKey.wasPressedThisFrame) { EndHack(false, "해킹을 포기했습니다. 다시 E로 도전할 수 있습니다 (1턴)."); return; }
-            if (_hacking.IsTimedOut) { EndHack(false, "시간 초과! 해킹에 실패했습니다. 다시 E로 도전할 수 있습니다 (1턴)."); return; }
+            if (k.escapeKey.wasPressedThisFrame) { EndHack(false, true); return; }
+            if (_hacking.IsTimedOut) { EndHack(false, false); return; }
             if (k.enterKey.wasPressedThisFrame || k.numpadEnterKey.wasPressedThisFrame)
             {
                 string input = _game.HackInput;
                 if (_hacking.Submit(input))
                 {
-                    if (_hacking.IsSucceeded) { EndHack(true, null); return; }
-                    status = "정상 처리";
+                    if (_hacking.IsSucceeded) { EndHack(true, false); return; }
                 }
-                else if (input.Trim().Length > 0)
-                {
-                    status = $"'{input.Trim()}' 은(는) 틀렸습니다";
-                    good = false;
-                }
+                else if (input.Trim().Length > 0) _game.FlashHackWrong();
                 _game.ClearHackInput();
             }
-            _game.UpdateHack(HackWordsText(), _hacking.TimeLeft, _hacking.TimeLimit, status, good);
+            _game.UpdateHack(_hacking.Words, _hacking.Index, _hacking.TimeLeft, _hacking.TimeLimit);
             // Enter를 누르면 입력칸이 스스로 포커스를 놓으므로(같은 프레임에 다시 잡으면 무시됨),
             // 해킹 중에는 포커스가 빠질 때마다 다음 프레임에 다시 잡는다. 마우스로 다른 곳을 눌러도 계속 칠 수 있다
             if (!_game.HackInputFocused) _game.FocusHackInput();
         }
 
-        /// <summary>단어 줄: 친 단어는 초록, 지금 단어는 노랑 굵게, 남은 단어는 흐리게</summary>
-        private string HackWordsText()
+        /// <param name="gaveUp">Esc로 포기했으면 결과 창 없이 닫는다</param>
+        private void EndHack(bool success, bool gaveUp)
         {
-            var parts = new List<string>();
-            for (int i = 0; i < _hacking.Words.Count; i++)
+            if (gaveUp)
             {
-                string w = _hacking.Words[i];
-                parts.Add(i < _hacking.Index ? $"<color=#3ccf7a>{w}</color>"
-                        : i == _hacking.Index ? $"<color=#ffd23f><b>[{w}]</b></color>"
-                        : $"<color=#8c9bad>{w}</color>");
+                _game.HideHack();
+                _mode = Mode.Playing;
+                Block();
+                _game.Toast("해킹을 포기했습니다. 다시 E로 도전할 수 있습니다 (1턴).");
+                _hacking = null;
+                _hackTarget = null;
+                UpdateHud();
+                return;
             }
-            return string.Join("   ", parts) + $"\n<size=22><color=#8c9bad>{_hacking.Index} / {_hacking.Words.Count}</color></size>";
-        }
-
-        private void EndHack(bool success, string failMessage)
-        {
-            _game.HideHack();
-            _mode = Mode.Playing;
-            Block();
+            float elapsed = _hacking.TimeLimit - _hacking.TimeLeft;
+            int hackStar = HackStarOf(_hackTarget);
+            string starLine = null;
+            bool starMet = false;
+            var effects = new List<string>();
             if (success)
             {
-                float elapsed = _hacking.TimeLimit - _hacking.TimeLeft;
-                int hackStar = _stage.Tutorial ? 0 : Enumerable.Range(2, 2).FirstOrDefault(n => n <= StarCountShown()
-                    && StarTypes.Normalize(_board.StarConditionOf(n).Type) == StarTypes.Hack && _board.ComputerOf(_board.StarConditionOf(n)) == _hackTarget);
                 bool wasAchieved = hackStar > 0 && _board.IsStarMet(hackStar);
                 _board.RecordHackTime(_hackTarget, elapsed);
                 var applied = _board.CompleteHack(_hackTarget);
                 _view.Sync();
-                int removed = applied.Count(e => e.Type == "remove");
-                int keys = applied.Count(e => e.Type == "giveKey");
-                string effect = removed > 0 && keys > 0 ? " 장치가 작동하고 열쇠를 받았습니다."
-                              : removed > 0 ? " 장치가 작동했습니다." : keys > 0 ? " 열쇠를 받았습니다." : "";
-                _game.Toast($"컴퓨터를 복구했습니다. ({elapsed:0.0}초)" + effect);
+                foreach (var e in applied)
+                {
+                    if (e.Type == "remove") effects.Add($"<color=#5cf08a>[EXEC]</color> 장치 작동 <color=#4b5675>· remove {e.Target}</color>");
+                    else if (e.Type == "giveKey") effects.Add($"<color=#5cf08a>[EXEC]</color> 열쇠 획득 <color=#4b5675>· giveKey {e.KeyId}</color>");
+                }
                 if (hackStar > 0)
                 {
                     float goal = _board.StarConditionOf(hackStar).Seconds ?? 0;
-                    _game.Toast(_board.IsStarMet(hackStar)
-                        ? (wasAchieved ? $"★{hackStar} 조건은 이미 달성했습니다." : $"★{hackStar} 조건 달성! {goal:0.#}초 안에 복구했습니다.")
-                        : $"★{hackStar}은 {goal:0.#}초 안에 복구해야 합니다. 워프로 돌아가 다시 도전할 수 있습니다.");
+                    starMet = _board.IsStarMet(hackStar);
+                    starLine = starMet
+                        ? $"<color=#ffd84a>★{hackStar}</color> {goal:0.#}초 안에 복구 {(wasAchieved ? "(이미 달성)" : "달성")}"
+                        : $"<color=#4b5675>★{hackStar}</color> {goal:0.#}초 안에 복구해야 해요. 워프로 돌아가 다시 도전할 수 있어요.";
                 }
             }
-            else _game.Toast(failMessage);
+            _hackResultShown = true;
+            _hackResultSuccess = success;
+            _hackResultTarget = _hackTarget;
+            _game.ShowHackResult(success, elapsed, _hacking.TimeLimit, _hacking.Words, _hacking.Index, starLine, starMet, effects,
+                success ? (System.Action)CloseHackResult : RetryHack, CloseHackResult);
             _hacking = null;
             _hackTarget = null;
             UpdateHud();
+        }
+
+        private void CloseHackResult()
+        {
+            if (!_hackResultShown) return;
+            _hackResultShown = false;
+            _hackResultTarget = null;
+            _game.HideHack();
+            _mode = Mode.Playing;
+            Block();
+            UpdateHud();
+        }
+
+        /// <summary>실패 창의 다시 도전: 단어를 새로 뽑고 1턴을 쓴다</summary>
+        private void RetryHack()
+        {
+            BoardObject target = _hackResultTarget;
+            CloseHackResult();
+            if (target != null) StartHack(target);
         }
 
         private void TryTalk(BoardObject npc)
@@ -1445,7 +1547,47 @@ namespace Executor.Play
             if (npc == null) return;
             _dialogue = new DialogueSession(_board, npc, PlayerSession.Nickname);
             _mode = Mode.Dialogue;
+            _game.BeginDialogue(ArtCatalog.Portrait("player", null, out _), ArtCatalog.Portrait(null, npc.Name, out _));
             ShowDialogueNode();
+        }
+
+        /// <summary>다음 대사 (E·Space·Enter·클릭, 자동 진행). 타자 중이면 먼저 한 줄을 다 보여 준다</summary>
+        private void NextLine()
+        {
+            if (_game.HasPopup) return;
+            if (_mode == Mode.Story)
+            {
+                if (AskingName) return;
+                if (_game.IsTyping) _game.CompleteLine();
+                else NextStoryStep();
+            }
+            else if (_mode == Mode.Dialogue && _dialogue != null && !_dialogue.IsFinished)
+            {
+                if (_game.IsTyping) _game.CompleteLine();
+                else if (!_dialogue.HasChoices) { _dialogue.Advance(); ShowDialogueNode(); }
+            }
+        }
+
+        /// <summary>건너뛰기: 다음 선택지나 대화 끝까지 넘긴다 (건너뛴 대사의 열쇠 등 효과는 그대로 받고, 로그에도 남긴다)</summary>
+        private void SkipDialogue()
+        {
+            if (_mode != Mode.Dialogue || _dialogue == null || _dialogue.IsFinished) return;
+            if (_dialogue.HasChoices) { _game.CompleteLine(); return; }
+            for (int guard = 0; guard < 500 && !_dialogue.IsFinished && !_dialogue.HasChoices; guard++)
+            {
+                _dialogue.Advance();
+                if (!_dialogue.IsFinished && !_dialogue.HasChoices) _game.LogLine(_dialogue.Speaker, _dialogue.Text, !IsProtagonistLine());
+            }
+            ShowDialogueNode();
+            _game.CompleteLine();
+        }
+
+        private bool IsProtagonistLine()
+        {
+            string raw = _dialogue.Current?.Speaker ?? _dialogue.Npc.Name;
+            return raw != null && (raw.Contains("{nickname}") || raw == "집행자"
+                                   || (!string.IsNullOrEmpty(PlayerSession.Nickname) && raw == PlayerSession.Nickname))
+                   || (_dialogue.Current?.Portrait ?? "").StartsWith("player");
         }
 
         private void Choose(int index)

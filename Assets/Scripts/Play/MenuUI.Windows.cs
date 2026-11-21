@@ -27,6 +27,14 @@ namespace Executor.Play
             return win;
         }
 
+        /// <summary>설정 창 (settings.exe, 시안 Settings)</summary>
+        public void ShowSettings(SettingsWindow.Actions actions)
+        {
+            ClosePopups();
+            SettingsWindow.Open(_popupRoot, actions);
+            SetWindowTab("settings.exe");
+        }
+
         /// <summary>팝업을 모두 닫고 작업 표시줄의 창 탭도 뺀다</summary>
         public void ClosePopups()
         {

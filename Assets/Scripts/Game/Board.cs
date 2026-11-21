@@ -193,6 +193,12 @@ namespace Executor.Game
         /// <summary>불안정 체크포인트(출구 포함) 수. 별 2 판정에 쓴다</summary>
         public int UnstableCount => _stable.Values.Count(stable => !stable);
 
+        /// <summary>그 구간(시작 체크포인트 번호)을 통과할 때 쓴 턴의 최솟값. 아직 통과하지 않았으면 null</summary>
+        public int? SegmentBestOf(int order) => _segmentBest.TryGetValue(order, out int best) ? best : (int?)null;
+
+        /// <summary>그 구간의 기준 턴 (시작 구간은 TurnLimit, 체크포인트 구간은 그 체크포인트의 turns). 없으면 null</summary>
+        public int? SegmentLimitOf(int order) => order == StartOrder ? TurnLimit : (CheckpointOf(order)?.SegmentTurns ?? TurnLimit);
+
         /// <summary>그 체크포인트(출구 = ExitOrder)에 도착한 적 있으면 안정 여부, 없으면 null</summary>
         public bool? StabilityOf(int order) => _stable.TryGetValue(order, out bool s) ? s : (bool?)null;
 

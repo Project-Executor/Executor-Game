@@ -52,6 +52,69 @@ namespace Executor.Play
 
         public string QuestDetail => _questDetail;
 
+        /// <summary>
+        /// 일시정지 (시안 Pause, paused): 스테이지 이름·남은 턴, ▶ 계속하기 [Esc] / 다시 하기 [R] / 스테이지 선택 / 설정 / 메인으로
+        /// </summary>
+        public void ShowPause(string stage, string turns, Action onRetry, Action onStages, Action onSettings, Action onMain)
+        {
+            ClosePopups();
+            GameObject blocker = null;
+            const float width = 320, height = 34 + 18 + 26 + 48 + 8 + 4 * (44 + 8) - 8 + 8 + 16 + 18 + 4;
+            WindowFrame(_popupRoot, "paused", null, (1280 - width) / 2, 150, width, height, true, ClosePopups, out RectTransform body, out blocker);
+            Transform bar = blocker.transform.Find("Window/TitleBar");
+            for (int i = 0; i < 2 && bar != null; i++) bar.Find("WindowButton" + i)?.gameObject.SetActive(false);
+            float w = width * S - WinBorder * 2 - 36 * S, y = 18 * S;
+            Text name = Label(body, stage, 12 * S, Muted, TextAnchor.MiddleLeft);
+            At(name, 18 * S + 4 * S, y, w - 8 * S, 16 * S);
+            Text left = Label(body, turns, 12 * S, Muted, TextAnchor.MiddleRight, UiKit.Mono);
+            At(left, 18 * S + 4 * S, y, w - 8 * S, 16 * S);
+            y += 16 * S + 10 * S;
+            PrimaryButton(body, "▶ 계속하기", 24 * S, ClosePopups, out RectTransform resume);
+            At(resume, 18 * S, y, w, 48 * S);
+            Text resumeText = resume.GetComponentInChildren<Text>();
+            resumeText.alignment = TextAnchor.MiddleLeft;
+            resumeText.rectTransform.offsetMin = new Vector2(16 * S, 0);
+            Kbd(resume.Find("Face"), "Esc", out RectTransform escKey);
+            escKey.anchorMin = escKey.anchorMax = new Vector2(1, 0.5f);
+            escKey.pivot = new Vector2(1, 0.5f);
+            escKey.anchoredPosition = new Vector2(-16 * S, 0);
+            escKey.sizeDelta = new Vector2(34 * S, 18 * S);
+            y += 48 * S + 8 * S;
+            foreach (var (label, key, action) in new (string, string, Action)[]
+                     {
+                         ("다시 하기", "R", onRetry), ("스테이지 선택", null, onStages), ("설정", null, onSettings), ("메인으로", null, onMain),
+                     })
+            {
+                Action act = action;
+                RectTransform row = Node(body, "Row:" + label);
+                At(row, 18 * S, y, w, 44 * S);
+                HoverArea(row, "Hover", Hex(0xeaf2ff, 0.08f), () => { ClosePopups(); act?.Invoke(); }, out Image area);
+                Inset(area, 0, 0, 0, 0);
+                Image line = Fill(row, "Line", TrackLine);
+                At(line, 0, 44 * S - 1 * S, w, 1 * S);
+                Text t = Label(row, label, 12 * S, Fg, TextAnchor.MiddleLeft, bold: true);
+                Inset(t, 16 * S, 0, 0, 0);
+                if (key != null)
+                {
+                    Kbd(row, key, out RectTransform k);
+                    k.anchorMin = k.anchorMax = new Vector2(1, 0.5f);
+                    k.pivot = new Vector2(1, 0.5f);
+                    k.anchoredPosition = new Vector2(-16 * S, 0);
+                    k.sizeDelta = new Vector2(20 * S, 18 * S);
+                }
+                y += 44 * S + 8 * S;
+            }
+            Text note = Label(body, "일시정지 중에는 턴과 해킹 시간이 흐르지 않아요", 12 * S, Dim, TextAnchor.MiddleCenter);
+            At(note, 18 * S, y + 4 * S, w, 16 * S);
+        }
+
+        /// <summary>설정 창 (settings.exe). 게임 화면 위에 띄운다</summary>
+        public void ShowSettings(SettingsWindow.Actions actions)
+        {
+            ClosePopups();
+            SettingsWindow.Open(_popupRoot, actions);
+        }
+
         /// <param name="path">위 작은 줄: "Layer 1 · INTERFACE · Operation 1"</param>
         /// <param name="title">스테이지 이름: "1-2 · 드라이브를 밀어라"</param>
         public void ShowHud(string path, string title, string quest)
@@ -95,6 +158,7 @@ namespace Executor.Play
             _turnsFooter.text = limit == null
                 ? $"구간 {segment + 1} / {segments} · 제한 없음"
                 : $"구간 {segment + 1} / {segments} · 기준 {limit}";
+            _turnsBar.gameObject.SetActive(GameSettings.TurnGauge);
             int cells = Mathf.Clamp(limit ?? 0, 0, 40);
             if (cells != _turnsBarCells)
             {

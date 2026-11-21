@@ -199,57 +199,5 @@ namespace Executor.Play
             Stretch(t.rectTransform);
         }
 
-        /// <summary>설정 팝업. 소리 설정은 아직 값만 저장한다</summary>
-        /// <param name="bugReport">버그 제보 (null이면 버튼 없음)</param>
-        /// <param name="myReports">내 신고 목록 (null이면 버튼 없음)</param>
-        public void ShowSettings(string account, bool loggedIn, Action logout, Action bugReport = null, Action myReports = null)
-        {
-            Popup(_popupRoot, "설정", new Vector2(820, 560), out RectTransform body);
-            float y = 0;
-            foreach (var (label, key) in new[] { ("배경음", "executor.settings.bgm"), ("효과음", "executor.settings.sfx") })
-            {
-                var l = Label(body, label, 28, TextAnchor.MiddleLeft);
-                Place(l, new Vector2(0, 1), new Vector2(0, y), new Vector2(160, 50), new Vector2(0, 1));
-                var slider = MakeSlider(body, PlayerPrefs.GetFloat(key, 0.8f));
-                Place(slider, new Vector2(0, 1), new Vector2(180, y - 15), new Vector2(520, 20), new Vector2(0, 1));
-                slider.onValueChanged.AddListener(v => { PlayerPrefs.SetFloat(key, v); PlayerPrefs.Save(); });
-                y -= 80;
-            }
-            var acc = Label(body, $"계정: {account}\n서버: {Network.ApiConfig.BaseUrl}", 22, TextAnchor.UpperLeft, Muted);
-            Place(acc, new Vector2(0, 1), new Vector2(0, y - 10), new Vector2(740, 90), new Vector2(0, 1));
-            if (loggedIn)
-            {
-                var b = Button(body, "로그아웃", null, 26);
-                Place(b, new Vector2(0, 0), Vector2.zero, new Vector2(220, 64), new Vector2(0, 0));
-                b.onClick.AddListener(() => { ClosePopups(); logout?.Invoke(); });
-            }
-            if (loggedIn && myReports != null)
-            {
-                var mine = Button(body, "내 신고", () => { ClosePopups(); myReports(); }, 24);
-                Place(mine, new Vector2(1, 0), Vector2.zero, new Vector2(200, 64), new Vector2(1, 0));
-            }
-            if (loggedIn && bugReport != null)
-            {
-                var bug = Button(body, "버그 제보", () => { ClosePopups(); bugReport(); }, 24);
-                Place(bug, new Vector2(1, 0), new Vector2(-216, 0), new Vector2(200, 64), new Vector2(1, 0));
-            }
-        }
-
-        private static Slider MakeSlider(Transform parent, float value)
-        {
-            var root = Panel(parent, "Slider", new Color32(0x1c, 0x26, 0x34, 0xff));
-            var fill = Panel(root, "Fill", Line);
-            fill.anchorMin = Vector2.zero;
-            fill.anchorMax = new Vector2(0, 1);
-            fill.offsetMin = fill.offsetMax = Vector2.zero;
-            var handle = Panel(root, "Handle", TextColor);
-            handle.sizeDelta = new Vector2(24, 36);
-            var slider = root.gameObject.AddComponent<Slider>();
-            slider.fillRect = fill;
-            slider.handleRect = handle;
-            slider.targetGraphic = handle.GetComponent<Image>();
-            slider.value = value;
-            return slider;
-        }
     }
 }

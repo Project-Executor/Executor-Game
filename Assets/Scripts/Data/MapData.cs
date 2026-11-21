@@ -212,5 +212,7 @@ namespace Executor.Data
         public string Speaker { get; set; }
         /// <summary>line: 스탠딩 일러스트 "인물ID/표정" (선택). 대화 노드의 portrait와 같다</summary>
         public string Portrait { get; set; }
+        /// <summary>narration: 배경 "error"(오류 로그, 기본) 또는 "glitch"(일그러진 델타 창)</summary>
+        public string Background { get; set; }
     }
 }

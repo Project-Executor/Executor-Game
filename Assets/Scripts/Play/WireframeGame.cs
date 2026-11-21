@@ -60,6 +60,7 @@ namespace Executor.Play
         private void Start()
         {
             GameSettings.ApplyScreen(onlyIfSaved: true);
+            CharacterCatalog.Refresh(); // 대화 인물 (이름표 색). 실패하면 기본 인물
             if (Camera.main == null)
             {
                 var cam = new GameObject("Main Camera", typeof(Camera)) { tag = "MainCamera" };
@@ -875,6 +876,7 @@ namespace Executor.Play
             _game.HideAll();
             _view.gameObject.SetActive(true);
             _view.Build(_board);
+            CharacterCatalog.Refresh();
             WordBank.Prefetch(_board.Objects.Where(o => o.Type == MapObjectTypes.Computer && o.WordListId != null)
                 .Select(o => o.WordListId.Value).Distinct());
             string hudPath = _chapter == null ? "" : $"{_chapter.LayerLabel} · {_chapter.Title}";
@@ -1062,7 +1064,7 @@ namespace Executor.Play
             _storyIndex = -1;
             _afterStory = after;
             _mode = Mode.Story;
-            _game.BeginDialogue(ArtCatalog.Portrait("player", null, out _), null);
+            _game.BeginDialogue(ProtagonistPortrait(), null);
             Block();
             NextStoryStep();
         }
@@ -1552,7 +1554,7 @@ namespace Executor.Play
             if (npc == null) return;
             _dialogue = new DialogueSession(_board, npc, PlayerSession.Nickname);
             _mode = Mode.Dialogue;
-            _game.BeginDialogue(ArtCatalog.Portrait("player", null, out _), ArtCatalog.Portrait(null, npc.Name, out _));
+            _game.BeginDialogue(ProtagonistPortrait(), ArtCatalog.Portrait(null, npc.Name, out _));
             ShowDialogueNode();
         }
 
@@ -1581,18 +1583,12 @@ namespace Executor.Play
             for (int guard = 0; guard < 500 && !_dialogue.IsFinished && !_dialogue.HasChoices; guard++)
             {
                 _dialogue.Advance();
-                if (!_dialogue.IsFinished && !_dialogue.HasChoices) _game.LogLine(_dialogue.Speaker, _dialogue.Text, !IsProtagonistLine());
+                if (_dialogue.IsFinished || _dialogue.HasChoices) continue;
+                var who = Speaker(_dialogue.Current.Speaker ?? _dialogue.Npc.Name, _dialogue.Current.Portrait);
+                _game.LogLine(who.speaker, _dialogue.Text, who.tag);
             }
             ShowDialogueNode();
             _game.CompleteLine();
-        }
-
-        private bool IsProtagonistLine()
-        {
-            string raw = _dialogue.Current?.Speaker ?? _dialogue.Npc.Name;
-            return raw != null && (raw.Contains("{nickname}") || raw == "집행자"
-                                   || (!string.IsNullOrEmpty(PlayerSession.Nickname) && raw == PlayerSession.Nickname))
-                   || (_dialogue.Current?.Portrait ?? "").StartsWith("player");
         }
 
         private void Choose(int index)
@@ -1620,21 +1616,33 @@ namespace Executor.Play
         }
 
         /// <summary>
-        /// 대화창에 대사 한 줄. 주인공은 왼쪽, 다른 인물은 오른쪽에 일러스트를 둔다.
-        /// 주인공: portrait가 player이거나, 이름표가 {nickname}·"집행자"이거나, 내 닉네임과 같을 때
+        /// 대사 한 줄의 화자 정보 (관리자 웹 '인물'). 주인공: 이름표가 {nickname}이거나 내 닉네임과 같거나,
+        /// 이름·portrait로 찾은 인물이 주인공일 때. 주인공 대사에 portrait가 없으면 주인공 인물의 일러스트를 쓴다
         /// </summary>
         /// <param name="rawSpeaker">{nickname} 치환 전 이름표</param>
-        private void ShowSpeech(string rawSpeaker, string portraitKey, string text)
+        private static (string speaker, string portraitKey, bool protagonist, Color tag) Speaker(string rawSpeaker, string portraitKey)
         {
             string speaker = TextFormat.Apply(rawSpeaker, PlayerSession.Nickname);
-            bool protagonist = rawSpeaker != null && (rawSpeaker.Contains("{nickname}") || rawSpeaker == "집행자"
-                               || (!string.IsNullOrEmpty(PlayerSession.Nickname) && rawSpeaker == PlayerSession.Nickname));
-            // 주인공 대사는 portrait가 없어도 주인공 일러스트를 쓴다
-            if (string.IsNullOrEmpty(portraitKey) && protagonist) portraitKey = "player";
-            Sprite portrait = ArtCatalog.Portrait(portraitKey, speaker, out string characterId);
-            protagonist |= characterId == "player";
-            _game.ShowLine(speaker, text, portrait, !protagonist, speaker);
+            string key = string.IsNullOrEmpty(portraitKey) ? null : portraitKey.Split('/')[0];
+            Network.GameCharacter character = CharacterCatalog.ByKey(key) ?? CharacterCatalog.ByName(rawSpeaker);
+            bool protagonist = (rawSpeaker != null && (rawSpeaker.Contains("{nickname}")
+                                || (!string.IsNullOrEmpty(PlayerSession.Nickname) && rawSpeaker == PlayerSession.Nickname)))
+                               || character?.Protagonist == true;
+            if (protagonist && character == null) character = CharacterCatalog.Protagonist;
+            if (string.IsNullOrEmpty(portraitKey) && protagonist) portraitKey = character?.CharacterKey ?? "player";
+            return (speaker, portraitKey, protagonist, CharacterCatalog.TagColor(character, protagonist));
         }
+
+        /// <summary>대화창에 대사 한 줄. 주인공은 왼쪽, 다른 인물은 오른쪽. 이름표 색은 인물 목록의 색</summary>
+        private void ShowSpeech(string rawSpeaker, string portraitKey, string text)
+        {
+            var who = Speaker(rawSpeaker, portraitKey);
+            Sprite portrait = ArtCatalog.Portrait(who.portraitKey, who.speaker, out _);
+            _game.ShowLine(who.speaker, text, portrait, !who.protagonist, who.tag);
+        }
+
+        /// <summary>주인공 일러스트 (대화를 시작할 때 왼쪽에 미리 세운다)</summary>
+        private static Sprite ProtagonistPortrait() => ArtCatalog.Portrait(CharacterCatalog.Protagonist?.CharacterKey ?? "player", null, out _);
 
         // ---------------- 끝 ----------------
         private void FinishStage()

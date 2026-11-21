@@ -29,14 +29,6 @@ namespace Executor.Play
         /// </summary>
         public const int ArtPixelsPerTile = 64;
 
-        /// <summary>대화의 speaker 이름 -> 인물 ID (일러스트·도트 폴더 이름)</summary>
-        public static readonly Dictionary<string, string> SpeakerToCharacter = new Dictionary<string, string>
-        {
-            ["집행자"] = "player",
-            ["연구원"] = "researcher",
-            ["감독관"] = "supervisor",
-            ["카시아"] = "cassia",
-        };
 
         private static readonly Dictionary<string, Sprite> Cache = new Dictionary<string, Sprite>();
 
@@ -168,9 +160,9 @@ namespace Executor.Play
                 characterId = parts[0];
                 if (parts.Length > 1) expression = parts[1];
             }
-            else if (speaker != null && SpeakerToCharacter.TryGetValue(speaker, out string id))
+            else if (CharacterCatalog.ByName(speaker) is Network.GameCharacter c)
             {
-                characterId = id;
+                characterId = c.CharacterKey; // 이름 -> 인물 ID (관리자 웹 '인물')
             }
             if (characterId == null) return null;
             return Load<Sprite>($"Portraits/{characterId}/{expression}")

@@ -28,7 +28,7 @@ namespace Executor.Play
         private int _choiceSelected;
 
         // 로그·자동
-        private readonly List<(string speaker, string text, bool right)> _dialogueLog = new List<(string, string, bool)>();
+        private readonly List<(string speaker, string text, Color tag)> _dialogueLog = new List<(string, string, Color)>();
         private static bool _autoPlay;
         private float _autoWait;
         private bool _logOpen;
@@ -42,7 +42,6 @@ namespace Executor.Play
         public bool IsLogOpen => _logOpen && _popupRoot.childCount > 0;
         public bool HasChoicesShown => _dialogue.activeSelf && _choiceTexts.Count > 0;
 
-        private static readonly Color ProtagonistTag = Hex(0xd4d6de), OtherTag = Hex(0xff4fa3);
         /// <summary>말하지 않는 쪽 일러스트 (brightness .4 saturate .6 흉내)</summary>
         private static readonly Color Unlit = new Color(0.36f, 0.36f, 0.4f, 1f);
 
@@ -89,8 +88,11 @@ namespace Executor.Play
             else At(image, 30 * S, 60 * S, w, h);
         }
 
-        /// <summary>대사 한 줄. portraitOnRight면 상대(오른쪽), 아니면 주인공(왼쪽)이 말한다. portrait가 없으면 그쪽 일러스트는 그대로</summary>
-        public void ShowLine(string speaker, string text, Sprite portrait, bool portraitOnRight, string placeholderName)
+        /// <summary>
+        /// 대사 한 줄. portraitOnRight면 상대(오른쪽), 아니면 주인공(왼쪽)이 말한다. portrait가 없으면 그쪽 일러스트는 그대로.
+        /// tagColor: 이름표 바탕색 (관리자 웹 '인물')
+        /// </summary>
+        public void ShowLine(string speaker, string text, Sprite portrait, bool portraitOnRight, Color tagColor)
         {
             _dialogue.SetActive(true);
             _speakerOnRight = portraitOnRight;
@@ -104,11 +106,11 @@ namespace Executor.Play
             _choiceTexts.Clear();
             _onChoose = null;
             UiKit.Clear(_choices);
-            _dialogueLog.Add((speaker, _fullLine, portraitOnRight));
-            DrawDialogueBox(speaker);
+            _dialogueLog.Add((speaker, _fullLine, tagColor));
+            DrawDialogueBox(speaker, tagColor);
         }
 
-        private void DrawDialogueBox(string speaker)
+        private void DrawDialogueBox(string speaker, Color tagColor)
         {
             UiKit.Clear(_dialogueBox);
             RectTransform frame = Frame(_dialogueBox, "Frame", Hex(0x0c0a18, 0.96f), WindowLine, 2 * S, 6 * S);
@@ -131,7 +133,7 @@ namespace Executor.Play
             // 이름표: 말하는 쪽 위 모서리
             if (!string.IsNullOrEmpty(speaker))
             {
-                RectTransform tag = Frame(frame, "NameTag", _speakerOnRight ? OtherTag : ProtagonistTag, Ink, 2 * S, 0);
+                RectTransform tag = Frame(frame, "NameTag", tagColor, Ink, 2 * S, 0);
                 Text name = Label(tag, speaker, 24 * S, Ink, TextAnchor.MiddleCenter, bold: true);
                 Inset(name, 0, 0, 0, 0);
                 float w = name.preferredWidth + 40 * S + 4 * S;
@@ -224,13 +226,13 @@ namespace Executor.Play
         private void PickChoice(int index)
         {
             if (index < 0 || index >= _choiceTexts.Count || _onChoose == null || IsLogOpen) return;
-            _dialogueLog.Add((null, "▶ " + _choiceTexts[index], false));
+            _dialogueLog.Add((null, "▶ " + _choiceTexts[index], Cyan));
             Action<int> choose = _onChoose;
             choose(index);
         }
 
         /// <summary>건너뛴 대사도 로그에는 남긴다</summary>
-        public void LogLine(string speaker, string text, bool right) => _dialogueLog.Add((speaker, text ?? "", right));
+        public void LogLine(string speaker, string text, Color tag) => _dialogueLog.Add((speaker, text ?? "", tag));
 
         public void HideDialogue()
         {
@@ -301,10 +303,10 @@ namespace Executor.Play
                 Text empty = Label(content, "아직 대사가 없어요.", 12 * S, Muted, TextAnchor.MiddleLeft);
                 empty.horizontalOverflow = HorizontalWrapMode.Wrap;
             }
-            foreach (var (speaker, text, right) in _dialogueLog)
+            foreach (var (speaker, text, tag) in _dialogueLog)
             {
                 string head = speaker == null ? ""
-                    : $"<b><color=#{ColorUtility.ToHtmlStringRGB(right ? OtherTag : ProtagonistTag)}>{speaker}</color></b>\n";
+                    : $"<b><color=#{ColorUtility.ToHtmlStringRGB(tag)}>{speaker}</color></b>\n";
                 Text entry = Label(content, head + (speaker == null ? $"<color=#22d3ee>{text}</color>" : text), 12 * S * 1.25f, Fg,
                     TextAnchor.UpperLeft);
                 entry.horizontalOverflow = HorizontalWrapMode.Wrap;

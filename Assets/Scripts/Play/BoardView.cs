@@ -73,8 +73,7 @@ namespace Executor.Play
             }
             foreach (BoardObject obj in board.Objects)
             {
-                string characterId = obj.Type == MapObjectTypes.Npc && obj.Name != null
-                                     && ArtCatalog.SpeakerToCharacter.TryGetValue(obj.Name, out string id) ? id : null;
+                string characterId = obj.Type == MapObjectTypes.Npc ? CharacterCatalog.ByName(obj.Name)?.CharacterKey : null;
                 SpriteRenderer sr = Spawn(obj.Id, ArtCatalog.ForObject(obj.Type, characterId), obj.Pos, SortOrder(obj.Pos.Y, false));
                 _objects[obj] = sr;
             }

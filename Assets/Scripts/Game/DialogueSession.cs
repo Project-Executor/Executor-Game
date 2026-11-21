@@ -7,6 +7,7 @@ namespace Executor.Game
     /// <summary>
     /// 인물과의 대화 한 번. 노드를 따라가며 선택지를 처리하고, 노드에 들어갈 때 effects(giveKey)를 실행한다.
     /// 대화는 턴을 쓰지 않는다. 대화 중에는 화면이 이동 입력을 막아야 한다.
+    /// 이야기(story)의 dialogue 단계에서도 쓴다: 그때는 인물·판이 없어 effects는 실행하지 않는다
     /// </summary>
     public class DialogueSession
     {
@@ -15,12 +16,13 @@ namespace Executor.Game
         private readonly string _nickname;
         private readonly List<string> _givenKeys = new List<string>();
 
+        /// <summary>대화하는 인물. 이야기 속 대화면 null</summary>
         public BoardObject Npc { get; }
         public DialogueNode Current { get; private set; }
         public bool IsFinished => Current == null;
 
         /// <summary>현재 말하는 사람 (노드에 없으면 인물 이름, {nickname} 치환됨)</summary>
-        public string Speaker => Current == null ? null : TextFormat.Apply(Current.Speaker ?? Npc.Name, _nickname);
+        public string Speaker => Current == null ? null : TextFormat.Apply(Current.Speaker ?? Npc?.Name, _nickname);
 
         /// <summary>현재 대사 ({nickname} 치환됨)</summary>
         public string Text => Current == null ? null : TextFormat.Apply(Current.Text, _nickname);
@@ -42,6 +44,14 @@ namespace Executor.Game
             {
                 throw new ArgumentException($"인물 {npc.Id}의 대화 {npc.DialogueId}가 맵에 없습니다.");
             }
+            Enter(_dialogue.Start);
+        }
+
+        /// <summary>이야기(story)의 dialogue 단계: 인물 없이 대화만 진행한다 (giveKey 등 effects는 무시)</summary>
+        public DialogueSession(DialogueData dialogue, string nickname)
+        {
+            _dialogue = dialogue ?? throw new ArgumentNullException(nameof(dialogue));
+            _nickname = nickname;
             Enter(_dialogue.Start);
         }
 
@@ -71,7 +81,7 @@ namespace Executor.Game
             Current = node;
             foreach (DialogueEffect effect in node.Effects ?? new List<DialogueEffect>())
             {
-                if (effect.Type == "giveKey" && _board.GiveKeyFrom(Npc, effect.KeyId))
+                if (effect.Type == "giveKey" && _board != null && Npc != null && _board.GiveKeyFrom(Npc, effect.KeyId))
                 {
                     _givenKeys.Add(effect.KeyId);
                 }

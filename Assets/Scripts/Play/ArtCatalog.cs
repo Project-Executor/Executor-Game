@@ -25,7 +25,7 @@ namespace Executor.Play
 
         /// <summary>
         /// 그림 배율: 한 칸(16px 도트)을 4배로 그려 64px. 플레이어처럼 한 칸보다 큰 그림은 이 값으로 크기를 정한다
-        /// (72x128 그림 = 가로 1.125칸, 세로 2칸). 타일·오브젝트는 크기와 상관없이 한 칸에 꼭 맞춘다
+        /// (64x96 그림 = 가로 1칸, 세로 1.5칸). 타일·오브젝트는 크기와 상관없이 한 칸에 꼭 맞춘다
         /// </summary>
         public const int ArtPixelsPerTile = 64;
 
@@ -53,14 +53,72 @@ namespace Executor.Play
         // ---------------- 맵 도트 세트 (Resources/Pixel/map, 시안 Executor_Export 01_unity_sprites/map_64px) ----------------
         // 있으면 아래 그림이 위의 예전 타일·오브젝트 그림보다 먼저 쓰인다. 파일을 지우면 예전 그림으로 돌아간다
 
-        private static Sprite MapArt(string name) => CellSprite("Pixel/map/" + name);
+        // 챕터별 테마 (map_data.theme): Pixel/map/{theme}/ 에 같은 이름의 그림이 있으면 그것을 먼저 쓴다.
+        //   helloworld (1챕터), undercity (언더시티). hologram·빈 값은 기본 세트.
+        //   테마에 자기 바닥(floor_plain)이 있으면 벽·바닥·장식·기판 두께는 기본 세트와 섞지 않는다 (없는 건 안 그림).
+        //   오브젝트는 테마에 없으면 기본 세트 그림. 단 테마에 잠긴 문만 있고 열린 문이 없으면 열린 문은 그리지 않는다(사라짐)
 
-        /// <summary>맵 세트가 들어 있는지 (벽 16장 기준)</summary>
-        public static bool HasMapSet => MapArt("wall_1111") != null;
+        /// <summary>지금 그리는 맵의 테마 (BoardView.Build가 map_data.theme으로 정한다)</summary>
+        public static string MapTheme { get; set; }
 
-        /// <summary>벽 자동 연결: 위·오른쪽·아래·왼쪽 이웃이 벽이면 1 (wall_NESW)</summary>
-        public static Sprite WallTile(bool n, bool e, bool s, bool w) =>
-            MapArt($"wall_{(n ? 1 : 0)}{(e ? 1 : 0)}{(s ? 1 : 0)}{(w ? 1 : 0)}");
+        private static readonly HashSet<string> Missing = new HashSet<string>();
+
+        private static bool IsTileArt(string name) =>
+            name.StartsWith("wall_") || name.StartsWith("floor_") || name.StartsWith("deco_") || name == "board_edge";
+
+        private static string ThemeFolder =>
+            string.IsNullOrEmpty(MapTheme) || MapTheme == "hologram" ? null : "Pixel/map/" + MapTheme.Trim().ToLowerInvariant() + "/";
+
+        /// <summary>없는 그림은 기억해 두고 다시 찾지 않는다 (칸마다 부르므로)</summary>
+        private static Sprite TryCell(string path)
+        {
+            if (Missing.Contains(path)) return null;
+            Sprite s = CellSprite(path);
+            if (s == null) Missing.Add(path);
+            return s;
+        }
+
+        /// <summary>지금 테마에 자기 벽·바닥이 있는지</summary>
+        public static bool ThemeHasTiles => ThemeFolder != null && TryCell(ThemeFolder + "floor_plain") != null;
+
+        private static Sprite MapArt(string name)
+        {
+            string folder = ThemeFolder;
+            if (folder != null)
+            {
+                Sprite own = TryCell(folder + name);
+                if (own != null) return own;
+                if (IsTileArt(name) && ThemeHasTiles) return null;
+                if (name == "shutter_open" && TryCell(folder + "shutter_locked") != null) return null;
+            }
+            return TryCell("Pixel/map/" + name);
+        }
+
+        /// <summary>맵 세트가 들어 있는지 (기본 세트 벽 16장 기준)</summary>
+        public static bool HasMapSet => TryCell("Pixel/map/wall_1111") != null;
+
+        private static readonly Dictionary<string, int> WallFrontCount = new Dictionary<string, int>();
+
+        /// <summary>
+        /// 벽 그림. 테마 세트(wall_top + wall_front_0..N)면 아래가 바닥인 벽은 앞면(칸마다 정해진 무늬), 나머지는 윗면.
+        /// 기본 세트는 자동 연결: 위·오른쪽·아래·왼쪽 이웃이 벽이면 1 (wall_NESW)
+        /// </summary>
+        public static Sprite WallTile(bool n, bool e, bool s, bool w, int x = 0, int y = 0)
+        {
+            if (ThemeHasTiles)
+            {
+                if (s) return MapArt("wall_top");
+                string folder = ThemeFolder;
+                if (!WallFrontCount.TryGetValue(folder, out int count))
+                {
+                    count = 0;
+                    while (count < 16 && TryCell($"{folder}wall_front_{count}") != null) count++;
+                    WallFrontCount[folder] = count;
+                }
+                return count == 0 ? MapArt("wall_top") : MapArt($"wall_front_{CellHash(x + 7, y + 3) % count}");
+            }
+            return MapArt($"wall_{(n ? 1 : 0)}{(e ? 1 : 0)}{(s ? 1 : 0)}{(w ? 1 : 0)}");
+        }
 
         /// <summary>바닥: 대부분 floor_plain, 8칸에 1칸꼴로 회로 무늬 (칸마다 정해져 판이 바뀌어도 같다)</summary>
         public static Sprite FloorTile(int x, int y)
@@ -80,6 +138,7 @@ namespace Executor.Play
         /// </summary>
         public static Sprite WallDeco(int x, int y, bool e, bool front, bool w)
         {
+            if (ThemeHasTiles) return null; // 테마 벽 그림에는 장식이 그려져 있다
             if (front && (e || w)) return MapArt(e && w ? "deco_slot_mid" : e ? "deco_slot_left" : "deco_slot_right");
             int h = CellHash(x + 31, y + 17);
             if (h % 9 != 0) return null;

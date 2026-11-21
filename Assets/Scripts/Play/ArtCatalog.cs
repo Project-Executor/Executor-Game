@@ -46,8 +46,80 @@ namespace Executor.Play
         /// 세로로 긴 그림이면 아래가 칸 바닥에 닿고 위로 솟는다
         /// </summary>
         public static Sprite WallTop => CellSprite("Pixel/tiles/wall_top");
-        /// <summary>복구된 컴퓨터 (Resources/Pixel/objects/computerRestored)</summary>
-        public static Sprite ComputerRestored => Pixel("objects/computerRestored", new Color32(0x5f, 0xd1, 0xb0, 0xff), Shape.Frame);
+        /// <summary>복구된 컴퓨터 (맵 세트 computer_fixed, 없으면 Resources/Pixel/objects/computerRestored)</summary>
+        public static Sprite ComputerRestored =>
+            MapArt("computer_fixed_64x72") ?? Pixel("objects/computerRestored", new Color32(0x5f, 0xd1, 0xb0, 0xff), Shape.Frame);
+
+        // ---------------- 맵 도트 세트 (Resources/Pixel/map, 시안 Executor_Export 01_unity_sprites/map_64px) ----------------
+        // 있으면 아래 그림이 위의 예전 타일·오브젝트 그림보다 먼저 쓰인다. 파일을 지우면 예전 그림으로 돌아간다
+
+        private static Sprite MapArt(string name) => CellSprite("Pixel/map/" + name);
+
+        /// <summary>맵 세트가 들어 있는지 (벽 16장 기준)</summary>
+        public static bool HasMapSet => MapArt("wall_1111") != null;
+
+        /// <summary>벽 자동 연결: 위·오른쪽·아래·왼쪽 이웃이 벽이면 1 (wall_NESW)</summary>
+        public static Sprite WallTile(bool n, bool e, bool s, bool w) =>
+            MapArt($"wall_{(n ? 1 : 0)}{(e ? 1 : 0)}{(s ? 1 : 0)}{(w ? 1 : 0)}");
+
+        /// <summary>바닥: 대부분 floor_plain, 8칸에 1칸꼴로 회로 무늬 (칸마다 정해져 판이 바뀌어도 같다)</summary>
+        public static Sprite FloorTile(int x, int y)
+        {
+            int h = CellHash(x, y);
+            if (h % 8 != 0) return MapArt("floor_plain") ?? Floor;
+            string[] variants = { "floor_trace_l", "floor_trace_h", "floor_vias" };
+            return MapArt(variants[h / 8 % variants.Length]) ?? Floor;
+        }
+
+        /// <summary>기판 두께: 바닥(또는 그린 벽) 바로 아래가 빈 공간일 때 그 빈칸 위쪽에 그린다</summary>
+        public static Sprite BoardEdge => MapArt("board_edge");
+
+        /// <summary>
+        /// 벽 장식. 앞면이 보이는(아래가 바닥) 가로로 이어진 벽은 슬롯(왼쪽·가운데·오른쪽), 나머지 벽은 가끔 칩·핀
+        /// (앞면이 보이면 _front). 대부분의 벽은 장식 없음(null)
+        /// </summary>
+        public static Sprite WallDeco(int x, int y, bool e, bool front, bool w)
+        {
+            if (front && (e || w)) return MapArt(e && w ? "deco_slot_mid" : e ? "deco_slot_left" : "deco_slot_right");
+            int h = CellHash(x + 31, y + 17);
+            if (h % 9 != 0) return null;
+            string name = h / 9 % 2 == 0 ? "deco_chip" : "deco_fins";
+            return MapArt(front ? name + "_front" : name);
+        }
+
+        /// <summary>맵 세트의 오브젝트 그림 (없으면 null)</summary>
+        private static Sprite MapObjectArt(string type) => type switch
+        {
+            MapObjectTypes.Crate => MapArt("drive"),
+            MapObjectTypes.Breakable => MapArt("firewall"),
+            MapObjectTypes.Key => MapArt("keycard"),
+            MapObjectTypes.Door => MapArt("shutter_locked"),
+            MapObjectTypes.Checkpoint => MapArt("checkpoint_off"),
+            MapObjectTypes.Hidden => MapArt("data_shard"),
+            MapObjectTypes.Anomaly => MapArt("null_entity"),
+            MapObjectTypes.Exit => MapArt("exit_gate_64x96"),
+            MapObjectTypes.Computer => MapArt("computer_infected_64x72"),
+            _ => null,
+        };
+
+        /// <summary>한 번 쳐서 금이 간 방화벽 (맵 세트). 없으면 null</summary>
+        public static Sprite FirewallDamaged => MapArt("firewall_damaged");
+        /// <summary>열린 셔터 (맵 세트). 없으면 null (예전처럼 문이 사라진다)</summary>
+        public static Sprite DoorOpen => MapArt("shutter_open");
+        /// <summary>도착한 체크포인트 (맵 세트). 없으면 null</summary>
+        public static Sprite CheckpointOn => MapArt("checkpoint_on");
+
+        private static int CellHash(int x, int y)
+        {
+            unchecked
+            {
+                int h = x * 73856093 ^ y * 19349663;
+                h ^= h >> 13;
+                h *= 0x5bd1e995;
+                h ^= h >> 15;
+                return h & 0x7fffffff;
+            }
+        }
         public static Sprite Player => Pixel("player", new Color32(0x4f, 0xd1, 0xff, 0xff), Shape.Diamond);
 
         private static readonly Dictionary<Direction, Sprite[]> PlayerCache = new Dictionary<Direction, Sprite[]>();
@@ -127,6 +199,8 @@ namespace Executor.Play
                 Sprite own = CellSprite("Pixel/npcs/" + characterId);
                 if (own != null) return own;
             }
+            Sprite set = MapObjectArt(type);
+            if (set != null) return set;
             switch (type)
             {
                 case MapObjectTypes.Exit: return Pixel("objects/exit", new Color32(0x3c, 0xcf, 0x7a, 0xff), Shape.Frame);

@@ -35,7 +35,34 @@
 - **플레이어**: 한 칸보다 큰 그림. **64px = 한 칸** 기준으로 크기가 정해진다 (72 × 128 = 가로 1.125칸, 세로 2칸).
   발이 서 있는 칸의 아래쪽에 닿고, 머리는 윗칸까지 올라간다.
 
-### 타일 (배경 있음, 칸을 꽉 채움)
+### 맵 도트 세트 (메인보드, 시안 Executor_Export `01_unity_sprites/map_64px`)
+
+`Resources/Pixel/map/`에 시안의 64px 세트가 들어 있으면 **아래 예전 타일·오브젝트 그림보다 먼저** 쓴다 (`ArtCatalog.HasMapSet`, 기준 `wall_1111.png`).
+파일 이름은 시안 그대로 둔다. 세트를 지우면 예전 그림으로 돌아간다.
+
+| 층 (아래 → 위) | 파일 | 규칙 |
+| --- | --- | --- |
+| 바닥 | `floor_plain` / `floor_trace_l`·`floor_trace_h`·`floor_vias` | 대부분 plain, 8칸에 1칸꼴로 무늬 (칸 좌표로 정해져 판마다 같다) |
+| 기판 두께 | `board_edge` | 바닥(또는 그린 벽) 바로 아래가 빈 공간이면 그 빈칸 위쪽에 |
+| 벽 | `wall_NESW` 16장 | 위·오른쪽·아래·왼쪽 이웃이 벽(맵 바깥 포함)이면 1. **맵 가장자리 벽은 아래가 바닥인 윗벽만 그리고 옆·아래 테두리는 비운다**. 가짜 벽도 같은 규칙 |
+| 벽 장식 | `deco_slot_left/mid/right`, `deco_chip(_front)`, `deco_fins(_front)` | 앞면이 보이는(아래가 바닥) 가로로 이어진 벽은 슬롯, 나머지 벽은 9칸에 1칸꼴로 칩·핀 (앞면이 보이면 `_front`) |
+| 판 테두리 | (코드) | 그린 칸을 감싸는 2px 남색 선 `#4C4AA8` |
+
+| 오브젝트 | 파일 |
+| --- | --- |
+| 상자 `crate` | `drive` |
+| 방화벽 `breakable` | `firewall`, 한 번이라도 맞으면 `firewall_damaged` |
+| 열쇠 `key` | `keycard` |
+| 잠긴 문 `door` | `shutter_locked`, 열리면 사라지지 않고 `shutter_open` (바닥 층) |
+| 체크포인트 | `checkpoint_off`, 도착하면 `checkpoint_on` |
+| 데이터 파편 `hidden` | `data_shard` |
+| 이상 개체 `anomaly` | `null_entity` |
+| 출구 `exit` | `exit_gate_64x96` (위로 반 칸 솟음) |
+| 감염된 컴퓨터 `computer` | `computer_infected_64x72`, 복구하면 `computer_fixed_64x72` |
+
+인물(`npc`)과 플레이어는 이 세트에 없어서 아래 예전 경로를 쓴다.
+
+### 타일 (배경 있음, 칸을 꽉 채움) — 맵 세트가 없을 때
 
 | 파일 | 내용 | 임시 그림 |
 | --- | --- | --- |
@@ -167,7 +194,8 @@ Portraits/
 
 ## 4. 인물 ID
 
-대화의 이름표(`speaker`)와 그림 폴더를 잇는 표다 (`ArtCatalog.SpeakerToCharacter`). **새 인물을 넣으면 여기에 한 줄 추가**해야 이름표만으로 그림을 찾는다.
+대화의 이름표(`speaker`)와 그림 폴더를 잇는 표다. **관리자 웹 '인물'**(서버 `GET /characters`)에서 이름·인물 ID·이름표 색·주인공 여부를 정하고,
+게임은 시작할 때 받아 쓴다 (`CharacterCatalog`, 서버에 닿지 않으면 아래 기본 인물). 새 인물은 관리자 웹에서 등록하면 된다.
 
 | 이름표 | 인물ID (폴더 이름) | 스탠딩 일러스트 | 맵 도트 |
 | --- | --- | --- | --- |
@@ -175,7 +203,7 @@ Portraits/
 | 카시아 | `cassia` | 있음 | `Pixel/npcs/cassia.png` (없음) |
 | 연구원 | `researcher` | 없음 | 없음 |
 | 감독관 | `supervisor` | 없음 | 없음 |
-| 델타 | `delta` (추가 필요) | 없음 | 없음 |
+| 델타 | `delta` | 없음 | 없음 |
 
 ---
 

@@ -596,7 +596,7 @@ namespace Executor.Play
             }
             list.sizeDelta = new Vector2(0, y);
             if (_searchResults.Count == 0 && _lastSearch == null) Note("왼쪽 위에 닉네임 일부를 입력하고 찾기를 누르세요.");
-            if (_searchNote != null) Status(_searchNote, _searchResults.Count > 0);
+            if (_searchNote != null) Status(_searchNote, _searchResults.Count > 0 || _searchNote.StartsWith("내 닉네임"));
         }
 
         private async void Search(string text)
@@ -614,7 +614,13 @@ namespace Executor.Play
                 if (_popup == null || _tab != TabSearch) return;
                 _lastSearch = q;
                 _searchResults = page.Content;
-                _searchNote = page.Content.Count == 0 ? $"'{q}'이(가) 들어간 닉네임이 없습니다."
+                // 검색 결과에는 나 자신이 나오지 않는다 (서버가 뺀다). 내 닉네임을 찾았을 때 "없다"고 하지 않도록 따로 알린다
+                string mine = PlayerSession.Nickname ?? "";
+                bool isMe = mine.Length > 0 && string.Equals(mine, q, StringComparison.OrdinalIgnoreCase);
+                bool matchesMe = mine.Length > 0 && mine.IndexOf(q, StringComparison.OrdinalIgnoreCase) >= 0;
+                _searchNote = page.Content.Count == 0 && isMe ? "내 닉네임입니다. 친구의 닉네임을 입력해 주세요."
+                    : page.Content.Count == 0 && matchesMe ? $"'{q}'이(가) 들어간 다른 사람의 닉네임이 없습니다. (나는 검색 결과에 나오지 않습니다)"
+                    : page.Content.Count == 0 ? $"'{q}'이(가) 들어간 닉네임이 없습니다."
                     : page.TotalElements > page.Content.Count ? $"{page.TotalElements}명 중 {page.Content.Count}명 (더 자세히 입력해 보세요)"
                     : $"{page.Content.Count}명";
                 ShowTab();

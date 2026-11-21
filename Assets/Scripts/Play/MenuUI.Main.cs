@@ -34,7 +34,8 @@ namespace Executor.Play
 
         private Text[] _mainLog;
         private Text _mainZone, _mainZoneCount, _deltaText;
-        private RectTransform _mainZoneBar, _mainZoneFill, _mainCursor;
+        private RectTransform _mainZoneBar, _mainZoneFill, _mainCursor, _deltaFace;
+        private string _cursorKey, _deltaKey;
         // 바탕화면·작업 표시줄은 메인과 스테이지 선택 화면에 하나씩 있다
         private readonly List<Text> _mailBadges = new List<Text>();
         private readonly List<Text> _friendBadges = new List<Text>();
@@ -76,6 +77,60 @@ namespace Executor.Play
                 : $"{info.Cleared}/{info.Total}";
             LayoutZoneRow(info.Total > 0 ? (float)info.Cleared / info.Total : 0);
             PlaceCursor();
+        }
+
+        /// <summary>장착한 커서·델타 꾸미기 (아이템 image 키, 없으면 null). 메인 화면에 바로 반영한다</summary>
+        public void SetCosmetics(string cursorKey, string deltaKey)
+        {
+            _cursorKey = cursorKey;
+            _deltaKey = deltaKey;
+            if (_mainCursor != null && _mainLog != null) PlaceCursor();
+            if (_deltaFace != null) DrawDelta(_deltaFace, _deltaFace.sizeDelta.x, deltaKey);
+        }
+
+        public struct CursorStyle
+        {
+            public Vector2 Size;
+            public Color Color;
+            public float Period;
+        }
+
+        /// <summary>
+        /// 커서 모양 키: block · underline · bar, 뒤에 -slow(2초) / -fast(0.5초)와 :#rrggbb(색). 모르는 키나 null은 기본(하늘색 블록, 1초)
+        /// </summary>
+        public static CursorStyle ParseCursor(string key)
+        {
+            var style = new CursorStyle { Size = new Vector2(8 * S, 14 * S), Color = Cyan, Period = 1f };
+            if (string.IsNullOrWhiteSpace(key)) return style;
+            string k = key.Trim().ToLowerInvariant();
+            int colon = k.IndexOf(':');
+            if (colon >= 0)
+            {
+                if (ColorUtility.TryParseHtmlString(k.Substring(colon + 1).Trim(), out Color c)) style.Color = c;
+                k = k.Substring(0, colon);
+            }
+            if (k.EndsWith("-slow")) { style.Period = 2f; k = k.Substring(0, k.Length - 5); }
+            else if (k.EndsWith("-fast")) { style.Period = 0.5f; k = k.Substring(0, k.Length - 5); }
+            if (k == "underline") style.Size = new Vector2(8 * S, 2 * S);
+            else if (k == "bar") style.Size = new Vector2(2 * S, 14 * S);
+            return style;
+        }
+
+        /// <summary>
+        /// 델타 얼굴(10x10 도트)을 size 상자에 그리고, 꾸미기(Resources/UI/delta/{키}, 12x12 도트: 얼굴은 (1,2)부터)를 겹친다
+        /// </summary>
+        private static void DrawDelta(RectTransform box, float size, string deltaKey)
+        {
+            UiKit.Clear(box);
+            Image face = Icon(box, "desktop/delta", size);
+            if (face != null) At(face, 0, 0, size, size);
+            if (string.IsNullOrWhiteSpace(deltaKey)) return;
+            Sprite overlay = ArtCatalog.Ui("delta/" + deltaKey.Trim().ToLowerInvariant());
+            if (overlay == null) return;
+            float px = size / 10f;
+            Image o = Fill(box, "Decoration", Color.white);
+            o.sprite = overlay;
+            At(o, -px, -2 * px, 12 * px, 12 * px);
         }
 
         private static string StarText(int stars, int max)
@@ -190,8 +245,9 @@ namespace Executor.Play
             Text meter = Label(bar.transform, "▮▮▮▯", 12 * S, Ink, TextAnchor.MiddleRight, UiKit.Mono);
             Inset(meter, 10 * S, 0, 10 * S, 0);
 
-            Image face = Icon(box, "desktop/delta", icon);
-            if (face != null) At(face, border + pad, border + header + pad, icon, icon);
+            _deltaFace = Node(box, "DeltaFace");
+            At(_deltaFace, border + pad, border + header + pad, icon, icon);
+            DrawDelta(_deltaFace, icon, _deltaKey);
             _deltaText = Label(box, "", 12 * S, Fg, TextAnchor.UpperLeft);
             _deltaText.lineSpacing = 1.2f;
             At(_deltaText, border + pad + icon + pad, border + header + pad, width - (border + pad) * 2 - icon - pad, icon);
@@ -281,11 +337,15 @@ namespace Executor.Play
         {
             Text line = _mainLog[4];
             RectTransform log = line.rectTransform;
+            CursorStyle style = ParseCursor(_cursorKey);
             _mainCursor.anchorMin = _mainCursor.anchorMax = new Vector2(0, 1);
-            _mainCursor.pivot = new Vector2(0, 0.5f);
-            _mainCursor.sizeDelta = new Vector2(8 * S, 14 * S);
+            _mainCursor.pivot = new Vector2(0, 0);
+            _mainCursor.sizeDelta = style.Size;
+            // 커서 아래쪽을 글자 아래쪽(블록 높이 14 기준)에 맞춘다
             _mainCursor.anchoredPosition = new Vector2(log.anchoredPosition.x + line.preferredWidth + 2 * S,
-                log.anchoredPosition.y - log.sizeDelta.y / 2);
+                log.anchoredPosition.y - log.sizeDelta.y / 2 - 7 * S);
+            _mainCursor.GetComponent<Image>().color = style.Color;
+            UiAnimator.Blink(_mainCursor.GetComponent<Image>(), style.Period);
         }
 
         /// <summary>창 제목 줄: 제목(굵게) + 최소화·최대화·닫기 모양(장식) + 아래 하늘색 줄</summary>

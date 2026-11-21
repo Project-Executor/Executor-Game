@@ -7,6 +7,10 @@ namespace Executor.Data
     {
         public const string Skin = "SKIN";
         public const string Theme = "THEME";
+        /// <summary>메인 터미널 커서 모양 (image = 모양 키, 예: underline-slow:#ff4fa3)</summary>
+        public const string Cursor = "CURSOR";
+        /// <summary>델타 꾸미기 (image = 꾸미기 키, 예: antenna)</summary>
+        public const string Delta = "DELTA";
 
         public static string Label(string type)
         {
@@ -14,12 +18,15 @@ namespace Executor.Data
             {
                 case Skin: return "스킨";
                 case Theme: return "테마";
+                case Cursor: return "커서";
+                case Delta: return "델타";
                 default: return type;
             }
         }
 
         /// <summary>상점 탭 (종류, 이름). 종류 null = 전체</summary>
-        public static readonly (string type, string label)[] Tabs = { (null, "전체"), (Skin, "스킨"), (Theme, "테마") };
+        public static readonly (string type, string label)[] Tabs =
+            { (null, "전체"), (Skin, "스킨"), (Theme, "테마"), (Cursor, "커서"), (Delta, "델타 꾸미기") };
     }
 
     /// <summary>상점 아이템 (판매 중인 것만, 내 보유 여부 포함)</summary>
@@ -54,7 +61,7 @@ namespace Executor.Data
         public string ItemType { get; set; }
         public string Image { get; set; }
         public int Quantity { get; set; }
-        /// <summary>지금 장착 중인 스킨·테마인지</summary>
+        /// <summary>지금 장착 중인지</summary>
         public bool Equipped { get; set; }
         public DateTime AcquiredAt { get; set; }
     }

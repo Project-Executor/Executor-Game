@@ -478,8 +478,35 @@ namespace Executor.Play
                 // 미리 보기: 아이템 그림이 있으면 그것, 없으면 색 테두리 터미널
                 Image preview = Fill(card, "Preview", Ink);
                 At(preview, 12 * S, 12 * S, cardW - 24 * S, 72 * S);
-                Sprite art = ArtCatalog.Item(item.Image);
-                if (art != null)
+                Sprite art = item.ItemType == Data.ItemTypes.Cursor || item.ItemType == Data.ItemTypes.Delta ? null : ArtCatalog.Item(item.Image);
+                if (item.ItemType == Data.ItemTypes.Cursor)
+                {
+                    // 커서: 터미널 프롬프트 뒤에 그 모양으로 깜박이는 커서
+                    CursorStyle style = ParseCursor(item.Image);
+                    RectTransform term = Node(preview.transform, "Terminal");
+                    term.anchorMin = term.anchorMax = new Vector2(0.5f, 0.5f);
+                    term.sizeDelta = new Vector2(96 * S, 40 * S);
+                    Border(term, TrackLine, 2 * S);
+                    Text prompt = Label(term, "$", 12 * S, Muted, TextAnchor.MiddleLeft, UiKit.Mono);
+                    Inset(prompt, 8 * S, 0, 0, 0);
+                    Image cur = Fill(term, "Cursor", style.Color);
+                    cur.rectTransform.anchorMin = cur.rectTransform.anchorMax = new Vector2(0, 0.5f);
+                    cur.rectTransform.pivot = new Vector2(0, 0);
+                    cur.rectTransform.sizeDelta = style.Size;
+                    cur.rectTransform.anchoredPosition = new Vector2(24 * S, -7 * S);
+                    UiAnimator.Blink(cur, style.Period);
+                }
+                else if (item.ItemType == Data.ItemTypes.Delta)
+                {
+                    // 델타 꾸미기: 꾸민 얼굴
+                    RectTransform face = Node(preview.transform, "Delta");
+                    face.anchorMin = face.anchorMax = new Vector2(0.5f, 0.5f);
+                    face.pivot = new Vector2(0.5f, 0.5f);
+                    face.sizeDelta = new Vector2(40 * S, 40 * S);
+                    face.anchoredPosition = new Vector2(0, -4 * S);
+                    DrawDelta(face, 40 * S, item.Image);
+                }
+                else if (art != null)
                 {
                     Image img = Fill(preview.transform, "Art", Color.white);
                     img.sprite = art;

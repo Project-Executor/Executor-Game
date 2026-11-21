@@ -236,6 +236,7 @@ namespace Executor.Play
                     if (_mode == Mode.Main) ShowMainProfile();
                     RefreshMailCount();
                     Social.RefreshBadge();
+                    LoadCosmetics();
                 }
                 catch (ApiException e)
                 {
@@ -593,18 +594,43 @@ namespace Executor.Play
             catch (ApiException e) { return e.IsNetworkError ? "서버에 연결할 수 없습니다." : e.Message; }
         }
 
-        private async void Equip(long? skinId, long? themeId)
+        private async void Equip(long? skinId, long? themeId, long? cursorId, long? deltaId)
         {
             try
             {
-                EquipmentResponse res = await ProfileApi.UpdateEquipmentAsync(skinId, themeId);
+                EquipmentResponse res = await ProfileApi.UpdateEquipmentAsync(skinId, themeId, cursorId, deltaId);
                 PlayerSession.Profile.EquippedSkinId = res.EquippedSkinId;
                 PlayerSession.Profile.EquippedThemeId = res.EquippedThemeId;
+                PlayerSession.Profile.EquippedCursorId = res.EquippedCursorId;
+                PlayerSession.Profile.EquippedDeltaId = res.EquippedDeltaId;
+                LoadCosmetics();
                 ShowProfile();
             }
             catch (ApiException e)
             {
                 _menu.ShowMessage("장착", e.IsNetworkError ? "서버에 연결할 수 없습니다." : e.Message);
+            }
+        }
+
+        /// <summary>장착한 커서·델타 꾸미기의 모양 키(아이템 image)를 받아 메인 화면에 반영한다. 오프라인이면 기본</summary>
+        private async void LoadCosmetics()
+        {
+            MyProfileResponse p = PlayerSession.Profile;
+            if (!PlayerSession.IsOnline || p == null || (p.EquippedCursorId == null && p.EquippedDeltaId == null))
+            {
+                _menu.SetCosmetics(null, null);
+                return;
+            }
+            try
+            {
+                List<MyItem> items = await ItemApi.GetMyItemsAsync();
+                string cursor = items.FirstOrDefault(i => i.ItemId == p.EquippedCursorId)?.Image;
+                string delta = items.FirstOrDefault(i => i.ItemId == p.EquippedDeltaId)?.Image;
+                _menu.SetCosmetics(cursor, delta);
+            }
+            catch (ApiException e)
+            {
+                Debug.LogWarning("[WireframeGame] 장착 아이템을 불러오지 못했습니다: " + e.Message);
             }
         }
 

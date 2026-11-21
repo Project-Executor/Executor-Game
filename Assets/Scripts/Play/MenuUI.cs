@@ -166,8 +166,8 @@ namespace Executor.Play
             public Func<string, Task<string>> CheckNickname;
             public Func<string, Task<string>> SaveNickname;
             public Func<string, Task<string>> SaveComment;
-            /// <summary>(스킨 ID, 테마 ID) 장착. null이면 기본</summary>
-            public Action<long?, long?> Equip;
+            /// <summary>(스킨, 테마, 커서, 델타 꾸미기) 아이템 ID로 장착. null이면 기본</summary>
+            public Action<long?, long?, long?, long?> Equip;
         }
 
         /// <summary>
@@ -176,7 +176,7 @@ namespace Executor.Play
         public void ShowProfileEditor(Data.MyProfileResponse p, Data.ProfileDetailResponse stats,
             IReadOnlyList<Data.MyItem> items, ProfileActions actions)
         {
-            Popup(_popupRoot, "프로필", new Vector2(1240, 920), out RectTransform body);
+            Popup(_popupRoot, "프로필", new Vector2(1240, 1040), out RectTransform body);
             string record = stats == null ? "" : $" · 공식 스테이지 클리어 {stats.ClearedStageCount} · 별 {stats.TotalStars}";
             var info = Label(body, $"{p.Email} · 코인 {p.Coin}{record}", 22, TextAnchor.UpperLeft, Muted);
             Place(info, new Vector2(0, 1), Vector2.zero, new Vector2(1160, 34), new Vector2(0, 1));
@@ -206,9 +206,12 @@ namespace Executor.Play
             Place(commentStatus, new Vector2(0, 1), new Vector2(0, -306), new Vector2(1160, 30), new Vector2(0, 1));
             saveComment.onClick.AddListener(() => Run(saveComment, commentStatus, () => actions.SaveComment(comment.text)));
 
-            // 장착: 스킨, 테마
-            EquipRow(body, "스킨", Data.ItemTypes.Skin, p.EquippedSkinId, items, -350, id => actions.Equip(id, p.EquippedThemeId));
-            EquipRow(body, "테마", Data.ItemTypes.Theme, p.EquippedThemeId, items, -560, id => actions.Equip(p.EquippedSkinId, id));
+            // 장착: 스킨, 테마, 커서, 델타 꾸미기 (PUT이라 네 값을 모두 보낸다)
+            long? skin = p.EquippedSkinId, theme = p.EquippedThemeId, cursor = p.EquippedCursorId, delta = p.EquippedDeltaId;
+            EquipRow(body, "스킨", Data.ItemTypes.Skin, skin, items, -340, id => actions.Equip(id, theme, cursor, delta));
+            EquipRow(body, "테마", Data.ItemTypes.Theme, theme, items, -480, id => actions.Equip(skin, id, cursor, delta));
+            EquipRow(body, "커서", Data.ItemTypes.Cursor, cursor, items, -620, id => actions.Equip(skin, theme, id, delta));
+            EquipRow(body, "델타 꾸미기", Data.ItemTypes.Delta, delta, items, -760, id => actions.Equip(skin, theme, cursor, id));
         }
 
         private static void Section(RectTransform body, string title, float y)
@@ -231,7 +234,7 @@ namespace Executor.Play
             {
                 bool on = id == equipped;
                 long? pick = id;
-                var b = Button(body, on ? "✓ " + name : name, () => { if (!on) onPick(pick); }, 22,
+                var b = Button(body, on ? "● " + name : name, () => { if (!on) onPick(pick); }, 22,
                     on ? (Color?)Line : new Color32(0x22, 0x26, 0x2e, 0xff));
                 Place(b, new Vector2(0, 1), new Vector2(x, y - 40), new Vector2(180, 64), new Vector2(0, 1));
                 x += 192;

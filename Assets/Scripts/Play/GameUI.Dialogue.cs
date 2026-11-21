@@ -256,6 +256,7 @@ namespace Executor.Play
         /// <summary>마우스가 로그·자동·건너뛰기나 선택지 위에 있으면 true (그 클릭은 "다음 대사"로 치지 않는다)</summary>
         public bool PointerOnDialogueControls(Vector2 screen)
         {
+            if (PointerOnNarrationSkip(screen)) return true;
             if (!_dialogue.activeSelf) return false;
             if (_dialogueButtons != null && RectTransformUtility.RectangleContainsScreenPoint(_dialogueButtons, screen, null)) return true;
             foreach (Transform c in _choices)

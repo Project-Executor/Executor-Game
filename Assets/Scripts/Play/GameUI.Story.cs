@@ -15,7 +15,7 @@ namespace Executor.Play
         /// <summary>닉네임 입력의 중복 확인 버튼, 확인 버튼</summary>
         public Action OnCheckNickname, OnSubmitNickname;
         /// <summary>나레이션 화면을 누르면 다음, 건너뛰기</summary>
-        public Action OnNarrationNext, OnNarrationSkip;
+        public Action OnNarrationSkip;
 
         private GameObject _narration, _narrationLine, _nameScreen;
         private Image _narrationBg;
@@ -26,6 +26,13 @@ namespace Executor.Play
         private Button _nameSubmit;
         private RectTransform _nameSubmitRt;
         private FieldFrame _nameFrame;
+        /// <summary>나레이션 건너뛰기 버튼 (이 위의 클릭은 "다음"으로 치지 않는다)</summary>
+        private RectTransform _narrationSkip;
+
+        /// <summary>마우스가 나레이션 건너뛰기 버튼 위에 있는지</summary>
+        private bool PointerOnNarrationSkip(Vector2 screen) =>
+            _narration.activeSelf && _narrationLine.activeSelf && _narrationSkip != null
+            && RectTransformUtility.RectangleContainsScreenPoint(_narrationSkip, screen, null);
 
         private void BuildNarration()
         {
@@ -39,7 +46,9 @@ namespace Executor.Play
             Transform line = _narrationLine.transform;
             _narrationBg = Fill(line, "Background", Color.white);
             Inset(_narrationBg, 0, 0, 0, 0);
-            Clickable(_narrationBg, () => OnNarrationNext?.Invoke(), Color.white, Color.white, Color.white);
+            // 화면 클릭은 WireframeGame의 입력(E·Space·Enter·클릭)이 한 번만 처리한다.
+            // 여기에도 버튼을 달면 클릭 한 번에 두 단계가 넘어간다
+            _narrationBg.raycastTarget = true;
             // 가운데 띠: 양 끝이 투명한 짙은 띠
             var band = new GameObject("Band", typeof(RectTransform), typeof(RawImage));
             band.transform.SetParent(line, false);
@@ -58,6 +67,7 @@ namespace Executor.Play
             // 건너뛰기
             RectTransform skip = Node(line, "Skip");
             AtRight(skip, 24 * S, 24 * S, 96 * S, 32 * S);
+            _narrationSkip = skip;
             Image skipBg = Fill(skip, "Bg", Hex(0x0c0a18, 0.8f));
             Inset(skipBg, 0, 0, 0, 0);
             HoverArea(skip, "Hover", Hex(0x22d3ee, 0.12f), () => OnNarrationSkip?.Invoke(), out Image skipArea);

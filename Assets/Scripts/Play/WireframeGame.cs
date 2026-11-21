@@ -787,7 +787,6 @@ namespace Executor.Play
             GameSettings.Changed += () => { if (_board != null) UpdateHud(); };
             _game.OnCheckNickname = CheckNickname;
             _game.OnSubmitNickname = () => { if (AskingName) SubmitName(); };
-            _game.OnNarrationNext = () => { if (_mode == Mode.Story && !AskingName) NextStoryStep(); };
             _game.OnNarrationSkip = SkipStory;
             _game.OnDialogueNext = NextLine;
             _game.OnDialogueSkip = () =>

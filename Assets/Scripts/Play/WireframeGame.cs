@@ -145,6 +145,7 @@ namespace Executor.Play
             _menu.OnTitleLogin = OpenLogin;
             _menu.OnTitleLogout = Logout;
             _menu.OnTitleOffline = () => { PlayerSession.StartOffline(); ReloadChapters(); ShowTitle(); };
+            _menu.OnTitleQuit = () => _menu.ShowQuitConfirm(QuitGame);
             _menu.OnSettings = () => _menu.ShowSettings(PlayerSession.DisplayName, PlayerSession.IsOnline, Logout,
                 () => ReportPanel.Open(_menu.PopupRoot, new ReportPanel.Target { PreferCategory = "버그 제보" }),
                 () => ReportPanel.OpenMine(_menu.PopupRoot));
@@ -191,18 +192,39 @@ namespace Executor.Play
             _mode = Mode.Title;
             Block();
             HideGame();
-            string account = PlayerSession.IsOnline ? $"{PlayerSession.DisplayName} 님으로 로그인" : "오프라인 테스트 중";
-            _menu.ShowTitle(PlayerSession.CanPlay, account, PlayerSession.IsOnline ? "로그아웃" : "오프라인 종료");
+            _menu.ShowTitle(PlayerSession.CanPlay, PlayerSession.IsOnline ? PlayerSession.DisplayName : null,
+                PlayerSession.IsOnline ? "로그아웃" : "오프라인 종료");
+            if (!PlayerSession.CanPlay) PingForTitle();
+        }
+
+        /// <summary>시작 화면 로그인 버튼 아래 "서버 연결됨"</summary>
+        private async void PingForTitle()
+        {
+            var (reached, ms) = await HealthApi.PingAsync();
+            if (_mode == Mode.Title) _menu.SetTitleServer(reached, ms);
         }
 
         private void OpenLogin()
         {
             // 로그인하면 시작 화면으로 돌아가고 화면을 클릭해 메인으로 들어간다.
             // 닉네임이 없으면(가입 후 첫 로그인) 바로 튜토리얼 1스테이지로 가서 닉네임을 입력받는다
-            _menu.ShowLogin(PlayerSession.LoginAsync, PlayerSession.SignupAsync, async () =>
+            _menu.ShowLogin(new MenuUI.LoginActions
             {
-                await ReloadChaptersAsync();
-                if (PlayerSession.IsOnline && !PlayerSession.HasNickname) StartFirstTutorial(); else ShowTitle();
+                // "로그인 유지"를 끄면 토큰을 PC에 저장하지 않는다 (다음 실행 때 다시 로그인)
+                Login = (email, password, keep) => { TokenStore.KeepLogin = keep; return PlayerSession.LoginAsync(email, password); },
+                Signup = (email, password, keep) => { TokenStore.KeepLogin = keep; return PlayerSession.SignupAsync(email, password); },
+                EmailAvailable = async email =>
+                {
+                    try { return await AuthApi.IsEmailAvailableAsync(email); }
+                    catch (ApiException) { return null; }
+                },
+                Ping = HealthApi.PingAsync,
+                KeepLogin = TokenStore.KeepLogin,
+                OnSuccess = async () =>
+                {
+                    await ReloadChaptersAsync();
+                    if (PlayerSession.IsOnline && !PlayerSession.HasNickname) StartFirstTutorial(); else ShowTitle();
+                },
             });
         }
 

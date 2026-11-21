@@ -15,7 +15,7 @@ namespace Executor.Play
     ///     인물별 도트는 Resources/Pixel/npcs/{인물ID} (없으면 objects/npc)</item>
     ///   <item>스탠딩 일러스트: Resources/Portraits/{인물ID}/{표정} (예: Portraits/cassia/smile)</item>
     ///   <item>도감 그림: Resources/Guidebook/{이름} (도감 image 값의 파일 이름, 확장자 제외)</item>
-    ///   <item>화면 일러스트: Resources/Illustrations/title (시작 화면 배경), title_logo (시작 화면 로고),
+    ///   <item>화면 일러스트: Resources/Illustrations/title_art (시작 화면, 로고 포함 한 장),
     ///     main (메인 화면 가운데 그림)</item>
     /// </list>
     /// </summary>

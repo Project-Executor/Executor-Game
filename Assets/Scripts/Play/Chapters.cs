@@ -60,6 +60,9 @@ namespace Executor.Play
 
         /// <summary>인물 대사 단계 (나레이션 화면 대신 대화창에 보여 준다)</summary>
         public const string Line = "line";
+
+        /// <summary>대화 단계: 맵 dialogues의 대화를 선택지까지 진행한다</summary>
+        public const string Dialogue = "dialogue";
     }
 
     public static class ChapterCatalog

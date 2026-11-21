@@ -202,7 +202,8 @@ namespace Executor.Data
 
     /// <summary>
     /// Type: narration (나레이션 한 줄) / line (인물 대사: 대화창에 이름표·일러스트와 함께) /
-    /// inputNickname (닉네임 입력 + 중복 확인, 이미 있으면 건너뜀)
+    /// inputNickname (닉네임 입력 + 중복 확인, 이미 있으면 건너뜀) /
+    /// dialogue (맵 dialogues의 대화 하나를 선택지까지 진행하고, 끝나면 다음 단계)
     /// </summary>
     public class StoryStep
     {
@@ -214,5 +215,7 @@ namespace Executor.Data
         public string Portrait { get; set; }
         /// <summary>narration: 배경 "error"(오류 로그, 기본) 또는 "glitch"(일그러진 델타 창)</summary>
         public string Background { get; set; }
+        /// <summary>dialogue: 맵 dialogues의 키. 없는 대화면 이 단계를 건너뛴다</summary>
+        public string DialogueId { get; set; }
     }
 }

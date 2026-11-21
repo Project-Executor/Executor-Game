@@ -46,6 +46,10 @@ namespace Executor.Play
         private readonly List<string> _questGuides = new List<string>();
         private DialogueSession _dialogue;
         private bool _choicesShown;
+        /// <summary>지금 대화가 이야기(story)의 dialogue 단계인지 (끝나면 이야기로 돌아간다)</summary>
+        private bool _dialogueInStory;
+        /// <summary>지금 이야기가 쓰는 맵의 대화들</summary>
+        private Dictionary<string, DialogueData> _storyDialogues;
         private float _endAt = -1;
         private int _blockInputFrame = -1;
         /// <summary>이번 판 결과를 서버에 보냈는지 (클리어 제출 또는 나갈 때의 실패 제출, 한 번만)</summary>
@@ -183,7 +187,7 @@ namespace Executor.Play
             {
                 ChapterInfo c = _chapters.FirstOrDefault(x => x.Id == id);
                 if (c == null || c.Story.Count == 0) return;
-                PlayStory(c.Story, ShowStageSelect);
+                PlayStory(c.Story, ShowStageSelect, c.Stages.FirstOrDefault()?.Map?.Dialogues);
             };
         }
 
@@ -870,6 +874,7 @@ namespace Executor.Play
             _guides = new GuideTracker(_board, PlayerSession.Nickname);
             _questGuides.Clear();
             _dialogue = null;
+            _dialogueInStory = false;
             _endAt = -1;
             _menu.HideAll();
             _game.HideAll();
@@ -883,7 +888,7 @@ namespace Executor.Play
             _game.ShowHud(hudPath, hudTitle, DefaultQuest);
             UpdateHud();
 
-            if (withIntro && stage.Map.Story?.Intro?.Count > 0) PlayStory(stage.Map.Story.Intro, BeginPlay);
+            if (withIntro && stage.Map.Story?.Intro?.Count > 0) PlayStory(stage.Map.Story.Intro, BeginPlay, stage.Map.Dialogues);
             else BeginPlay();
         }
 
@@ -1057,8 +1062,11 @@ namespace Executor.Play
         }
 
         // ---------------- 나레이션 ----------------
-        private void PlayStory(List<StoryStep> steps, System.Action after)
+        /// <param name="dialogues">dialogue 단계가 고를 대화 (그 맵의 dialogues)</param>
+        private void PlayStory(List<StoryStep> steps, System.Action after, Dictionary<string, DialogueData> dialogues)
         {
+            _storyDialogues = dialogues;
+            _dialogueInStory = false;
             _story = steps;
             _storyIndex = -1;
             _afterStory = after;
@@ -1084,6 +1092,23 @@ namespace Executor.Play
                 return;
             }
             StoryStep step = _story[_storyIndex];
+            if (step.Type == StoryTypes.Dialogue)
+            {
+                // 대화 단계: 대화창에서 선택지까지 진행하고, 끝나면 ShowDialogueNode가 다음 단계로 돌아온다. 없는 대화면 건너뜀
+                if (step.DialogueId == null || _storyDialogues == null
+                    || !_storyDialogues.TryGetValue(step.DialogueId, out DialogueData data))
+                {
+                    Debug.LogWarning($"[Story] 대화 '{step.DialogueId}'가 맵에 없어 건너뜁니다.");
+                    NextStoryStep();
+                    return;
+                }
+                _game.HideNarration();
+                _dialogue = new DialogueSession(data, PlayerSession.Nickname);
+                _dialogueInStory = true;
+                _mode = Mode.Dialogue;
+                ShowDialogueNode();
+                return;
+            }
             if (step.Type == StoryTypes.Line)
             {
                 _game.HideNarration();
@@ -1583,7 +1608,7 @@ namespace Executor.Play
             {
                 _dialogue.Advance();
                 if (_dialogue.IsFinished || _dialogue.HasChoices) continue;
-                var who = Speaker(_dialogue.Current.Speaker ?? _dialogue.Npc.Name, _dialogue.Current.Portrait);
+                var who = Speaker(_dialogue.Current.Speaker ?? _dialogue.Npc?.Name, _dialogue.Current.Portrait);
                 _game.LogLine(who.speaker, _dialogue.Text, who.tag);
             }
             ShowDialogueNode();
@@ -1600,6 +1625,15 @@ namespace Executor.Play
         private void ShowDialogueNode()
         {
             Block();
+            if (_dialogue.IsFinished && _dialogueInStory)
+            {
+                // 이야기 속 대화가 끝나면 이야기의 다음 단계로
+                _dialogue = null;
+                _dialogueInStory = false;
+                _mode = Mode.Story;
+                NextStoryStep();
+                return;
+            }
             if (_dialogue.IsFinished)
             {
                 _game.HideDialogue();
@@ -1610,7 +1644,7 @@ namespace Executor.Play
                 return;
             }
             _choicesShown = false;
-            ShowSpeech(_dialogue.Current.Speaker ?? _dialogue.Npc.Name, _dialogue.Current.Portrait, _dialogue.Text);
+            ShowSpeech(_dialogue.Current.Speaker ?? _dialogue.Npc?.Name, _dialogue.Current.Portrait, _dialogue.Text);
             UpdateHud();
         }
 
@@ -1720,7 +1754,7 @@ namespace Executor.Play
                 if (res != null) LoadResultRank(stage);
             }
 
-            if (_stage.Map.Story?.Outro?.Count > 0) PlayStory(_stage.Map.Story.Outro, ShowResult);
+            if (_stage.Map.Story?.Outro?.Count > 0) PlayStory(_stage.Map.Story.Outro, ShowResult, _stage.Map.Dialogues);
             else ShowResult();
         }
 

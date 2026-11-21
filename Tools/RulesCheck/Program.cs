@@ -232,6 +232,12 @@ public static class Program
         s2.Choose(0);
         Check("같은 인물 두 번째 대화 -> 열쇠 다시 안 줌, 빈 이름은 '집행자'", b.KeyCount("lab") == 1 && s2.GivenKeys.Count == 0);
         Check("대화는 턴을 쓰지 않음", b.Turns == 2);
+        var s3 = new DialogueSession(map.Dialogues["talk"], "오집행");
+        s3.Choose(0);
+        Check("이야기 속 대화 (인물 없음): 선택지 진행, 열쇠 효과 무시", s3.Npc == null && s3.Text == "열쇠" && s3.GivenKeys.Count == 0
+                                                                && b.KeyCount("lab") == 1);
+        s3.Advance();
+        Check("이야기 속 대화 끝", s3.IsFinished);
         r = b.Move(Direction.Down); // (3,1) -> (3,2), 인물은 (4,2)
         Check("인물 옆으로 이동", r.Outcome == MoveOutcome.Moved);
         Check("인물 칸 -> 막힘", b.Move(Direction.Right).Outcome == MoveOutcome.Blocked);

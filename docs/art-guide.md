@@ -60,7 +60,7 @@
 | 출구 `exit` | `exit_gate_64x96` (위로 반 칸 솟음) |
 | 감염된 컴퓨터 `computer` | `computer_infected_64x72`, 복구하면 `computer_fixed_64x72` |
 
-인물(`npc`)과 플레이어는 이 세트에 없어서 아래 예전 경로를 쓴다.
+인물(`npc`)과 플레이어는 이 세트에 없어서 아래 예전 경로를 쓴다. 인물 도트는 `Pixel/npcs/{인물ID}_idle_0, _1, …`(서 있기 프레임, 0.5초마다 넘김, 64px = 한 칸으로 발이 칸 아래에 닿게)이 있으면 그것, 없으면 `Pixel/npcs/{인물ID}.png` 한 장.
 
 ### 타일 (배경 있음, 칸을 꽉 채움) — 맵 세트가 없을 때
 
@@ -200,7 +200,7 @@ Portraits/
 | 이름표 | 인물ID (폴더 이름) | 스탠딩 일러스트 | 맵 도트 |
 | --- | --- | --- | --- |
 | 집행자 · `{nickname}` (주인공) | `player` | 있음 | `Pixel/player/` (걷는 동작) |
-| 카시아 | `cassia` | 있음 | `Pixel/npcs/cassia.png` (없음) |
+| 카시아 | `cassia` | 있음 | `Pixel/npcs/cassia_idle_0·1.png` (서 있기 2프레임, 64×96, 시안 characters_reference 임시) |
 | 연구원 | `researcher` | 없음 | 없음 |
 | 감독관 | `supervisor` | 없음 | 없음 |
 | 델타 | `delta` | 없음 | 없음 |

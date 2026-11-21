@@ -49,6 +49,11 @@ namespace Executor.Play
         /// </summary>
         private int _steps;
         private readonly Dictionary<BoardObject, SpriteRenderer> _objects = new Dictionary<BoardObject, SpriteRenderer>();
+        /// <summary>서 있기 프레임이 있는 인물 (번갈아 그려 숨 쉬듯 움직인다)</summary>
+        private readonly List<(SpriteRenderer sr, Sprite[] frames, float offset)> _idle = new List<(SpriteRenderer, Sprite[], float)>();
+        /// <summary>서 있기 프레임 하나의 시간</summary>
+        private const float IdleFrameSeconds = 0.5f;
+
         /// <summary>맵 도트 세트(Resources/Pixel/map)로 그리는지</summary>
         private bool _mapSet;
 
@@ -88,6 +93,9 @@ namespace Executor.Play
                 string characterId = obj.Type == MapObjectTypes.Npc ? CharacterCatalog.ByName(obj.Name)?.CharacterKey : null;
                 SpriteRenderer sr = Spawn(obj.Id, ArtCatalog.ForObject(obj.Type, characterId), obj.Pos, SortOrder(obj.Pos.Y, false));
                 _objects[obj] = sr;
+                Sprite[] idle = obj.Type == MapObjectTypes.Npc ? ArtCatalog.NpcIdleFrames(characterId) : System.Array.Empty<Sprite>();
+                // 인물마다 시작 박자를 조금씩 어긋나게 (여럿이 똑같이 움직이지 않게)
+                if (idle.Length > 1) _idle.Add((sr, idle, (obj.Pos.X * 0.37f + obj.Pos.Y * 0.61f) % 1f * IdleFrameSeconds));
                 // 가짜 벽도 진짜 벽과 같은 장식을 단다 (장식이 없어서 들키지 않게)
                 if (_mapSet && obj.Type == MapObjectTypes.FakeWall)
                 {
@@ -363,6 +371,10 @@ namespace Executor.Play
                 if (pair.Key != null) pair.Key.position = Vector3.MoveTowards(pair.Key.position, pair.Value, step);
             }
             AnimatePlayer();
+            foreach (var (sr, frames, offset) in _idle)
+            {
+                if (sr != null) sr.sprite = frames[(int)((Time.time + offset) / IdleFrameSeconds) % frames.Length];
+            }
 
             Camera cam = Camera.main;
             if (_hasCamTarget && cam != null)
@@ -514,6 +526,7 @@ namespace Executor.Play
             foreach (Transform child in transform) Destroy(child.gameObject);
             _objects.Clear();
             _targets.Clear();
+            _idle.Clear();
         }
     }
 }

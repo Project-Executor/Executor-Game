@@ -191,11 +191,37 @@ namespace Executor.Play
             return result;
         }
 
+        private static readonly Dictionary<string, Sprite[]> NpcIdleCache = new Dictionary<string, Sprite[]>();
+
+        /// <summary>
+        /// 인물 맵 도트의 서 있기 프레임 (Resources/Pixel/npcs/{인물ID}_idle_{0,1,...}.png). 플레이어처럼 64px = 한 칸,
+        /// 발이 칸 아래쪽에 닿고 위로 솟는다. 프레임이 없으면 빈 배열 (그때는 npcs/{인물ID}.png 한 장이나 임시 도트)
+        /// </summary>
+        public static Sprite[] NpcIdleFrames(string characterId)
+        {
+            if (string.IsNullOrEmpty(characterId)) return System.Array.Empty<Sprite>();
+            if (NpcIdleCache.TryGetValue(characterId, out Sprite[] cached)) return cached;
+            var frames = new List<Sprite>();
+            for (int i = 0; i < 16; i++)
+            {
+                var texture = Resources.Load<Texture2D>($"Pixel/npcs/{characterId}_idle_{i}");
+                if (texture == null) break;
+                texture.filterMode = FilterMode.Point;
+                float pivotY = ArtPixelsPerTile / 2f / texture.height;
+                frames.Add(Sprite.Create(texture, new Rect(0, 0, texture.width, texture.height), new Vector2(0.5f, pivotY), ArtPixelsPerTile));
+            }
+            Sprite[] result = frames.ToArray();
+            NpcIdleCache[characterId] = result;
+            return result;
+        }
+
         /// <summary>오브젝트 그래픽. npc는 인물별 도트가 있으면 그것을 쓴다</summary>
         public static Sprite ForObject(string type, string characterId = null)
         {
             if (type == MapObjectTypes.Npc && characterId != null)
             {
+                Sprite[] idle = NpcIdleFrames(characterId);
+                if (idle.Length > 0) return idle[0];
                 Sprite own = CellSprite("Pixel/npcs/" + characterId);
                 if (own != null) return own;
             }

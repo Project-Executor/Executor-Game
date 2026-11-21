@@ -20,9 +20,10 @@ namespace Executor.Network
 
         /// <summary>스킨·테마 장착. null이면 기본으로 (두 값을 모두 보낸다)</summary>
         /// <exception cref="ApiException">403 FORBIDDEN(가지고 있지 않음), 400 INVALID_INPUT(종류가 다름)</exception>
-        public static Task<EquipmentResponse> UpdateEquipmentAsync(long? skinItemId, long? themeItemId) =>
+        /// <summary>네 종류를 모두 보낸다 (PUT). null이면 해제</summary>
+        public static Task<EquipmentResponse> UpdateEquipmentAsync(long? skinItemId, long? themeItemId, long? cursorItemId, long? deltaItemId) =>
             ApiClient.PutAsync<EquipmentResponse>("/profiles/me/equipment",
-                new EquipmentRequest { SkinItemId = skinItemId, ThemeItemId = themeItemId });
+                new EquipmentRequest { SkinItemId = skinItemId, ThemeItemId = themeItemId, CursorItemId = cursorItemId, DeltaItemId = deltaItemId });
 
         /// <summary>공개 프로필 (공식 스테이지 클리어 수·별 합계)</summary>
         public static Task<ProfileDetailResponse> GetProfileAsync(long userId) =>

@@ -38,8 +38,8 @@ namespace Executor.Play
             "흰 점: 나 · 초록: 출구 · 청록: 안정 체크포인트 · 주황: 불안정 · 흐린 청록: 아직 안 간 체크포인트 · 분홍: 데이터 파편(찾은 것만) · 진홍: 이상 개체\n"
             + "노랑: 열쇠 · 자주: 문 · 갈색: 상자 · 하늘색: 방화벽 · 보라: 인물 · 어두운 회색: 찾은 가짜 벽 · 빨강/민트: 감염/복구된 컴퓨터 · 검정: 아직 안 가 본 곳";
 
-        /// <summary>Board를 텍스처로 그린다. reuse가 같은 크기면 다시 쓴다</summary>
-        public static Texture2D Render(Board board, Texture2D reuse = null)
+        /// <summary>Board를 텍스처로 그린다. reuse가 같은 크기면 다시 쓴다. revealAll이면 안 가 본 곳도 보인다 (스테이지 선택 미리 보기)</summary>
+        public static Texture2D Render(Board board, Texture2D reuse = null, bool revealAll = false)
         {
             int w = board.Width * CellPixels, h = board.Height * CellPixels;
             Texture2D tex = reuse != null && reuse.width == w && reuse.height == h
@@ -51,13 +51,13 @@ namespace Executor.Play
             for (int x = 0; x < board.Width; x++)
             {
                 var cell = new GridPos(x, y);
-                Fill(pixels, w, board.Height, x, y, !board.IsExplored(cell) ? Fog : board.IsWall(cell) ? Wall : Floor, 0);
+                Fill(pixels, w, board.Height, x, y, !revealAll && !board.IsExplored(cell) ? Fog : board.IsWall(cell) ? Wall : Floor, 0);
             }
 
             foreach (BoardObject o in board.Objects)
             {
                 // 밝혀지지 않은 칸의 오브젝트는 그리지 않는다
-                if (o.IsRemoved || !board.IsExplored(o.Pos)) continue;
+                if (o.IsRemoved || (!revealAll && !board.IsExplored(o.Pos))) continue;
                 // 찾지 못한 가짜 벽은 벽으로 그린다
                 if (o.Type == MapObjectTypes.FakeWall && !o.IsRevealed)
                 {

@@ -1,5 +1,6 @@
 using UnityEngine;
 using UnityEngine.EventSystems;
+using UnityEngine.UI;
 
 namespace Executor.Play
 {
@@ -7,7 +8,7 @@ namespace Executor.Play
     /// 화면 확대·이동. 이 컴포넌트를 붙인 RectTransform이 보이는 영역(뷰포트, RectMask2D)이고 Content를 키운다.
     /// <list type="bullet">
     ///   <item>마우스 휠: 커서 위치를 기준으로 확대·축소</item>
-    ///   <item>드래그: 확대한 상태에서 이동 (드래그하면 버튼 클릭은 취소된다)</item>
+    ///   <item>드래그: 이동 (드래그하면 버튼 클릭은 취소된다). 확대하지 않아도 PanSlack만큼은 움직일 수 있다</item>
     ///   <item>ZoomBy / ResetView: 버튼·키보드용</item>
     /// </list>
     /// Content는 뷰포트와 같은 크기로 가득 채우고 pivot은 가운데여야 한다.
@@ -18,6 +19,11 @@ namespace Executor.Play
         public float MinZoom = 1f;
         public float MaxZoom = 2.5f;
         public float Step = 1.15f;
+        /// <summary>확대와 상관없이 더 움직일 수 있는 범위 (뷰포트 크기에 대한 비율, 한쪽 방향). 0이면 확대했을 때만 움직인다</summary>
+        public float PanSlack = 0f;
+        /// <summary>내용과 함께 움직일 반복 바탕 (격자). GridTile은 확대 1일 때 한 칸 크기(px)</summary>
+        public RawImage Grid;
+        public float GridTile = 48f;
 
         public float Zoom { get; private set; } = 1f;
 
@@ -33,7 +39,7 @@ namespace Executor.Play
 
         public void OnDrag(PointerEventData e)
         {
-            if (Content == null || Zoom <= MinZoom + 0.001f) return;
+            if (Content == null || (PanSlack <= 0 && Zoom <= MinZoom + 0.001f)) return;
             float scale = GetComponentInParent<Canvas>()?.scaleFactor ?? 1f;
             Content.anchoredPosition += e.delta / scale;
             Clamp();
@@ -52,6 +58,7 @@ namespace Executor.Play
             if (Content == null) return;
             Content.localScale = Vector3.one;
             Content.anchoredPosition = Vector2.zero;
+            SyncGrid();
         }
 
         /// <summary>화면 좌표 point 아래의 내용이 제자리에 있도록 확대한다</summary>
@@ -70,9 +77,23 @@ namespace Executor.Play
         private void Clamp()
         {
             Vector2 size = Viewport.rect.size;
-            Vector2 limit = size * (Zoom - 1f) / 2f;
+            Vector2 limit = size * (Zoom - 1f) / 2f + size * PanSlack;
             Vector2 p = Content.anchoredPosition;
             Content.anchoredPosition = new Vector2(Mathf.Clamp(p.x, -limit.x, limit.x), Mathf.Clamp(p.y, -limit.y, limit.y));
+            SyncGrid();
+        }
+
+        /// <summary>
+        /// 격자 바탕을 내용과 같이 옮기고 키운다. 내용 좌표 X(뷰포트 왼쪽 기준)는 화면에서 c + p + (X - c) * zoom에 보이므로
+        /// 뷰포트 왼쪽(0)에 오는 X = c - (c + p) / zoom
+        /// </summary>
+        private void SyncGrid()
+        {
+            if (Grid == null || Content == null || GridTile <= 0) return;
+            Vector2 size = Viewport.rect.size, c = size / 2, p = Content.anchoredPosition;
+            float tile = GridTile * Zoom;
+            Grid.uvRect = new Rect((c.x - (c.x + p.x) / Zoom) / GridTile, (c.y - (c.y + p.y) / Zoom) / GridTile,
+                size.x / tile, size.y / tile);
         }
     }
 }

@@ -15,7 +15,7 @@ namespace Executor.Play
     ///     인물별 도트는 Resources/Pixel/npcs/{인물ID} (없으면 objects/npc)</item>
     ///   <item>스탠딩 일러스트: Resources/Portraits/{인물ID}/{표정} (예: Portraits/cassia/smile)</item>
     ///   <item>도감 그림: Resources/Guidebook/{이름} (도감 image 값의 파일 이름, 확장자 제외)</item>
-    ///   <item>화면 일러스트: Resources/Illustrations/title (시작 화면 배경), title_logo (시작 화면 로고),
+    ///   <item>화면 일러스트: Resources/Illustrations/title_art (시작 화면, 로고 포함 한 장),
     ///     main (메인 화면 가운데 그림)</item>
     /// </list>
     /// </summary>
@@ -29,14 +29,6 @@ namespace Executor.Play
         /// </summary>
         public const int ArtPixelsPerTile = 64;
 
-        /// <summary>대화의 speaker 이름 -> 인물 ID (일러스트·도트 폴더 이름)</summary>
-        public static readonly Dictionary<string, string> SpeakerToCharacter = new Dictionary<string, string>
-        {
-            ["집행자"] = "player",
-            ["연구원"] = "researcher",
-            ["감독관"] = "supervisor",
-            ["카시아"] = "cassia",
-        };
 
         private static readonly Dictionary<string, Sprite> Cache = new Dictionary<string, Sprite>();
 
@@ -45,11 +37,89 @@ namespace Executor.Play
         /// 스테이지 화면 바탕색. 벽도 같은 색으로 테두리 없이 칠해 벽이 블록이 아니라 맵 바깥(빈 공간)처럼 보이게 한다 —
         /// 바닥만 길처럼 떠 보인다. tiles/wall.png를 넣으면 그 그림을 쓴다
         /// </summary>
-        public static readonly Color32 MapBackground = new Color32(0x0d, 0x0d, 0x15, 0xff);
+        public static readonly Color32 MapBackground = new Color32(0x0a, 0x07, 0x16, 0xff); // 시안의 바탕(공허)
 
         public static Sprite Wall => Pixel("tiles/wall", MapBackground, Shape.Flat);
-        /// <summary>복구된 컴퓨터 (Resources/Pixel/objects/computerRestored)</summary>
-        public static Sprite ComputerRestored => Pixel("objects/computerRestored", new Color32(0x5f, 0xd1, 0xb0, 0xff), Shape.Frame);
+
+        /// <summary>
+        /// 바로 아래 칸이 바닥인 벽(바닥에서 보면 위쪽 벽 한 줄)에 쓰는 그림: Pixel/tiles/wall_top.png. 없으면 null (그냥 벽).
+        /// 세로로 긴 그림이면 아래가 칸 바닥에 닿고 위로 솟는다
+        /// </summary>
+        public static Sprite WallTop => CellSprite("Pixel/tiles/wall_top");
+        /// <summary>복구된 컴퓨터 (맵 세트 computer_fixed, 없으면 Resources/Pixel/objects/computerRestored)</summary>
+        public static Sprite ComputerRestored =>
+            MapArt("computer_fixed_64x72") ?? Pixel("objects/computerRestored", new Color32(0x5f, 0xd1, 0xb0, 0xff), Shape.Frame);
+
+        // ---------------- 맵 도트 세트 (Resources/Pixel/map, 시안 Executor_Export 01_unity_sprites/map_64px) ----------------
+        // 있으면 아래 그림이 위의 예전 타일·오브젝트 그림보다 먼저 쓰인다. 파일을 지우면 예전 그림으로 돌아간다
+
+        private static Sprite MapArt(string name) => CellSprite("Pixel/map/" + name);
+
+        /// <summary>맵 세트가 들어 있는지 (벽 16장 기준)</summary>
+        public static bool HasMapSet => MapArt("wall_1111") != null;
+
+        /// <summary>벽 자동 연결: 위·오른쪽·아래·왼쪽 이웃이 벽이면 1 (wall_NESW)</summary>
+        public static Sprite WallTile(bool n, bool e, bool s, bool w) =>
+            MapArt($"wall_{(n ? 1 : 0)}{(e ? 1 : 0)}{(s ? 1 : 0)}{(w ? 1 : 0)}");
+
+        /// <summary>바닥: 대부분 floor_plain, 8칸에 1칸꼴로 회로 무늬 (칸마다 정해져 판이 바뀌어도 같다)</summary>
+        public static Sprite FloorTile(int x, int y)
+        {
+            int h = CellHash(x, y);
+            if (h % 8 != 0) return MapArt("floor_plain") ?? Floor;
+            string[] variants = { "floor_trace_l", "floor_trace_h", "floor_vias" };
+            return MapArt(variants[h / 8 % variants.Length]) ?? Floor;
+        }
+
+        /// <summary>기판 두께: 바닥(또는 그린 벽) 바로 아래가 빈 공간일 때 그 빈칸 위쪽에 그린다</summary>
+        public static Sprite BoardEdge => MapArt("board_edge");
+
+        /// <summary>
+        /// 벽 장식. 앞면이 보이는(아래가 바닥) 가로로 이어진 벽은 슬롯(왼쪽·가운데·오른쪽), 나머지 벽은 가끔 칩·핀
+        /// (앞면이 보이면 _front). 대부분의 벽은 장식 없음(null)
+        /// </summary>
+        public static Sprite WallDeco(int x, int y, bool e, bool front, bool w)
+        {
+            if (front && (e || w)) return MapArt(e && w ? "deco_slot_mid" : e ? "deco_slot_left" : "deco_slot_right");
+            int h = CellHash(x + 31, y + 17);
+            if (h % 9 != 0) return null;
+            string name = h / 9 % 2 == 0 ? "deco_chip" : "deco_fins";
+            return MapArt(front ? name + "_front" : name);
+        }
+
+        /// <summary>맵 세트의 오브젝트 그림 (없으면 null)</summary>
+        private static Sprite MapObjectArt(string type) => type switch
+        {
+            MapObjectTypes.Crate => MapArt("drive"),
+            MapObjectTypes.Breakable => MapArt("firewall"),
+            MapObjectTypes.Key => MapArt("keycard"),
+            MapObjectTypes.Door => MapArt("shutter_locked"),
+            MapObjectTypes.Checkpoint => MapArt("checkpoint_off"),
+            MapObjectTypes.Hidden => MapArt("data_shard"),
+            MapObjectTypes.Anomaly => MapArt("null_entity"),
+            MapObjectTypes.Exit => MapArt("exit_gate_64x96"),
+            MapObjectTypes.Computer => MapArt("computer_infected_64x72"),
+            _ => null,
+        };
+
+        /// <summary>한 번 쳐서 금이 간 방화벽 (맵 세트). 없으면 null</summary>
+        public static Sprite FirewallDamaged => MapArt("firewall_damaged");
+        /// <summary>열린 셔터 (맵 세트). 없으면 null (예전처럼 문이 사라진다)</summary>
+        public static Sprite DoorOpen => MapArt("shutter_open");
+        /// <summary>도착한 체크포인트 (맵 세트). 없으면 null</summary>
+        public static Sprite CheckpointOn => MapArt("checkpoint_on");
+
+        private static int CellHash(int x, int y)
+        {
+            unchecked
+            {
+                int h = x * 73856093 ^ y * 19349663;
+                h ^= h >> 13;
+                h *= 0x5bd1e995;
+                h ^= h >> 15;
+                return h & 0x7fffffff;
+            }
+        }
         public static Sprite Player => Pixel("player", new Color32(0x4f, 0xd1, 0xff, 0xff), Shape.Diamond);
 
         private static readonly Dictionary<Direction, Sprite[]> PlayerCache = new Dictionary<Direction, Sprite[]>();
@@ -121,14 +191,42 @@ namespace Executor.Play
             return result;
         }
 
+        private static readonly Dictionary<string, Sprite[]> NpcIdleCache = new Dictionary<string, Sprite[]>();
+
+        /// <summary>
+        /// 인물 맵 도트의 서 있기 프레임 (Resources/Pixel/npcs/{인물ID}_idle_{0,1,...}.png). 플레이어처럼 64px = 한 칸,
+        /// 발이 칸 아래쪽에 닿고 위로 솟는다. 프레임이 없으면 빈 배열 (그때는 npcs/{인물ID}.png 한 장이나 임시 도트)
+        /// </summary>
+        public static Sprite[] NpcIdleFrames(string characterId)
+        {
+            if (string.IsNullOrEmpty(characterId)) return System.Array.Empty<Sprite>();
+            if (NpcIdleCache.TryGetValue(characterId, out Sprite[] cached)) return cached;
+            var frames = new List<Sprite>();
+            for (int i = 0; i < 16; i++)
+            {
+                var texture = Resources.Load<Texture2D>($"Pixel/npcs/{characterId}_idle_{i}");
+                if (texture == null) break;
+                texture.filterMode = FilterMode.Point;
+                float pivotY = ArtPixelsPerTile / 2f / texture.height;
+                frames.Add(Sprite.Create(texture, new Rect(0, 0, texture.width, texture.height), new Vector2(0.5f, pivotY), ArtPixelsPerTile));
+            }
+            Sprite[] result = frames.ToArray();
+            NpcIdleCache[characterId] = result;
+            return result;
+        }
+
         /// <summary>오브젝트 그래픽. npc는 인물별 도트가 있으면 그것을 쓴다</summary>
         public static Sprite ForObject(string type, string characterId = null)
         {
             if (type == MapObjectTypes.Npc && characterId != null)
             {
+                Sprite[] idle = NpcIdleFrames(characterId);
+                if (idle.Length > 0) return idle[0];
                 Sprite own = CellSprite("Pixel/npcs/" + characterId);
                 if (own != null) return own;
             }
+            Sprite set = MapObjectArt(type);
+            if (set != null) return set;
             switch (type)
             {
                 case MapObjectTypes.Exit: return Pixel("objects/exit", new Color32(0x3c, 0xcf, 0x7a, 0xff), Shape.Frame);
@@ -162,9 +260,9 @@ namespace Executor.Play
                 characterId = parts[0];
                 if (parts.Length > 1) expression = parts[1];
             }
-            else if (speaker != null && SpeakerToCharacter.TryGetValue(speaker, out string id))
+            else if (CharacterCatalog.ByName(speaker) is Network.GameCharacter c)
             {
-                characterId = id;
+                characterId = c.CharacterKey; // 이름 -> 인물 ID (관리자 웹 '인물')
             }
             if (characterId == null) return null;
             return Load<Sprite>($"Portraits/{characterId}/{expression}")
@@ -183,6 +281,17 @@ namespace Executor.Play
             int dot = name.LastIndexOf('.');
             if (dot > 0) name = name.Substring(0, dot);
             return name.Length == 0 ? null : Load<Sprite>("Guidebook/" + name);
+        }
+
+        /// <summary>상점 아이템 그림: 아이템 image 값의 파일 이름으로 Resources/Items/{이름}. 없으면 null (미리 보기는 색 터미널)</summary>
+        public static Sprite Item(string image)
+        {
+            if (string.IsNullOrWhiteSpace(image)) return null;
+            string name = image.Trim().Replace('\\', '/');
+            name = name.Substring(name.LastIndexOf('/') + 1);
+            int dot = name.LastIndexOf('.');
+            if (dot > 0) name = name.Substring(0, dot);
+            return name.Length == 0 ? null : Load<Sprite>("Items/" + name);
         }
 
         private enum Shape { Solid, Flat, Frame, Cross, Crack, Small, Bar, Diamond }
@@ -229,7 +338,7 @@ namespace Executor.Play
         }
 
         /// <summary>
-        /// UI 그림 (Resources/UI/{이름}, 피그마에서 2배로 내보낸 것). 크기는 코드가 정하므로 Pixels Per Unit은 상관없다. 없으면 null
+        /// UI 그림 (Resources/UI/{이름}). 도트 아이콘은 8배로 키워 둔 그림을 부드럽게 줄여 그린다. 크기는 코드가 정하므로 Pixels Per Unit은 상관없다. 없으면 null
         /// </summary>
         public static Sprite Ui(string name)
         {

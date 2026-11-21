@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using Executor.Data;
 using Executor.Game;
 using UnityEngine;
@@ -48,6 +49,18 @@ namespace Executor.Play
         /// </summary>
         private int _steps;
         private readonly Dictionary<BoardObject, SpriteRenderer> _objects = new Dictionary<BoardObject, SpriteRenderer>();
+        /// <summary>서 있기 프레임이 있는 인물 (번갈아 그려 숨 쉬듯 움직인다)</summary>
+        private readonly List<(SpriteRenderer sr, Sprite[] frames, float offset)> _idle = new List<(SpriteRenderer, Sprite[], float)>();
+        /// <summary>서 있기 프레임 하나의 시간</summary>
+        private const float IdleFrameSeconds = 0.5f;
+
+        /// <summary>맵 도트 세트(Resources/Pixel/map)로 그리는지</summary>
+        private bool _mapSet;
+
+        /// <summary>맵 세트의 타일 층: 바닥 → 기판 두께 → 벽 → 벽 장식. 오브젝트·플레이어는 그 위(SortOrder)</summary>
+        private const int LayerFloor = 0, LayerEdge = 1, LayerWall = 2, LayerDeco = 3;
+        /// <summary>판 테두리 선 (발광 없이 밝은 남색, 시안 README)</summary>
+        private static readonly Color BoardLine = new Color32(0x4c, 0x4a, 0xa8, 0xff);
         private readonly Dictionary<Transform, Vector3> _targets = new Dictionary<Transform, Vector3>();
         private Material _material;
 
@@ -62,18 +75,37 @@ namespace Executor.Play
                 if (unlit != null) _material = new Material(unlit);
             }
 
-            for (int y = 0; y < board.Height; y++)
-            for (int x = 0; x < board.Width; x++)
+            _mapSet = ArtCatalog.HasMapSet;
+            if (_mapSet) BuildMapSetTiles(board);
+            else
             {
-                var pos = new GridPos(x, y);
-                Spawn(board.IsWall(pos) ? "wall" : "floor", board.IsWall(pos) ? ArtCatalog.Wall : ArtCatalog.Floor, pos, 0);
+                for (int y = 0; y < board.Height; y++)
+                for (int x = 0; x < board.Width; x++)
+                {
+                    var pos = new GridPos(x, y);
+                    Sprite tile = board.IsWall(pos) ? WallSprite(board, pos) : ArtCatalog.Floor;
+                    // 위쪽 벽 그림은 세로로 길면 윗칸까지 솟으므로 다른 타일보다 위에
+                    Spawn(board.IsWall(pos) ? "wall" : "floor", tile, pos, tile != null && tile == ArtCatalog.WallTop ? 1 : 0);
+                }
             }
             foreach (BoardObject obj in board.Objects)
             {
-                string characterId = obj.Type == MapObjectTypes.Npc && obj.Name != null
-                                     && ArtCatalog.SpeakerToCharacter.TryGetValue(obj.Name, out string id) ? id : null;
+                string characterId = obj.Type == MapObjectTypes.Npc ? CharacterCatalog.ByName(obj.Name)?.CharacterKey : null;
                 SpriteRenderer sr = Spawn(obj.Id, ArtCatalog.ForObject(obj.Type, characterId), obj.Pos, SortOrder(obj.Pos.Y, false));
                 _objects[obj] = sr;
+                Sprite[] idle = obj.Type == MapObjectTypes.Npc ? ArtCatalog.NpcIdleFrames(characterId) : System.Array.Empty<Sprite>();
+                // 인물마다 시작 박자를 조금씩 어긋나게 (여럿이 똑같이 움직이지 않게)
+                if (idle.Length > 1) _idle.Add((sr, idle, (obj.Pos.X * 0.37f + obj.Pos.Y * 0.61f) % 1f * IdleFrameSeconds));
+                // 가짜 벽도 진짜 벽과 같은 장식을 단다 (장식이 없어서 들키지 않게)
+                if (_mapSet && obj.Type == MapObjectTypes.FakeWall)
+                {
+                    Sprite deco = DecoSprite(board, obj.Pos);
+                    if (deco != null)
+                    {
+                        SpriteRenderer d = Spawn(obj.Id + ":deco", deco, obj.Pos, LayerDeco);
+                        d.transform.SetParent(sr.transform, true);
+                    }
+                }
             }
             _facing = Direction.Down;
             _walkLeft = 0;
@@ -110,9 +142,28 @@ namespace Executor.Play
                 {
                     // 가짜 벽: 드러난 뒤에도 화면에서는 계속 진짜 벽과 똑같이 그린다 (드러남은 미니맵에만 표시)
                     sr.gameObject.SetActive(!obj.IsRemoved);
-                    sr.sprite = ArtCatalog.Wall;
+                    sr.sprite = WallSprite(_board, obj.Pos);
+                    if (_mapSet)
+                    {
+                        sr.sortingOrder = LayerWall; // 벽과 같은 층 (오브젝트·플레이어가 위로 지나간다)
+                        continue;
+                    }
+                }
+                else if (_mapSet && obj.Type == MapObjectTypes.Door && ArtCatalog.DoorOpen != null)
+                {
+                    // 열린 문은 사라지지 않고 열린 셔터로 바닥 층에 남는다
+                    sr.gameObject.SetActive(obj.IsRevealed);
+                    sr.sprite = obj.IsRemoved ? ArtCatalog.DoorOpen : ArtCatalog.ForObject(obj.Type);
+                    _targets[sr.transform] = ToWorld(obj.Pos);
+                    sr.sortingOrder = obj.IsRemoved ? LayerDeco : SortOrder(obj.Pos.Y, false);
+                    continue;
                 }
                 else sr.gameObject.SetActive(!obj.IsRemoved && obj.IsRevealed);
+                // 체크포인트: 도착했으면 켜진 그림
+                if (_mapSet && obj.Type == MapObjectTypes.Checkpoint && ArtCatalog.CheckpointOn != null)
+                {
+                    sr.sprite = _board.StabilityOf(obj.Order) != null ? ArtCatalog.CheckpointOn : ArtCatalog.ForObject(obj.Type);
+                }
                 // 컴퓨터: 감염 / 복구
                 if (obj.Type == MapObjectTypes.Computer)
                 {
@@ -125,7 +176,13 @@ namespace Executor.Play
                 {
                     int max = _board.Data.Objects.Find(o => o.Id == obj.Id)?.Hp ?? 1;
                     Sprite[] stages = ArtCatalog.BreakableStages;
-                    if (stages.Length > 0)
+                    if (_mapSet && ArtCatalog.FirewallDamaged != null)
+                    {
+                        // 맵 세트: 한 번이라도 맞으면 금 간 방화벽
+                        sr.sprite = obj.Hp < max ? ArtCatalog.FirewallDamaged : ArtCatalog.ForObject(obj.Type);
+                        sr.color = Color.white;
+                    }
+                    else if (stages.Length > 0)
                     {
                         sr.sprite = stages[ArtCatalog.BreakableStage(obj.Hp, max, stages.Length)];
                         sr.color = Color.white;
@@ -145,6 +202,131 @@ namespace Executor.Play
         /// 아랫줄의 것을 가리지 않게 한다. 같은 줄이면 플레이어가 오브젝트 앞
         /// </summary>
         private static int SortOrder(int row, bool player) => 10 + row * 2 + (player ? 1 : 0);
+
+        /// <summary>화면에서 벽으로 보이는 칸: 진짜 벽 + 가짜 벽 (가짜 벽은 드러난 뒤에도 화면에서는 벽)</summary>
+        private static bool LooksLikeWall(Board board, GridPos p) =>
+            board.IsWall(p) || board.Objects.Any(o => o.Type == MapObjectTypes.FakeWall && !o.IsRemoved && o.Pos.Equals(p));
+
+        /// <summary>벽처럼 이어 그리는 칸: 화면에서 벽인 칸 + 맵 바깥 (테두리 벽이 바깥으로 이어져 보이게)</summary>
+        private static bool WallLike(Board board, GridPos p) => !board.IsInside(p) || LooksLikeWall(board, p);
+
+        /// <summary>
+        /// 맵 세트에서 그리는 벽인지. 맵 가장자리 벽은 아래가 바닥인 윗벽만 그리고, 옆·아래 테두리는 비워 둔다 (시안 README)
+        /// </summary>
+        private static bool DrawnWall(Board board, GridPos p)
+        {
+            if (!board.IsWall(p)) return false;
+            bool border = p.X == 0 || p.Y == 0 || p.X == board.Width - 1 || p.Y == board.Height - 1;
+            if (!border) return true;
+            var below = new GridPos(p.X, p.Y + 1);
+            return board.IsInside(below) && !LooksLikeWall(board, below);
+        }
+
+        /// <summary>
+        /// 맵 세트 타일: 바닥(무늬 섞기), 벽 자동 연결(wall_NESW) + 장식, 그린 칸 바로 아래가 빈 공간이면 기판 두께, 판 테두리 선
+        /// </summary>
+        private void BuildMapSetTiles(Board board)
+        {
+            int minX = int.MaxValue, minY = int.MaxValue, maxX = int.MinValue, maxY = int.MinValue;
+            for (int y = 0; y < board.Height; y++)
+            for (int x = 0; x < board.Width; x++)
+            {
+                var pos = new GridPos(x, y);
+                bool drawn;
+                if (board.IsWall(pos))
+                {
+                    drawn = DrawnWall(board, pos);
+                    if (drawn)
+                    {
+                        Spawn("wall", WallSprite(board, pos), pos, LayerWall);
+                        Sprite deco = DecoSprite(board, pos);
+                        if (deco != null) Spawn("deco", deco, pos, LayerDeco);
+                    }
+                }
+                else
+                {
+                    drawn = true;
+                    Spawn("floor", ArtCatalog.FloorTile(x, y), pos, LayerFloor);
+                }
+                if (drawn)
+                {
+                    minX = Mathf.Min(minX, x);
+                    maxX = Mathf.Max(maxX, x);
+                    minY = Mathf.Min(minY, y);
+                    maxY = Mathf.Max(maxY, y);
+                }
+                var below = new GridPos(x, y + 1);
+                if (drawn && ArtCatalog.BoardEdge != null && (!board.IsInside(below) || (board.IsWall(below) && !DrawnWall(board, below))))
+                {
+                    Spawn("edge", ArtCatalog.BoardEdge, below, LayerEdge);
+                }
+            }
+            if (minX <= maxX)
+            {
+                // 그린 칸(바닥·벽)을 감싸고, 아래는 기판 두께(board_edge 위쪽 18px)까지
+                float edge = ArtCatalog.BoardEdge != null ? 18f / ArtCatalog.ArtPixelsPerTile : 0;
+                float h = board.Height;
+                SpawnBoardFrame(minX - 0.5f, maxX + 0.5f, h - 1 - minY + 0.5f, h - 1 - maxY - 0.5f - edge);
+            }
+        }
+
+        /// <summary>벽 장식 (가짜 벽도 같은 규칙)</summary>
+        private static Sprite DecoSprite(Board board, GridPos p)
+        {
+            var below = new GridPos(p.X, p.Y + 1);
+            bool front = board.IsInside(below) && !LooksLikeWall(board, below);
+            return ArtCatalog.WallDeco(p.X, p.Y, WallLike(board, new GridPos(p.X + 1, p.Y)), front, WallLike(board, new GridPos(p.X - 1, p.Y)));
+        }
+
+        private static Sprite _pixel;
+
+        /// <summary>판 둘레에 남색 선 (월드 좌표 왼쪽·오른쪽·위·아래 바깥쪽에 두께 2px, 칸 1개 = 64px 기준)</summary>
+        private void SpawnBoardFrame(float left, float right, float top, float bottom)
+        {
+            if (_pixel == null)
+            {
+                var tex = new Texture2D(1, 1) { filterMode = FilterMode.Point };
+                tex.SetPixel(0, 0, Color.white);
+                tex.Apply();
+                _pixel = Sprite.Create(tex, new Rect(0, 0, 1, 1), new Vector2(0.5f, 0.5f), 1);
+            }
+            const float t = 2f / ArtCatalog.ArtPixelsPerTile;
+            float w = right - left, h = top - bottom, cx = (left + right) / 2f, cy = (top + bottom) / 2f;
+            var lines = new (Vector3 pos, Vector3 size)[]
+            {
+                (new Vector3(cx, top + t / 2, 0), new Vector3(w + 2 * t, t, 1)),
+                (new Vector3(cx, bottom - t / 2, 0), new Vector3(w + 2 * t, t, 1)),
+                (new Vector3(left - t / 2, cy, 0), new Vector3(t, h, 1)),
+                (new Vector3(right + t / 2, cy, 0), new Vector3(t, h, 1)),
+            };
+            foreach (var (pos, size) in lines)
+            {
+                var go = new GameObject("frame");
+                go.transform.SetParent(transform, false);
+                go.transform.position = pos;
+                go.transform.localScale = size;
+                var sr = go.AddComponent<SpriteRenderer>();
+                sr.sprite = _pixel;
+                sr.color = BoardLine;
+                sr.sortingOrder = LayerDeco;
+                if (_material != null) sr.sharedMaterial = _material;
+            }
+        }
+
+        /// <summary>벽 그림. 맵 세트면 이웃 벽에 맞춰 자동 연결, 아니면 바로 아래 칸이 바닥일 때(위쪽 벽 한 줄) wall_top 그림, 그 밖에 보통 벽</summary>
+        private static Sprite WallSprite(Board board, GridPos p)
+        {
+            if (ArtCatalog.HasMapSet)
+            {
+                Sprite tile = ArtCatalog.WallTile(WallLike(board, new GridPos(p.X, p.Y - 1)), WallLike(board, new GridPos(p.X + 1, p.Y)),
+                    WallLike(board, new GridPos(p.X, p.Y + 1)), WallLike(board, new GridPos(p.X - 1, p.Y)));
+                if (tile != null) return tile;
+            }
+            Sprite top = ArtCatalog.WallTop;
+            if (top == null) return ArtCatalog.Wall;
+            var below = new GridPos(p.X, p.Y + 1);
+            return board.IsInside(below) && !LooksLikeWall(board, below) ? top : ArtCatalog.Wall;
+        }
 
         /// <summary>워프: 미끄러지지 않고 바로 그 상태로 옮긴다 (카메라도)</summary>
         public void SnapToBoard()
@@ -189,6 +371,10 @@ namespace Executor.Play
                 if (pair.Key != null) pair.Key.position = Vector3.MoveTowards(pair.Key.position, pair.Value, step);
             }
             AnimatePlayer();
+            foreach (var (sr, frames, offset) in _idle)
+            {
+                if (sr != null) sr.sprite = frames[(int)((Time.time + offset) / IdleFrameSeconds) % frames.Length];
+            }
 
             Camera cam = Camera.main;
             if (_hasCamTarget && cam != null)
@@ -340,6 +526,7 @@ namespace Executor.Play
             foreach (Transform child in transform) Destroy(child.gameObject);
             _objects.Clear();
             _targets.Clear();
+            _idle.Clear();
         }
     }
 }

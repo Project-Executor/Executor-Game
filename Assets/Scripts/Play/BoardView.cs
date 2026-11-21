@@ -399,13 +399,16 @@ namespace Executor.Play
             {
                 _walkLeft -= Time.deltaTime;
                 _stepClock += Time.deltaTime;
-                // 걷기 프레임 한 바퀴 = 두 걸음 (4프레임이면 선 자세·오른발·선 자세·왼발).
-                // 한 걸음에 프레임 절반을 쓰고, 걸음 수에 따라 시작 프레임을 번갈아 고른다:
-                //   짝수 걸음 1 -> 2, 홀수 걸음 3 -> 0 (= (1 + 걸음 수 × 2) % 4)
-                int perStep = Mathf.Max(1, frames.Length / 2);
-                int start = 1 + (_steps - 1) * perStep;
+                // 걷기 프레임 한 바퀴 = 두 걸음. 한 걸음에 프레임 절반을 쓰고, 걸음 수에 따라 시작 프레임을 번갈아 고른다.
+                // 4프레임(선 자세·오른발·선 자세·왼발): 0번도 한 바퀴에 들어간다 -> 짝수 걸음 1 -> 2, 홀수 걸음 3 -> 0
+                // 5프레임 이상(0번 서 있기 + 걷기 1~N): 걷는 동안에는 1~N만 돈다 -> 1 -> 2, 3 -> 4
+                bool standApart = frames.Length >= 5;
+                int first = standApart ? 1 : 0;
+                int cycle = frames.Length - first;
+                int perStep = Mathf.Max(1, cycle / 2);
+                int start = (standApart ? 0 : 1) + (_steps - 1) * perStep;
                 int within = Mathf.Min(perStep - 1, (int)(_stepClock / WalkFrameSeconds));
-                index = ((start + within) % frames.Length + frames.Length) % frames.Length;
+                index = first + ((start + within) % cycle + cycle) % cycle;
             }
             else
             {

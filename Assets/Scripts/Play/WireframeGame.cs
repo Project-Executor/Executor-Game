@@ -412,7 +412,7 @@ namespace Executor.Play
             }
             catch (ApiException e)
             {
-                _menu.ClosePopups();
+                _menu.CloseTopPopup(); // 구매 확인 상자만 닫고 상점은 남긴다
                 _menu.ShowMessage("구매", e.IsNetworkError ? "서버에 연결할 수 없습니다." : e.Message);
             }
         }
@@ -507,6 +507,7 @@ namespace Executor.Play
             {
                 Nickname = PlayerSession.DisplayName,
                 Coin = CoinText(),
+                DeltaMet = DeltaGreeting.HasMet(_chapters),
             };
             ChapterInfo frontier = FrontierChapter();
             if (frontier != null)
@@ -1670,6 +1671,9 @@ namespace Executor.Play
         private void ShowSpeech(string rawSpeaker, string portraitKey, string text)
         {
             var who = Speaker(rawSpeaker, portraitKey);
+            // 델타가 처음 말하면 메인 화면의 델타가 "마스터"라고 부르며 인사하기 시작한다
+            string deltaName = CharacterCatalog.ByKey("delta")?.Name ?? "델타";
+            if (who.speaker == deltaName || who.portraitKey?.Split('/')[0] == "delta") DeltaGreeting.MarkMet();
             Sprite portrait = ArtCatalog.Portrait(who.portraitKey, who.speaker, out _);
             _game.ShowLine(who.speaker, text, portrait, !who.protagonist, who.tag);
         }

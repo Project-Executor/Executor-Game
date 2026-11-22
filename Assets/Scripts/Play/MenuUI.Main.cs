@@ -28,12 +28,14 @@ namespace Executor.Play
             /// <summary>마지막으로 클리어한 스테이지 "2. 드라이브를 밀어라" (없으면 null)와 그 별</summary>
             public string LastStage;
             public int LastStars = -1, LastMaxStars;
+            /// <summary>델타를 만났는지 (만난 뒤에는 "마스터"라고 부르며 인사한다, DeltaGreeting)</summary>
+            public bool DeltaMet;
         }
 
         public Action OnProfile, OnMail, OnShop, OnNotice, OnGuidebook, OnFriends, OnStages, OnContinue, OnQuit, OnMainTitle;
 
         private Text[] _mainLog;
-        private Text _mainZone, _mainZoneCount, _deltaText;
+        private Text _mainZone, _mainZoneCount, _deltaText, _deltaHeader, _deltaMeter;
         private RectTransform _mainZoneBar, _mainZoneFill, _mainCursor, _deltaFace;
         private string _cursorKey, _deltaKey;
         // 바탕화면·작업 표시줄은 메인과 스테이지 선택 화면에 하나씩 있다
@@ -56,10 +58,16 @@ namespace Executor.Play
             _main.SetActive(true);
             string name = string.IsNullOrEmpty(info.Nickname) ? "플레이어" : info.Nickname;
             SetPlayer(name, info.Coin);
-            _deltaText.text = $"…반환을 멈출 수 없습니다.\n<color=#8b98b8>{name}, 여기까지 와 주세요.</color>";
-
             string zone = string.IsNullOrEmpty(info.Zone) ? "EXECUTOR" : info.Zone;
             int bugs = Math.Max(0, info.Total - info.Cleared);
+
+            // 델타: 만나기 전에는 응답 생성 중(멀리서 부름), 만난 뒤에는 인사 (막대가 꽉 참 = 대기 중)
+            var (header, deltaText) = info.DeltaMet
+                ? DeltaGreeting.Greet(info.Total > 0 ? bugs : -1, info.Zone, info.LastStage != null)
+                : DeltaGreeting.Calling(name);
+            _deltaHeader.text = header;
+            _deltaMeter.text = info.DeltaMet ? "▮▮▮▮" : "▮▮▮▯";
+            _deltaText.text = deltaText;
             string last = info.LastStage == null
                 ? "<color=#22d3ee>[INFO]</color> 아직 클리어한 스테이지가 없습니다"
                 : $"<color=#22d3ee>[INFO]</color> 마지막 기록 · {info.LastStage} {StarText(info.LastStars, info.LastMaxStars)}";
@@ -240,10 +248,10 @@ namespace Executor.Play
 
             Image bar = Fill(box, "Header", Orange);
             At(bar, border, border, width - border * 2, header);
-            Text title = Label(bar.transform, "델타 · 응답 생성 중", 12 * S, Ink, TextAnchor.MiddleLeft, bold: true);
-            Inset(title, 10 * S, 0, 10 * S, 0);
-            Text meter = Label(bar.transform, "▮▮▮▯", 12 * S, Ink, TextAnchor.MiddleRight, UiKit.Mono);
-            Inset(meter, 10 * S, 0, 10 * S, 0);
+            _deltaHeader = Label(bar.transform, "델타 · 응답 생성 중", 12 * S, Ink, TextAnchor.MiddleLeft, bold: true);
+            Inset(_deltaHeader, 10 * S, 0, 10 * S, 0);
+            _deltaMeter = Label(bar.transform, "▮▮▮▯", 12 * S, Ink, TextAnchor.MiddleRight, UiKit.Mono);
+            Inset(_deltaMeter, 10 * S, 0, 10 * S, 0);
 
             _deltaFace = Node(box, "DeltaFace");
             At(_deltaFace, border + pad, border + header + pad, icon, icon);

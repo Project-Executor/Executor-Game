@@ -77,8 +77,10 @@
 
 - 테마에 `floor_plain`이 있으면 벽·바닥·장식·기판 두께는 기본 세트와 섞지 않는다 (벽 장식 없음, 그림에 그려져 있음).
 - 잠긴 문(`shutter_locked`)만 있고 열린 문이 없으면, 문을 열었을 때 사라진다.
-- 원본은 큰 시트(1536 × 1024, `Executor/1챕터.png`, `언더시티.png`). `python Tools/SpriteCut/cut_tiles.py <시트 폴더> <결과 폴더>`가
-  타일은 사각형으로, 오브젝트는 배경(테두리 색)을 지워 가로 64px로 자른다. 자를 위치는 스크립트의 `SETS`에서 고친다.
+- **지금 들어간 그림은 타일셋 v7** (`Executor/Executor_tileset_v7`: 1px 격자·41색 팔레트로 다시 찍은 세트). 타일은 두 테마가 같이 쓰고,
+  오브젝트는 `helloworld` = `variants_A`(시트 A), `undercity` = `objects`(시트 B). 벽 윗면은 벽 패널 윗부분 색의 이음선 없는 단색 면.
+  세트를 고치면 `python Tools/SpriteCut/install_tileset_v7.py <Executor_tileset_v7> Assets/Resources/Pixel/map`으로 다시 넣는다 (어느 그림을 어디에 쓰는지는 스크립트의 `TILES`, `OBJECTS`).
+- 예전 방식: 큰 시트(`1챕터.png`, `언더시티.png`)를 `Tools/SpriteCut/cut_tiles.py`로 직접 자르기 (배경 제거·축소). v7이 생겨 지금은 쓰지 않는다.
 
 ### 타일 (배경 있음, 칸을 꽉 채움) — 맵 세트가 없을 때
 

@@ -77,9 +77,12 @@
 
 - 테마에 `floor_plain`이 있으면 벽·바닥·장식·기판 두께는 기본 세트와 섞지 않는다 (벽 장식 없음, 그림에 그려져 있음).
 - 잠긴 문(`shutter_locked`)만 있고 열린 문이 없으면, 문을 열었을 때 사라진다.
-- **지금 들어간 그림은 타일셋 v7** (`Executor/Executor_tileset_v7`: 1px 격자·41색 팔레트로 다시 찍은 세트). 타일은 두 테마가 같이 쓰고,
-  오브젝트는 `helloworld` = `variants_A`(시트 A), `undercity` = `objects`(시트 B). 벽 윗면은 벽 패널 윗부분 색의 이음선 없는 단색 면.
-  세트를 고치면 `python Tools/SpriteCut/install_tileset_v7.py <Executor_tileset_v7> Assets/Resources/Pixel/map`으로 다시 넣는다 (어느 그림을 어디에 쓰는지는 스크립트의 `TILES`, `OBJECTS`).
+- **`helloworld`(1챕터)는 하늘색 홀로그램 시트** (`Tools/SpriteCut/sheets/helloworld_holo.png`, 배경에 체크 무늬가 그려진 1536 × 1024).
+  `python Tools/SpriteCut/install_sheet_holo.py Tools/SpriteCut/sheets/helloworld_holo.png Assets/Resources/Pixel/map/helloworld`로 넣는다.
+  체크 무늬 배경을 지우고(빛 효과는 채도로 반투명), 가로 64px로 줄인다. 어느 그림을 어디에 쓰는지는 스크립트의 `TILES`, `OBJECTS`(시트 좌표), 작은 물건 너비는 `SMALL`.
+  벽 윗면은 벽 패널의 청회색을 어둡게 한 단색, 체크포인트(도착 전)는 화살표 기둥을 어둡게 한 그림이다.
+- **`undercity`는 타일셋 v7** (`Executor/Executor_tileset_v7`: 1px 격자·41색 팔레트로 다시 찍은 세트, 오브젝트는 `objects`(시트 B)).
+  `python Tools/SpriteCut/install_tileset_v7.py <Executor_tileset_v7> Assets/Resources/Pixel/map`은 **helloworld도 v7로 덮어쓰므로**, 다시 돌린 뒤에는 위의 홀로그램 시트 설치도 다시 한다.
 - 예전 방식: 큰 시트(`1챕터.png`, `언더시티.png`)를 `Tools/SpriteCut/cut_tiles.py`로 직접 자르기 (배경 제거·축소). v7이 생겨 지금은 쓰지 않는다.
 
 ### 타일 (배경 있음, 칸을 꽉 채움) — 맵 세트가 없을 때

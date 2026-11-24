@@ -166,6 +166,7 @@ namespace Executor.Play
 
             BuildDesktopIcons(screen.transform);
             BuildDeltaNotice(screen.transform);
+            BuildGuestbookWidget(screen.transform);
             BuildLogo(screen.transform);
             BuildTerminal(screen.transform);
             BuildTaskbar(screen.transform, new[] { ("executor.exe", (Action)null) });

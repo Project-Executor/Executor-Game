@@ -178,6 +178,8 @@ namespace Executor.Play
             _menu.OnProfile = ShowProfile;
             _menu.OnMail = () => OpenMailbox(null);
             _menu.OnNotice = OpenNotices;
+            _menu.OnGuestbook = OpenGuestbook;
+            _menu.OnGuestbookPost = PostGuestbook;
             _menu.OnGuidebook = () => OpenGuidebook(null);
             _menu.OnFriends = () => Social.Open(SocialPanel.TabMessages);
             _menu.OnShop = () => OpenShop(_shopFilter);
@@ -275,6 +277,7 @@ namespace Executor.Play
             Block();
             HideGame();
             ShowMainProfile();
+            _guestbookPollAt = 0; // 메인 화면 방명록 위젯을 바로 채운다
             if (PlayerSession.IsOnline)
             {
                 try
@@ -1333,6 +1336,8 @@ namespace Executor.Play
         private void Update()
         {
             _social?.Tick(Time.deltaTime);
+            if (_mode == Mode.Main) PollGuestbook();
+            _menu.TickGuestbook();
             Keyboard k = Keyboard.current;
             if (k == null || Time.frameCount == _blockInputFrame) return;
             bool enter = k.enterKey.wasPressedThisFrame || k.numpadEnterKey.wasPressedThisFrame;
@@ -1904,6 +1909,77 @@ namespace Executor.Play
 
             if (_stage.Map.Story?.Outro?.Count > 0) PlayStory(_stage.Map.Story.Outro, ShowResult, _stage.Map.Dialogues);
             else ShowResult();
+        }
+
+        // ---------------- 방명록 (전시용) ----------------
+        private float _guestbookPollAt;
+        private bool _guestbookLoading, _guestbookPosting;
+        private const string GuestbookNameKey = "guestbook_name";
+
+        /// <summary>메인 화면에 있는 동안 방명록을 다시 받는다 (창이 열려 있으면 5초, 위젯만 있으면 10초마다)</summary>
+        private void PollGuestbook()
+        {
+            if (_guestbookLoading || Time.unscaledTime < _guestbookPollAt) return;
+            _guestbookPollAt = Time.unscaledTime + (_menu.IsGuestbookOpen ? 5f : 10f);
+            RefreshGuestbook();
+        }
+
+        private async void RefreshGuestbook()
+        {
+            _guestbookLoading = true;
+            try
+            {
+                _menu.SetGuestbook(await GuestbookApi.GetLatestAsync(30));
+            }
+            catch (ApiException e)
+            {
+                _menu.SetGuestbookError(e.IsNetworkError ? "서버에 연결할 수 없어 방명록을 불러오지 못했어요." : e.Message);
+            }
+            finally
+            {
+                _guestbookLoading = false;
+            }
+        }
+
+        private void OpenGuestbook()
+        {
+            string name = PlayerSession.IsOnline && !string.IsNullOrEmpty(PlayerSession.Nickname)
+                ? PlayerSession.Nickname
+                : PlayerPrefs.GetString(GuestbookNameKey, "");
+            if (name.Length > MenuUI.GuestNameMax) name = name.Substring(0, MenuUI.GuestNameMax);
+            _menu.ShowGuestbook(name, PlayerSession.IsOnline);
+            _guestbookPollAt = 0;
+        }
+
+        private async void PostGuestbook(string name, string message)
+        {
+            if (_guestbookPosting) return;
+            _guestbookPosting = true;
+            _menu.SetGuestbookStatus("남기는 중...", Theme.Muted, 10f);
+            try
+            {
+                GuestbookPostResult res = await GuestbookApi.PostAsync(name, message);
+                MenuUI.RememberMine(res.Entry.Id);
+                PlayerPrefs.SetString(GuestbookNameKey, name);
+                PlayerPrefs.Save();
+                if (res.RewardCoin > 0 && PlayerSession.Profile != null)
+                {
+                    if (res.TotalCoin != null) PlayerSession.Profile.Coin = res.TotalCoin.Value;
+                    _menu.SetPlayer(PlayerSession.DisplayName, CoinText());
+                    _menu.SetGuestbookStatus($"남겼어요! 코인 +{res.RewardCoin}", Theme.Yellow, 4f);
+                }
+                else _menu.SetGuestbookStatus("남겼어요!", Theme.Green);
+                _menu.GuestbookPosted();
+                _guestbookPollAt = 0; // 바로 다시 받아 내 글을 보여 준다
+            }
+            catch (ApiException e)
+            {
+                _menu.SetGuestbookStatus(e.IsNetworkError ? "서버에 연결할 수 없어요" : e.Message, Theme.Red, 5f);
+            }
+            finally
+            {
+                _guestbookPosting = false;
+            }
         }
 
         // ---------------- 이벤트 스테이지 (전시용) ----------------

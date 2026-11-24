@@ -322,8 +322,21 @@ public static class Program
         b.WarpTo(1);
         Check("워프 -> 상자 원래 자리, 열쇠는 도착 때처럼 가짐", crate.Pos == new GridPos(4, 1) && b.KeyCount("a") == 1);
         b.WarpTo(0);
-        Check("시작으로 워프 -> 열쇠 없음, 열쇠가 다시 놓임", b.KeyCount("a") == 0 && b.ObjectAt(new GridPos(2, 1))?.Id == "k"
+        Check("시작으로 워프해도 열쇠 유지, 주운 열쇠는 다시 놓이지 않음", b.KeyCount("a") == 1 && b.ObjectAt(new GridPos(2, 1)) == null
             && b.PlayerPos == new GridPos(1, 1));
+        Check("워프 후 같은 길을 가도 열쇠가 늘지 않음", b.Move(Direction.Right).Outcome == MoveOutcome.Moved && b.KeyCount("a") == 1);
+
+        // 열쇠로 연 문도 워프해도 열린 채로 (열쇠를 쓴 뒤 문만 닫히면 진행할 수 없으므로)
+        b = new Board(Map(new[] { "#######", "#.....#", "#######" },
+            Obj("k", MapObjectTypes.Key, 2, 1, keyId: "a"), Cp("cp1", 3, 1, order: 1, turns: 10), Obj("d", MapObjectTypes.Door, 4, 1, keyId: "a")), 10);
+        b.Move(Direction.Right); b.Move(Direction.Right);
+        var doorMove = b.Move(Direction.Right);
+        var doorA = b.Objects.First(o => o.Id == "d");
+        Check("열쇠로 문 열기", doorMove.Outcome == MoveOutcome.OpenedDoor && doorA.IsRemoved && b.KeyCount("a") == 0);
+        b.WarpTo(1);
+        Check("워프 -> 문은 열린 채, 열쇠는 쓴 그대로", doorA.IsRemoved && b.KeyCount("a") == 0 && b.PlayerPos == new GridPos(3, 1));
+        b.WarpTo(0);
+        Check("시작으로 워프해도 같음 (열쇠 다시 안 놓임)", doorA.IsRemoved && b.KeyCount("a") == 0 && b.ObjectAt(new GridPos(2, 1)) == null);
 
         // 데이터 파편과 이상 개체 (docs/map-data.md 3.6)
         b = new Board(Map(new[] { "########", "#......#", "#......#", "########" },
@@ -473,7 +486,11 @@ public static class Program
         Check("복구 -> 문 없어짐, 열쇠 받음, 체크포인트는 못 없앰", pc.IsRestored && door.IsRemoved && b.KeyCount("lab") == 1
             && applied.Count == 2 && !b.Objects.First(o => o.Id == "cp1").IsRemoved);
         Check("복구된 컴퓨터는 다시 해킹 불가, 효과도 한 번만", !b.BeginHack(pc) && b.CompleteHack(pc).Count == 0 && b.KeyCount("lab") == 1);
-        Check("워프 -> 복구 전 상태로 (다시 감염, 문 닫힘, 열쇠 없음)", b.WarpTo(1) && !pc.IsRestored && !door.IsRemoved && b.KeyCount("lab") == 0);
+        Check("워프 -> 컴퓨터는 다시 감염, 해킹으로 없앤 문은 돌아옴, 받은 열쇠는 유지", b.WarpTo(1) && !pc.IsRestored && !door.IsRemoved && b.KeyCount("lab") == 1);
+        b.Move(Direction.Down);
+        b.BeginHack(pc);
+        applied = b.CompleteHack(pc);
+        Check("다시 해킹 -> 문은 다시 없어지지만 열쇠는 한 번만", pc.IsRestored && door.IsRemoved && b.KeyCount("lab") == 1 && applied.Count == 1);
 
         // 타자 해킹
         var tc = new TypingChallenge(new[] { "ls", "cd", "pwd", "ls", " " }, 3, 30, new Random(1));

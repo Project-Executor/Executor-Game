@@ -141,7 +141,7 @@ namespace Executor.Play
             Inset(detail, 14 * S, 12 * S, 14 * S, 8 * S);
             Image right = Fill(body, "Rule", Night);
             At(right, 24 * S + half + 12 * S, y, half, 84 * S);
-            Text rule = Label(right.transform, "<b>워프하면</b>\n마지막 도착 때 맵 상태로 돌아가요. 턴은 쓰지 않아요.\n<color=#8b98b8>유지: 데이터 파편 · 도감 · 밝힌 미니맵</color>",
+            Text rule = Label(right.transform, "<b>워프하면</b>\n마지막 도착 때 맵 상태로 돌아가요. 턴은 쓰지 않아요.\n<color=#8b98b8>유지: 열쇠 · 연 문 · 데이터 파편 · 도감 · 밝힌 미니맵</color>",
                 12 * S, Fg, TextAnchor.UpperLeft);
             rule.horizontalOverflow = HorizontalWrapMode.Wrap;
             rule.lineSpacing = 1.4f;

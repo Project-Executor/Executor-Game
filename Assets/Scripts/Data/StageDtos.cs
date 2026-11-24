@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Runtime.Serialization;
 using Executor.Network;
@@ -176,6 +177,8 @@ namespace Executor.Data
         public List<RankingEntry> Rankings { get; set; } = new List<RankingEntry>();
         /// <summary>내 순위. 클리어하지 않았으면 null</summary>
         public MyRank Me { get; set; }
+        /// <summary>그 범위(전체 / 나 + 친구)에서 클리어한 사람 수. 예전 서버는 보내지 않아 0</summary>
+        public long Total { get; set; }
     }
 
     public class RankingEntry
@@ -183,6 +186,8 @@ namespace Executor.Data
         public int Rank { get; set; }
         public UserSummary User { get; set; }
         public int BestMoves { get; set; }
+        /// <summary>첫 클리어 시각 (UTC). 예전 서버는 보내지 않아 null</summary>
+        public DateTime? ClearedAt { get; set; }
     }
 
     public class MyRank

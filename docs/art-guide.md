@@ -214,6 +214,7 @@ Portraits/
 | `UI/desktop/star_on.png`, `star_off.png` | 7 × 7 도트 (파일 56 × 56) | 84 × 84 | 결과 화면 별 (받은 별 / 못 받은 별) |
 | `UI/desktop/warning.png` | 12 × 12 도트 (파일 96 × 96) | 72 × 72 | 종료 확인 창의 경고 표시 |
 | `UI/delta/{키}.png` (예: `antenna`, `sunglasses`) | 12 × 12 도트 (파일 96 × 96) | 델타 얼굴 위 | 상점 "델타 꾸미기" 아이템. 아이템 image 값이 키. 델타 얼굴(10 × 10)은 이 캔버스의 (1, 2)부터 놓이므로 위 두 줄에 안테나처럼 머리 위 장식을 그릴 수 있다 |
+| `UI/ranking/medal_1.png`, `medal_2.png`, `medal_3.png` | 16 × 16 도트 (파일 128 × 128) | 45 · 54 | 순위 창(ranking.exe) 1·2·3위 시상대 메달. 원본 `Executor/ranking_ui/01_unity_sprites/ui_ranking`. 빈 순위는 같은 그림을 `#2a2358`로 어둡게 칠한다 |
 | `UI/desktop/entity.png`, `unknown.png` | 12 × 12 도트 (파일 96 × 96) | 60 × 60 | 도감 칸: 그림이 없는 항목 / 아직 못 만난 항목(???) |
 
 ---

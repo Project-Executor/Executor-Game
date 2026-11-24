@@ -1326,6 +1326,7 @@ namespace Executor.Play
                     if (_game.HasPopup)
                     {
                         if (k.escapeKey.wasPressedThisFrame) _game.ClosePopups();
+                        else if (_game.IsRankingOpen && k.rKey.wasPressedThisFrame) _game.RetryFromRanking();   // 순위 창의 [다시 도전 R]
                         return;
                     }
                     if (k.rKey.wasPressedThisFrame) StartStage(_stage, false);
@@ -1783,10 +1784,22 @@ namespace Executor.Play
         {
             try
             {
-                RankingResponse res = await StageApi.GetRankingsAsync(stage.StageId.Value, friends ? RankingScope.Friends : RankingScope.All, 10);
+                // 4위부터는 목록을 스크롤해서 본다 (서버 최대 50명)
+                RankingResponse res = await StageApi.GetRankingsAsync(stage.StageId.Value, friends ? RankingScope.Friends : RankingScope.All, 50);
                 if (_mode != Mode.Result || _stage != stage) return;
-                _game.ShowRanking($"{stage.No}. {stage.Title} · 최소 턴 순위", res, friends, PlayerSession.Profile?.UserId ?? 0,
-                    f => OpenRanking(stage, f));
+                ChapterInfo chapter = _chapter;
+                string code = chapter == null ? $"{stage.No}" : $"{chapter.LayerOrder}-{stage.No}";
+                _game.ShowRanking(new GameUI.RankingView
+                {
+                    Title = $"ranking.exe — {code} · {stage.Title}",
+                    Subtitle = chapter == null ? "" : $"{chapter.LayerLabel} · {chapter.Title}",
+                    Response = res,
+                    Friends = friends,
+                    MyUserId = PlayerSession.Profile?.UserId ?? 0,
+                    OnScope = f => OpenRanking(stage, f),
+                    OnRetry = () => StartStage(_stage, false),
+                    OnAddFriends = () => { _game.CloseRanking(); Social.Open(SocialPanel.TabSearch); },
+                });
             }
             catch (ApiException e)
             {

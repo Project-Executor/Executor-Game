@@ -16,7 +16,11 @@ namespace Executor.Play
         private const float HackW = 600;
         private GameObject _hack;
         private RectTransform _hackChips, _hackBarFill;
-        private Text _hackInfo, _hackGoal, _hackTimer, _hackWord;
+        private Text _hackInfo, _hackGoal, _hackTimer, _hackWord, _hackMeasure;
+        /// <summary>지금 단어 글자의 가로 위치 (긴 단어는 칠 곳이 보이게 옆으로 민다). 단어가 바뀌면 처음부터</summary>
+        private float _hackWordX;
+        private string _hackWordShown;
+        private RectTransform _hackWordBox;
         private InputField _hackInput;
         private FieldFrame _hackFrame;
         private RectTransform _hackPlay;
@@ -59,8 +63,19 @@ namespace Executor.Play
             y += 24 * S + 18 * S;
             Image wordBox = Fill(body, "Word", Night);
             At(wordBox, 24 * S, y, w, 92 * S);
-            _hackWord = Label(wordBox.transform, "", 48 * S, Fg, TextAnchor.MiddleCenter, UiKit.Mono);
-            Inset(_hackWord, 0, 0, 0, 0);
+            wordBox.gameObject.AddComponent<RectMask2D>(); // 긴 단어가 상자 밖으로 나가지 않게
+            _hackWordBox = wordBox.rectTransform;
+            // 글자는 왼쪽 기준으로 두고 UpdateHack이 가로 위치를 정한다 (짧으면 가운데, 길면 칠 곳을 따라 민다)
+            _hackWord = Label(wordBox.transform, "", 48 * S, Fg, TextAnchor.MiddleLeft, UiKit.Mono);
+            _hackWord.horizontalOverflow = HorizontalWrapMode.Overflow;
+            _hackWord.rectTransform.anchorMin = new Vector2(0, 0);
+            _hackWord.rectTransform.anchorMax = new Vector2(0, 1);
+            _hackWord.rectTransform.pivot = new Vector2(0, 0.5f);
+            _hackWord.rectTransform.sizeDelta = new Vector2(4000 * S, 0);
+            _hackMeasure = Label(wordBox.transform, "", 48 * S, Fg, TextAnchor.MiddleLeft, UiKit.Mono);
+            _hackMeasure.horizontalOverflow = HorizontalWrapMode.Overflow;
+            _hackMeasure.enabled = false; // 글자 폭 재기용 (그리지 않음)
+            _hackWordShown = null;
             y += 92 * S + 18 * S;
             Text inputLabel = Label(body, "입력", 12 * S, Muted, TextAnchor.MiddleLeft);
             At(inputLabel, 24 * S, y, w, 16 * S);
@@ -97,6 +112,12 @@ namespace Executor.Play
             _hackInput.ActivateInputField();
         }
 
+        /// <summary>오른쪽 위 목표 문구를 바꾼다 (타자 이벤트는 지금까지 친 단어 수)</summary>
+        public void SetHackGoal(string text)
+        {
+            if (_hackGoal != null) _hackGoal.text = text ?? "";
+        }
+
         /// <summary>틀린 입력: 잠깐 입력칸 테두리를 빨갛게</summary>
         public void FlashHackWrong() => _hackWrongUntil = Time.unscaledTime + 0.5f;
 
@@ -112,6 +133,7 @@ namespace Executor.Play
             bool wrongPrefix = typed.Length > match;
             _hackWord.text = $"<color={(wrongPrefix ? "#ff4d5e" : "#5cf08a")}>{Spaced(current.Substring(0, match))}</color>" +
                              $"<color=#4b5675>{Spaced(current.Substring(match))}</color>";
+            SlideHackWord(current, match);
             SetTimer(_hackBarFill, _hackTimer, timeLeft, timeLimit, false);
             _hackFrame.State = Time.unscaledTime < _hackWrongUntil || wrongPrefix ? FieldFrame.Mark.Bad : FieldFrame.Mark.None;
         }
@@ -263,17 +285,32 @@ namespace Executor.Play
         }
 
         /// <summary>단어 칩: 맞힌 것 ✓ 초록, 지금 단어(진행 중일 때) 하늘색 채움, 남은 것 흐리게</summary>
+        /// <summary>칩에 보일 단어 최대 글자 수 (넘으면 …으로 줄인다. 전체는 아래 큰 글자에 보인다)</summary>
+        private const int ChipMaxChars = 14;
+
         private static void DrawChips(RectTransform row, IReadOnlyList<string> words, int index, bool live)
         {
             UiKit.Clear(row);
-            float x = 0;
+            if (row.GetComponent<RectMask2D>() == null) row.gameObject.AddComponent<RectMask2D>();
+            // 칩이 줄보다 길면 지금 단어 칩이 보이게 줄 전체를 왼쪽으로 민다
+            RectTransform strip = Node(row, "Strip");
+            strip.anchorMin = strip.anchorMax = new Vector2(0, 1);
+            strip.pivot = new Vector2(0, 1);
+            strip.sizeDelta = new Vector2(0, 24 * S);
+            float x = 0, focusLeft = 0, focusRight = 0;
             for (int i = 0; i < words.Count; i++)
             {
                 bool done = i < index, current = live && i == index;
-                Text t = Label(row, words[i], 12 * S, done ? Green : current ? Ink : Dim, TextAnchor.MiddleCenter, UiKit.Mono);
+                string label = words[i].Length > ChipMaxChars ? words[i].Substring(0, ChipMaxChars - 1) + "…" : words[i];
+                Text t = Label(strip, label, 12 * S, done ? Green : current ? Ink : Dim, TextAnchor.MiddleCenter, UiKit.Mono);
                 float tw = t.preferredWidth + 20 * S + (done ? 14 * S : 0);
-                Image chip = Fill(row, "Chip", done ? Hex(0x5cf08a, 0.10f) : current ? Cyan : Night);
+                Image chip = Fill(strip, "Chip", done ? Hex(0x5cf08a, 0.10f) : current ? Cyan : Night);
                 At(chip, x, 0, tw, 24 * S);
+                if (i == Mathf.Min(index, words.Count - 1))
+                {
+                    focusLeft = x;
+                    focusRight = x + tw;
+                }
                 if (done)
                 {
                     Border(chip.transform, Hex(0x1f9e55), 1 * S);
@@ -288,6 +325,41 @@ namespace Executor.Play
                 Inset(t, done ? 14 * S : 0, 0, 0, 0);
                 x += tw + 6 * S;
             }
+            float rowW = row.rect.width, total = x - 6 * S;
+            float shift = 0;
+            if (rowW > 0 && total > rowW)
+            {
+                shift = Mathf.Clamp(focusLeft - rowW * 0.3f, 0, total - rowW);
+                if (focusRight - shift > rowW) shift = focusRight - rowW; // 지금 칩이 아주 길어도 오른쪽 끝은 보이게
+            }
+            strip.anchoredPosition = new Vector2(-shift, 0);
+        }
+
+        /// <summary>
+        /// 지금 단어의 가로 위치. 상자에 들어가면 가운데. 길면 다음에 칠 글자가 상자 왼쪽에서 40% 자리에 오도록 부드럽게 밀고,
+        /// 단어 처음·끝에서는 더 밀지 않는다 (처음은 왼쪽 여백, 끝은 오른쪽 여백에 맞춤)
+        /// </summary>
+        private void SlideHackWord(string current, int match)
+        {
+            if (_hackWordBox == null || _hackMeasure == null) return;
+            float boxW = _hackWordBox.rect.width, pad = 24 * S;
+            _hackMeasure.text = current;
+            float full = _hackMeasure.preferredWidth;
+            float target;
+            if (full <= boxW - pad * 2) target = (boxW - full) / 2;
+            else
+            {
+                _hackMeasure.text = current.Substring(0, match);
+                float caret = _hackMeasure.preferredWidth;
+                target = Mathf.Clamp(boxW * 0.4f - caret, boxW - pad - full, pad);
+            }
+            if (_hackWordShown != current)
+            {
+                _hackWordShown = current; // 새 단어는 바로 그 자리에서 시작
+                _hackWordX = target;
+            }
+            else _hackWordX = Mathf.Lerp(_hackWordX, target, 1 - Mathf.Exp(-12f * Time.unscaledDeltaTime));
+            _hackWord.rectTransform.anchoredPosition = new Vector2(_hackWordX, 0);
         }
 
         /// <summary>지금 단어 글자 (고정폭이라 따로 띄우지 않는다)</summary>

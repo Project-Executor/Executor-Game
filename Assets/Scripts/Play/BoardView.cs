@@ -161,10 +161,13 @@ namespace Executor.Play
                     continue;
                 }
                 else sr.gameObject.SetActive(!obj.IsRemoved && obj.IsRevealed);
-                // 체크포인트: 도착했으면 켜진 그림
+                // 체크포인트: 도착 전(받침대) / 안정 도착(화살표) / 불안정 도착(빨간 그림). 한 번이라도 안정으로 오면 안정
                 if (_mapSet && obj.Type == MapObjectTypes.Checkpoint && ArtCatalog.CheckpointOn != null)
                 {
-                    sr.sprite = _board.StabilityOf(obj.Order) != null ? ArtCatalog.CheckpointOn : ArtCatalog.ForObject(obj.Type);
+                    bool? stable = _board.StabilityOf(obj.Order);
+                    sr.sprite = stable == null ? ArtCatalog.ForObject(obj.Type)
+                        : stable == false && ArtCatalog.CheckpointUnstable != null ? ArtCatalog.CheckpointUnstable
+                        : ArtCatalog.CheckpointOn;
                 }
                 // 컴퓨터: 감염 / 복구
                 if (obj.Type == MapObjectTypes.Computer)

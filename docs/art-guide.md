@@ -54,7 +54,7 @@
 | 방화벽 `breakable` | `firewall`, 한 번이라도 맞으면 `firewall_damaged` |
 | 열쇠 `key` | `keycard` |
 | 잠긴 문 `door` | `shutter_locked`, 열리면 사라지지 않고 `shutter_open` (바닥 층) |
-| 체크포인트 | `checkpoint_off`, 도착하면 `checkpoint_on` |
+| 체크포인트 | 도착 전 `checkpoint_off`(받침대), 안정 도착 `checkpoint_on`(화살표), 불안정 도착 `checkpoint_unstable`(빨간 그림, 없으면 `checkpoint_on`) |
 | 데이터 파편 `hidden` | `data_shard` |
 | 이상 개체 `anomaly` | `null_entity` |
 | 출구 `exit` | `exit_gate_64x96` (위로 반 칸 솟음) |
@@ -88,7 +88,7 @@
 
   투명 시트는 알파를 그대로 쓰고, 체크 무늬 시트는 배경을 지운다(빛 효과는 채도로 반투명). 가로 64px로 줄인다.
   어느 그림을 어디에 쓰는지는 스크립트 `SETS`의 `tiles`·`objects`(시트 좌표), 작은 물건 너비는 `small`.
-  벽 윗면은 벽 패널 색을 어둡게 한 단색(`wall_top_dim`), 체크포인트(도착 전)는 화살표 기둥을 어둡게 한 그림이다.
+  벽 윗면은 벽 패널 색을 어둡게 한 단색(`wall_top_dim`)이다. 체크포인트는 시트의 세 그림(받침대·화살표·빨간 그림)을 각각 자른다.
   끝에 미리보기 파일 경로를 붙이면 세트 전체를 한 장으로 볼 수 있다.
   세트를 다시 넣으면 바닥·벽 무늬 10장(`floor_*`, `wall_top`, `wall_front_*`)을 Executor-Admin `public/map-art/{세트}/`에도 복사한다. 관리자 맵 에디터의 '그림' 도구(칸별 무늬, `map_data.tileArt`)가 이 그림을 보여 준다.
 - 타일 그림의 투명한 곳(벽 패널의 빈 창)은 세트의 `tile_back` 색으로 채운다 (코퍼레이션·튜토리얼).

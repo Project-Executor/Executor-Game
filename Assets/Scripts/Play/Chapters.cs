@@ -23,6 +23,10 @@ namespace Executor.Play
         public MapData Map;
         /// <summary>스테이지 선택 기판 위 노드 자리 (0~1 비율, 왼쪽 위 기준). 관리자가 정하지 않았거나 PC 맵이면 null = 자동 배치</summary>
         public Vector2? BoardPos;
+        /// <summary>스테이지 종류 (서버 stageType). 이벤트면 늘 열려 있고 해금 순서에 끼지 않으며, 끝나면 이름을 적어 이벤트 순위에 올린다</summary>
+        public StageType Kind = StageType.Normal;
+
+        public bool IsEvent => Kind == StageType.EventTurns || Kind == StageType.EventTyping;
     }
 
     /// <summary>
@@ -103,6 +107,14 @@ namespace Executor.Play
                         Title = json.Value<string>("title"),
                         Par = json.Value<int>("parMoves"),
                         Tutorial = json.Value<string>("stageType") == "TUTORIAL",
+                        Kind = json.Value<string>("stageType") switch
+                        {
+                            "TUTORIAL" => StageType.Tutorial,
+                            "BOSS" => StageType.Boss,
+                            "EVENT_TURNS" => StageType.EventTurns,
+                            "EVENT_TYPING" => StageType.EventTyping,
+                            _ => StageType.Normal,
+                        },
                         Map = MapData.From((JObject)json["mapData"]),
                     });
                 }
@@ -172,11 +184,13 @@ namespace Executor.Play
         public static int ClearedCount(ChapterInfo chapter) => chapter.Stages.Count(s => IsCleared(chapter.Id, s.No));
 
         public static bool IsChapterCleared(ChapterInfo chapter) =>
-            chapter.IsAvailable && ClearedCount(chapter) == chapter.Stages.Count;
+            chapter.IsAvailable && ClearedCount(chapter) >= chapter.Stages.Count(st => !st.IsEvent); // 이벤트는 깨지 않아도 된다
 
         /// <summary>첫 챕터는 처음부터, 나머지는 앞 챕터를 모두 클리어하면 열린다 (스테이지가 없는 앞 챕터는 건너뛴다)</summary>
         public static bool IsChapterUnlocked(IReadOnlyList<ChapterInfo> chapters, ChapterInfo chapter)
         {
+            // 이벤트 스테이지가 있는 작전(전시용)은 늘 열려 있다
+            if (chapter.Stages.Any(s => s.IsEvent)) return true;
             // 서버 스테이지: 첫 스테이지가 열렸으면 챕터도 열린 것 (서버가 앞 작전 클리어로 판단)
             RemoteRecord first = chapter.Stages.Count > 0 ? RemoteOf(chapter.Id, chapter.Stages[0].No) : null;
             if (first != null) return first.Unlocked;
@@ -189,10 +203,13 @@ namespace Executor.Play
         /// <summary>챕터 안에서: 첫 스테이지는 챕터가 열리면, 나머지는 앞 스테이지를 클리어하면 열린다</summary>
         public static bool IsStageUnlocked(ChapterInfo chapter, StageInfo stage)
         {
+            if (stage.IsEvent) return true; // 이벤트 스테이지는 늘 열려 있다
             RemoteRecord remote = RemoteOf(chapter.Id, stage.No);
             if (remote != null) return remote.Unlocked;
+            // 바로 앞의 이벤트가 아닌 스테이지를 깼으면 열린다 (이벤트는 해금 줄에 끼지 않는다)
             int index = chapter.Stages.IndexOf(stage);
-            return index <= 0 || IsCleared(chapter.Id, chapter.Stages[index - 1].No);
+            StageInfo previous = chapter.Stages.Take(Mathf.Max(0, index)).LastOrDefault(s => !s.IsEvent);
+            return index <= 0 || previous == null || IsCleared(chapter.Id, previous.No);
         }
     }
 }

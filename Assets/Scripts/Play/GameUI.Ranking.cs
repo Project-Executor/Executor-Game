@@ -28,6 +28,20 @@ namespace Executor.Play
             public Action OnRetry;
             /// <summary>친구 탭이 비었을 때 "친구 추가하러 가기"</summary>
             public Action OnAddFriends;
+            /// <summary>창을 닫을 때 (닫기·Esc. 다시 도전으로 닫을 때는 부르지 않는다)</summary>
+            public Action OnClose;
+
+            // ---- 문구 (이벤트 순위에서 바꿔 쓴다) ----
+            public string Heading = "최소 턴 순위";
+            /// <summary>점수 뒤 단위 (턴 / 개)</summary>
+            public string Unit = "턴";
+            public string NameHeader = "집행자";
+            public string TimeHeader = "클리어";
+            public string Rule = "같은 턴이면 먼저 클리어한 집행자가 앞에 와요";
+            public string NoRecord = "아직 이 스테이지를 클리어하지 않았어요";
+            public string EmptyText = "다른 집행자가 이 스테이지를 클리어하면 여기에 나와요.";
+            /// <summary>친구·전체 탭 (이벤트는 끈다)</summary>
+            public bool ShowTabs = true;
         }
 
         private RankingView _ranking;
@@ -58,10 +72,10 @@ namespace Executor.Play
             // 머리: 작은 줄 + 제목, 오른쪽에 탭
             Text sub = Label(body, view.Subtitle ?? "", 12 * S, Muted, TextAnchor.MiddleLeft, UiKit.Mono);
             At(sub, pad, y, w * 0.6f, 16 * S);
-            Text head = Label(body, "최소 턴 순위", 24 * S, Fg, TextAnchor.MiddleLeft, bold: true);
+            Text head = Label(body, view.Heading, 24 * S, Fg, TextAnchor.MiddleLeft, bold: true);
             At(head, pad, y + 20 * S, w * 0.6f, 28 * S);
             float tabRight = pad;
-            foreach (bool friends in new[] { true, false })
+            foreach (bool friends in view.ShowTabs ? new[] { true, false } : new bool[0])
             {
                 bool active = friends == view.Friends;
                 string label = (friends ? "친구" : "전체") + (active && total > 0 ? $" · {total}명" : "");
@@ -90,7 +104,7 @@ namespace Executor.Play
             {
                 var (rank, h) = slots[i];
                 Data.RankingEntry e = list.FirstOrDefault(r => r.Rank == rank);
-                PodiumCard(body, pad + i * (cardW + cardGap), y + podiumH - h, cardW, h, rank, e, e != null && IsMe(e, view));
+                PodiumCard(body, pad + i * (cardW + cardGap), y + podiumH - h, cardW, h, rank, e, e != null && IsMe(e, view), view.Unit);
             }
             y += podiumH + 14 * S;
 
@@ -103,7 +117,7 @@ namespace Executor.Play
             float listH = footY - 14 * S - y;
             Image listBg = Fill(body, "List", Night);
             At(listBg, pad, y, w, listH);
-            RankRow(listBg.transform, 0, w, 28 * S, "순위", "집행자", "턴", "클리어", Dim, false, header: true);
+            RankRow(listBg.transform, 0, w, 28 * S, "순위", view.NameHeader, view.Unit, view.TimeHeader, Dim, false, header: true);
             List<Data.RankingEntry> rest = list.Where(r => r.Rank > 3).OrderBy(r => r.Rank).ToList();
             bool alone = list.Count <= 1;
             if (rest.Count == 0 && alone)
@@ -127,7 +141,7 @@ namespace Executor.Play
                 Data.RankingEntry r = rest[i];
                 bool me = IsMe(r, view);
                 RankRow(content, i * rowH, w, rowH, $"#{r.Rank}", Name(r) + (me ? " <color=#22d3ee>(나)</color>" : ""),
-                    $"{r.BestMoves}턴", ClearTime(r.ClearedAt), Muted, me);
+                    $"{r.BestMoves}{view.Unit}", ClearTime(r.ClearedAt), Muted, me);
             }
             content.sizeDelta = new Vector2(0, rest.Count * rowH);
             var scroll = viewport.gameObject.AddComponent<ScrollRect>();
@@ -140,14 +154,17 @@ namespace Executor.Play
 
         public void CloseRanking()
         {
+            Action onClose = _ranking?.OnClose;
             _ranking = null;
             ClosePopups();
+            onClose?.Invoke();
         }
 
         /// <summary>순위 창의 [다시 도전] (R 키도 같다)</summary>
         public void RetryFromRanking()
         {
             Action retry = _ranking?.OnRetry;
+            if (_ranking != null) _ranking.OnClose = null; // 다시 도전은 닫기 동작(예: 스테이지 선택으로)을 하지 않는다
             CloseRanking();
             retry?.Invoke();
         }
@@ -172,7 +189,7 @@ namespace Executor.Play
             return width;
         }
 
-        private static void PodiumCard(Transform parent, float x, float y, float w, float h, int rank, Data.RankingEntry e, bool me)
+        private static void PodiumCard(Transform parent, float x, float y, float w, float h, int rank, Data.RankingEntry e, bool me, string unit)
         {
             Color medal = rank == 1 ? Cyan : rank == 2 ? MedalSilver : MedalBronze;
             Color moves = rank == 1 ? Yellow : medal;
@@ -216,7 +233,7 @@ namespace Executor.Play
             At(name, 8 * S, top, w - 16 * S, 16 * S);
             top += 16 * S + 6 * S;
             int size = Mathf.RoundToInt((big ? 24 : 12) * S);
-            Text mv = Label(card, $"{e.BestMoves}<size={Mathf.RoundToInt(12 * S)}><color=#8b98b8>턴</color></size>", size, moves,
+            Text mv = Label(card, $"{e.BestMoves}<size={Mathf.RoundToInt(12 * S)}><color=#8b98b8>{unit}</color></size>", size, moves,
                 TextAnchor.MiddleCenter, UiKit.Mono);
             At(mv, 0, top, w, big ? 28 * S : 16 * S);
         }
@@ -254,7 +271,7 @@ namespace Executor.Play
             Text big = Label(list, "아직 경쟁자가 없어요", 24 * S, Fg, TextAnchor.MiddleCenter);
             At(big, 0, top, w, 32 * S);
             string msg = view.Friends ? "친구를 추가하면 같은 스테이지 기록을 여기서 비교할 수 있어요."
-                                      : "다른 집행자가 이 스테이지를 클리어하면 여기에 나와요.";
+                                      : view.EmptyText;
             Text small = Label(list, msg, 12 * S, Muted, TextAnchor.MiddleCenter);
             At(small, 0, top + 40 * S, w, 16 * S);
             if (view.Friends && view.OnAddFriends != null)
@@ -267,15 +284,15 @@ namespace Executor.Play
         private void Footer(Transform body, float x, float y, float w, float h, Data.RankingResponse res, long total, RankingView view)
         {
             string mine;
-            if (res.Me == null) mine = "<color=#8b98b8>아직 이 스테이지를 클리어하지 않았어요</color>";
+            if (res.Me == null) mine = $"<color=#8b98b8>{view.NoRecord}</color>";
             else
             {
                 string place = view.Friends ? $"친구 중 {res.Me.Rank}위" : total > 0 ? $"{res.Me.Rank}위 / {total}명" : $"{res.Me.Rank}위";
-                mine = $"<color=#8b98b8>내 기록</color> <size={Mathf.RoundToInt(24 * S)}><color=#22d3ee>{res.Me.BestMoves}</color></size>턴 · <b>{place}</b>";
+                mine = $"<color=#8b98b8>내 기록</color> <size={Mathf.RoundToInt(24 * S)}><color=#22d3ee>{res.Me.BestMoves}</color></size>{view.Unit} · <b>{place}</b>";
             }
             Text me = Label(body, mine, 12 * S, Fg, TextAnchor.LowerLeft);
             At(me, x, y - 6 * S, w - 280 * S, 30 * S);
-            Text rule = Label(body, "같은 턴이면 먼저 클리어한 집행자가 앞에 와요", 12 * S, Dim, TextAnchor.MiddleLeft);
+            Text rule = Label(body, view.Rule, 12 * S, Dim, TextAnchor.MiddleLeft);
             At(rule, x, y + 24 * S, w - 280 * S, 18 * S);
 
             PrimaryButton(body, "닫기", 12 * S, CloseRanking, out RectTransform close);

@@ -616,15 +616,22 @@ namespace Executor.Play
             // 별 조건
             if (node.StarLines.Count > 0)
             {
+                // 긴 조건은 상자 폭에서 줄을 바꾸고, 줄 수만큼 상자를 높인다
                 const float boxPad = 12 * S, lineH = 16 * S, lineGap = 6 * S;
-                float boxH = boxPad * 2 + node.StarLines.Count * lineH + (node.StarLines.Count - 1) * lineGap;
+                float textW = width - boxPad * 2;
                 Image box = Fill(_expAside, "Stars", Ink);
-                At(box, pad, y, width, boxH);
+                float ty = boxPad;
                 for (int i = 0; i < node.StarLines.Count; i++)
                 {
-                    Text t = Label(box.transform, node.StarLines[i], 12 * S, Fg, TextAnchor.MiddleLeft);
-                    At(t, boxPad, boxPad + i * (lineH + lineGap), width - boxPad * 2, lineH);
+                    Text t = Label(box.transform, node.StarLines[i], 12 * S, Fg, TextAnchor.UpperLeft);
+                    t.horizontalOverflow = HorizontalWrapMode.Wrap;
+                    t.lineSpacing = 1.15f;
+                    At(t, boxPad, ty, textW, lineH);
+                    float h = Mathf.Max(lineH, t.preferredHeight);
+                    t.rectTransform.sizeDelta = new Vector2(textW, h);
+                    ty += h + (i < node.StarLines.Count - 1 ? lineGap : 0);
                 }
+                At(box, pad, y, width, ty + boxPad);
             }
 
             // 아래: ▶ 시작 / 시나리오 다시 보기

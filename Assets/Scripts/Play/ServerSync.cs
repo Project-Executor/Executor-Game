@@ -47,6 +47,7 @@ namespace Executor.Play
                         Title = s.Title,
                         Par = s.ParMoves,
                         Tutorial = s.StageType == StageType.Tutorial,
+                        Kind = s.StageType,
                         RewardCoin = s.RewardCoin,
                         BoardPos = s.BoardX.HasValue && s.BoardY.HasValue
                             ? new Vector2((float)s.BoardX.Value, (float)s.BoardY.Value)

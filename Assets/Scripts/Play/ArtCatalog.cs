@@ -181,6 +181,8 @@ namespace Executor.Play
         public static Sprite DoorOpen => MapArt("shutter_open");
         /// <summary>도착한 체크포인트 (맵 세트). 없으면 null</summary>
         public static Sprite CheckpointOn => MapArt("checkpoint_on");
+        /// <summary>턴을 넘겨(불안정) 도착한 체크포인트 (맵 세트, 빨간 그림). 없으면 null (그때는 도착 그림 CheckpointOn)</summary>
+        public static Sprite CheckpointUnstable => MapArt("checkpoint_unstable");
 
         private static int CellHash(int x, int y)
         {
@@ -266,6 +268,9 @@ namespace Executor.Play
 
         private static readonly Dictionary<string, Sprite[]> NpcIdleCache = new Dictionary<string, Sprite[]>();
 
+        /// <summary>인물 맵 도트를 그리는 배율 (없으면 1). 델타는 작은 로봇이라 그림(72x99)의 반 크기로 그린다</summary>
+        private static readonly Dictionary<string, float> NpcScale = new Dictionary<string, float> { ["delta"] = 0.5f };
+
         /// <summary>
         /// 인물 맵 도트의 서 있기 프레임 (Resources/Pixel/npcs/{인물ID}_idle_{0,1,...}.png). 플레이어처럼 64px = 한 칸,
         /// 발이 칸 아래쪽에 닿고 위로 솟는다. 프레임이 없으면 빈 배열 (그때는 npcs/{인물ID}.png 한 장이나 임시 도트)
@@ -275,13 +280,15 @@ namespace Executor.Play
             if (string.IsNullOrEmpty(characterId)) return System.Array.Empty<Sprite>();
             if (NpcIdleCache.TryGetValue(characterId, out Sprite[] cached)) return cached;
             var frames = new List<Sprite>();
+            // 그림은 그대로 두고 그리는 크기만 줄인다 (도트가 뭉개지지 않게 픽셀당 단위를 키운다)
+            float ppu = ArtPixelsPerTile / (NpcScale.TryGetValue(characterId.ToLowerInvariant(), out float scale) ? scale : 1f);
             for (int i = 0; i < 16; i++)
             {
                 var texture = Resources.Load<Texture2D>($"Pixel/npcs/{characterId}_idle_{i}");
                 if (texture == null) break;
                 texture.filterMode = FilterMode.Point;
-                float pivotY = ArtPixelsPerTile / 2f / texture.height;
-                frames.Add(Sprite.Create(texture, new Rect(0, 0, texture.width, texture.height), new Vector2(0.5f, pivotY), ArtPixelsPerTile));
+                float pivotY = ppu / 2f / texture.height; // 그림 아래가 칸 아래에 닿는다
+                frames.Add(Sprite.Create(texture, new Rect(0, 0, texture.width, texture.height), new Vector2(0.5f, pivotY), ppu));
             }
             Sprite[] result = frames.ToArray();
             NpcIdleCache[characterId] = result;

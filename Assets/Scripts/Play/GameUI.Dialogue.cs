@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.EventSystems;
@@ -183,14 +184,35 @@ namespace Executor.Play
         {
             UiKit.Clear(_choices);
             int n = _choiceTexts.Count;
-            const float w = 520 * S, h = 52 * S, gap = 10 * S, bottom = 506 * S;
+            // 폭: 기본 520, 긴 선택지가 있으면 글자에 맞춰 넓힌다 (화면 가운데 기준, 최대 1040). 그래도 넘치면 줄을 바꾸고 칸을 높인다
+            const float minW = 520 * S, maxW = 1040 * S, rowH = 52 * S, gap = 10 * S, bottom = 506 * S, textLeft = 40 * S, textPad = 20 * S;
+            Text measure = Label(_choices, "", 24 * S, Fg, TextAnchor.MiddleLeft);
+            float longest = 0;
+            foreach (string c in _choiceTexts)
+            {
+                measure.text = c;
+                longest = Mathf.Max(longest, measure.preferredWidth);
+            }
+            float w = Mathf.Clamp(longest + textLeft + textPad, minW, maxW);
+            measure.horizontalOverflow = HorizontalWrapMode.Wrap;
+            measure.rectTransform.sizeDelta = new Vector2(w - textLeft - textPad, 0);
+            var heights = new float[n];
+            for (int i = 0; i < n; i++)
+            {
+                measure.text = _choiceTexts[i];
+                heights[i] = Mathf.Max(rowH, measure.preferredHeight + 20 * S);
+            }
+            UnityEngine.Object.Destroy(measure.gameObject);
+            float x = (1280 * S - w) / 2;
+            float top = bottom - heights.Sum() - (n - 1) * gap;
             for (int i = 0; i < n; i++)
             {
                 int index = i;
                 bool selected = i == _choiceSelected;
-                float top = bottom - (n - i) * h - (n - 1 - i) * gap;
+                float h = heights[i];
                 RectTransform row = Frame(_choices, "Choice" + (i + 1), selected ? Cyan : Ink, selected ? Cyan : WindowLine, 2 * S, 4 * S);
-                At(row, 380 * S, top, w, h);
+                At(row, x, top, w, h);
+                top += h + gap;
                 Image hit = Fill(row, "Hit", new Color(0, 0, 0, 0), raycast: true);
                 Inset(hit, 0, 0, 0, 0);
                 Clickable(hit, () => PickChoice(index), new Color(1, 1, 1, 0), new Color(1, 1, 1, 0));
@@ -208,7 +230,8 @@ namespace Executor.Play
                 num.color = new Color(num.color.r, num.color.g, num.color.b, 0.7f);
                 At(num, 20 * S, 0, 20 * S, h);
                 Text t = Label(row, _choiceTexts[i], 24 * S, selected ? Ink : Fg, TextAnchor.MiddleLeft);
-                At(t, 20 * S + 12 * S + 8 * S, 0, w - 60 * S, h);
+                t.horizontalOverflow = HorizontalWrapMode.Wrap;
+                At(t, textLeft, 0, w - textLeft - textPad, h);
                 BorderOnTop(row);
             }
         }

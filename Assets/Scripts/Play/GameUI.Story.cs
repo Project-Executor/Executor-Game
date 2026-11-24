@@ -18,6 +18,9 @@ namespace Executor.Play
         public Action OnNarrationSkip;
 
         private GameObject _narration, _narrationLine, _nameScreen;
+        // 닉네임 화면 문구 (이벤트 이름 입력에서 바꿔 쓴다)
+        private Text _nameSys, _nameAsk, _nameLabel, _nameRule, _nameInfo, _nameFoot;
+        private RectTransform _nameCheck;
         private Image _narrationBg;
         private Text _narrationText;
         private RectTransform _narrationDots;
@@ -105,10 +108,10 @@ namespace Executor.Play
             gridRaw.texture = HudGridTexture();
             gridRaw.uvRect = new Rect(0, 0, 1920f / (32 * S), 1080f / (32 * S));
             Inset(gridRaw, 0, 0, 0, 0);
-            Text sys = Label(name, "> 새로운 존재를 확인했습니다.\n> 신원 파악을 시작합니다.", 12 * S, Cyan, TextAnchor.UpperCenter, UiKit.Mono);
+            Text sys = _nameSys = Label(name, "", 12 * S, Cyan, TextAnchor.UpperCenter, UiKit.Mono);
             sys.lineSpacing = 1.5f;
             At(sys, 0, 72 * S, 1280 * S, 44 * S);
-            Text ask = Label(name, "당신의 이름은 무엇인가요?", 36 * S, Fg, TextAnchor.MiddleCenter, bold: true);
+            Text ask = _nameAsk = Label(name, "", 36 * S, Fg, TextAnchor.MiddleCenter, bold: true);
             At(ask, 0, 72 * S + 44 * S + 18 * S, 1280 * S, 44 * S);
 
             const float winW = 440;
@@ -124,7 +127,7 @@ namespace Executor.Play
             RectTransform body = Node(win, "Body");
             Inset(body, WinBorder, WinBorder + WinTitleH, WinBorder, WinBorder);
             float w = winW * S - WinBorder * 2 - 44 * S, y = 20 * S;
-            Text label = Label(body, "이름 (닉네임)", 12 * S, Muted, TextAnchor.MiddleLeft);
+            Text label = _nameLabel = Label(body, "", 12 * S, Muted, TextAnchor.MiddleLeft);
             At(label, 22 * S, y, w, 16 * S);
             y += 16 * S + 6 * S;
             _nameInput = UiKit.Input(body, "", limit: 20, size: (int)(24 * S));
@@ -135,21 +138,22 @@ namespace Executor.Play
             _nameInput.onValueChanged.AddListener(_ => SetNicknameStatus("", true, neutral: true));
             UiKit.OnEnter(_nameInput, () => OnSubmitNickname?.Invoke());
             GhostButton(body, "중복 확인", 12 * S, () => OnCheckNickname?.Invoke(), out RectTransform check);
+            _nameCheck = check;
             At(check, 22 * S + w - 96 * S, y, 96 * S, 44 * S);
             y += 44 * S + 12 * S;
             _nameStatus = Label(body, "", 12 * S, Muted, TextAnchor.MiddleLeft);
             At(_nameStatus, 22 * S, y, w, 16 * S);
-            Text rule = Label(body, "2~20자", 12 * S, Dim, TextAnchor.MiddleRight);
+            Text rule = _nameRule = Label(body, "", 12 * S, Dim, TextAnchor.MiddleRight);
             At(rule, 22 * S, y, w, 16 * S);
             y += 16 * S + 12 * S;
             Image info = Fill(body, "Info", Night);
             At(info, 22 * S, y, w, 38 * S);
-            Text infoText = Label(info.transform, "게임 속 인물들이 이 이름으로 당신을 불러요.", 12 * S, Muted, TextAnchor.MiddleLeft);
+            Text infoText = _nameInfo = Label(info.transform, "", 12 * S, Muted, TextAnchor.MiddleLeft);
             Inset(infoText, 12 * S, 0, 12 * S, 0);
             y += 38 * S + 12 * S;
             _nameSubmit = PrimaryButton(body, "확인", 24 * S, () => OnSubmitNickname?.Invoke(), out _nameSubmitRt);
             At(_nameSubmitRt, 22 * S, y, w, 44 * S);
-            Text foot = Label(name, "이름은 나중에 프로필에서 바꿀 수 있어요", 12 * S, Dim, TextAnchor.MiddleCenter);
+            Text foot = _nameFoot = Label(name, "", 12 * S, Dim, TextAnchor.MiddleCenter);
             foot.rectTransform.anchorMin = foot.rectTransform.anchorMax = new Vector2(0.5f, 0);
             foot.rectTransform.pivot = new Vector2(0.5f, 0);
             foot.rectTransform.anchoredPosition = new Vector2(0, 28 * S);
@@ -179,6 +183,34 @@ namespace Executor.Play
 
         /// <summary>닉네임 입력 화면 (identify.exe)</summary>
         public void ShowNameInput(string currentName)
+        {
+            SetNameScreen("> 새로운 존재를 확인했습니다.\n> 신원 파악을 시작합니다.", "당신의 이름은 무엇인가요?", "이름 (닉네임)", "2~20자",
+                "게임 속 인물들이 이 이름으로 당신을 불러요.", "이름은 나중에 프로필에서 바꿀 수 있어요", true, 20);
+            OpenNameScreen(currentName);
+        }
+
+        /// <summary>이벤트 기록 이름 입력 (같은 화면에 문구만 바꾸고 중복 확인 버튼은 숨김. 이미 쓰인 이름은 올릴 때 알려 준다)</summary>
+        /// <param name="record">위 시스템 줄의 둘째 줄 (예: "> 기록 23턴")</param>
+        public void ShowEventNameInput(string record, int maxLength)
+        {
+            SetNameScreen("> 이벤트 기록을 확인했습니다.\n" + record, "순위에 올릴 이름을 입력하세요", "이름", $"1~{maxLength}자",
+                "이 이벤트에서 이미 쓰인 이름은 쓸 수 없어요.", "로그인하지 않아도 순위에 올라가요 · Esc 기록하지 않고 나가기", false, maxLength);
+            OpenNameScreen("");
+        }
+
+        private void SetNameScreen(string sys, string ask, string label, string rule, string info, string foot, bool check, int limit)
+        {
+            _nameSys.text = sys;
+            _nameAsk.text = ask;
+            _nameLabel.text = label;
+            _nameRule.text = rule;
+            _nameInfo.text = info;
+            _nameFoot.text = foot;
+            _nameCheck.gameObject.SetActive(check);
+            _nameInput.characterLimit = limit;
+        }
+
+        private void OpenNameScreen(string currentName)
         {
             _narration.SetActive(true);
             _narrationLine.SetActive(false);

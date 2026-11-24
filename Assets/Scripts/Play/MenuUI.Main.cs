@@ -125,20 +125,29 @@ namespace Executor.Play
         }
 
         /// <summary>
-        /// 델타 얼굴(10x10 도트)을 size 상자에 그리고, 꾸미기(Resources/UI/delta/{키}, 12x12 도트: 얼굴은 (1,2)부터)를 겹친다
+        /// 델타(Resources/UI/delta/base, 33x44 도트의 8배)를 size 상자 높이에 맞춰 가운데 그리고,
+        /// 꾸미기(Resources/UI/delta/{키}, 같은 33x44 판)를 그대로 겹친다. base가 없으면 예전 얼굴(desktop/delta)
         /// </summary>
         private static void DrawDelta(RectTransform box, float size, string deltaKey)
         {
             UiKit.Clear(box);
-            Image face = Icon(box, "desktop/delta", size);
-            if (face != null) At(face, 0, 0, size, size);
+            Sprite body = ArtCatalog.Ui("delta/base");
+            if (body == null)
+            {
+                Image face = Icon(box, "desktop/delta", size);
+                if (face != null) At(face, 0, 0, size, size);
+                return;
+            }
+            float w = size * 33f / 44f, x = (size - w) / 2;
+            Image b = Fill(box, "Delta", Color.white);
+            b.sprite = body;
+            At(b, x, 0, w, size);
             if (string.IsNullOrWhiteSpace(deltaKey)) return;
             Sprite overlay = ArtCatalog.Ui("delta/" + deltaKey.Trim().ToLowerInvariant());
             if (overlay == null) return;
-            float px = size / 10f;
             Image o = Fill(box, "Decoration", Color.white);
             o.sprite = overlay;
-            At(o, -px, -2 * px, 12 * px, 12 * px);
+            At(o, x, 0, w, size);
         }
 
         private static string StarText(int stars, int max)
@@ -241,7 +250,7 @@ namespace Executor.Play
         // ---------------- 델타 알림 ----------------
         private void BuildDeltaNotice(Transform screen)
         {
-            const float width = 320 * S, border = 2 * S, header = 28 * S, pad = 12 * S, icon = 40 * S;
+            const float width = 320 * S, border = 2 * S, header = 28 * S, pad = 12 * S, icon = 52 * S;
             float height = border + header + pad + icon + pad + border;
             RectTransform box = Frame(screen, "DeltaNotice", Hex(0x0c0a18, 0.94f), Orange, border, 4 * S);
             AtRight(box, 24 * S, 24 * S, width, height);

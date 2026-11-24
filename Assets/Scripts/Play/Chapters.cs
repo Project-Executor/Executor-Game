@@ -21,6 +21,8 @@ namespace Executor.Play
         public int RewardCoin;
         /// <summary>맵 데이터. 서버 스테이지는 잠겨 있는 동안 null이고 시작할 때 받는다 (ServerCatalog.LoadMapAsync)</summary>
         public MapData Map;
+        /// <summary>스테이지 선택 기판 위 노드 자리 (0~1 비율, 왼쪽 위 기준). 관리자가 정하지 않았거나 PC 맵이면 null = 자동 배치</summary>
+        public Vector2? BoardPos;
     }
 
     /// <summary>

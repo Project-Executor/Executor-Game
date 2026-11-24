@@ -121,7 +121,12 @@ namespace Executor.Game
         private readonly string[] _tiles;
         private readonly List<BoardObject> _objects;
         private readonly Dictionary<string, int> _keys = new Dictionary<string, int>();
-        private readonly HashSet<string> _keysGivenByNpc = new HashSet<string>();
+        /// <summary>열쇠를 준 기록 ("인물 또는 컴퓨터 id/열쇠 id"). 워프해도 유지되므로 같은 곳에서 같은 열쇠를 두 번 받지 않는다</summary>
+        private readonly HashSet<string> _keysGiven = new HashSet<string>();
+        /// <summary>열쇠로 연 문 id. 열쇠를 워프해도 유지하므로 연 문도 다시 닫지 않는다 (해킹으로 없앤 문은 워프하면 돌아온다)</summary>
+        private readonly HashSet<string> _openedDoors = new HashSet<string>();
+        /// <summary>주운 열쇠 오브젝트 id. 워프해도 다시 놓이지 않는다 (해킹으로 없앤 열쇠는 워프하면 돌아온다)</summary>
+        private readonly HashSet<string> _pickedKeys = new HashSet<string>();
 
         /// <summary>도착한 체크포인트(시작 위치 = 0)마다 마지막으로 도착했을 때의 상태</summary>
         private readonly SortedDictionary<int, Snapshot> _snapshots = new SortedDictionary<int, Snapshot>();
@@ -365,7 +370,7 @@ namespace Executor.Game
 
         /// <summary>
         /// 도착한 적 있는 체크포인트(시작 위치 0 포함)로 워프한다. 그 체크포인트에 마지막으로 도착했을 때의 상태로 돌아가고
-        /// 그 구간을 처음부터 시작한다. 턴을 쓰지 않는다. 안정 기록과 구간 최고 기록은 유지된다.
+        /// 그 구간을 처음부터 시작한다. 턴을 쓰지 않는다. 안정 기록과 구간 최고 기록, 열쇠(가진 열쇠·주운 열쇠·열쇠로 연 문)는 유지된다.
         /// </summary>
         /// <returns>워프했으면 true (클리어 후거나 도착하지 않은 체크포인트면 false)</returns>
         public bool WarpTo(int order)
@@ -435,10 +440,12 @@ namespace Executor.Game
                     }
                     _keys[target.KeyId]--;
                     target.IsRemoved = true;
+                    _openedDoors.Add(target.Id);
                     return Step(MoveOutcome.OpenedDoor, direction, from, to, target);
 
                 case MapObjectTypes.Key:
                     target.IsRemoved = true;
+                    _pickedKeys.Add(target.Id);
                     AddKey(target.KeyId);
                     return Step(MoveOutcome.PickedUpKey, direction, from, to, target);
 
@@ -516,6 +523,8 @@ namespace Executor.Game
             {
                 if (effect?.Type == "giveKey" && !string.IsNullOrEmpty(effect.KeyId))
                 {
+                    // 워프로 컴퓨터가 감염 상태로 돌아가 다시 해킹해도 열쇠는 한 번만 준다 (열쇠는 워프해도 유지된다)
+                    if (!_keysGiven.Add(computer.Id + "/" + effect.KeyId)) continue;
                     AddKey(effect.KeyId);
                     applied.Add(effect);
                 }
@@ -534,11 +543,11 @@ namespace Executor.Game
         /// <summary>E를 눌렀을 때 대화할 인물 (3x3 안에서 가장 가까운). 없으면 null</summary>
         public BoardObject TalkableNpc => NpcsInRange().FirstOrDefault();
 
-        /// <summary>대화 effect giveKey. 같은 인물은 같은 열쇠를 한 판에 한 번만 준다</summary>
+        /// <summary>대화 effect giveKey. 같은 인물은 같은 열쇠를 한 판에 한 번만 준다 (워프해도)</summary>
         /// <returns>이번에 줬으면 true</returns>
         public bool GiveKeyFrom(BoardObject npc, string keyId)
         {
-            if (!_keysGivenByNpc.Add(npc.Id + "/" + keyId)) return false;
+            if (!_keysGiven.Add(npc.Id + "/" + keyId)) return false;
             AddKey(keyId);
             return true;
         }
@@ -596,21 +605,20 @@ namespace Executor.Game
 
         // ---------- 워프용 상태 저장 ----------
 
-        /// <summary>워프로 되돌릴 상태: 위치, 오브젝트(위치·hp·사라짐·컴퓨터 복구, 데이터 파편 제외), 열쇠, 대화로 받은 열쇠 기록</summary>
+        /// <summary>
+        /// 워프로 되돌릴 상태: 위치, 오브젝트(위치·hp·사라짐·컴퓨터 복구).
+        /// 데이터 파편, 열쇠(가진 열쇠·주운 열쇠·열쇠로 연 문·받은 기록)는 워프해도 유지하므로 저장하지 않는다
+        /// </summary>
         private sealed class Snapshot
         {
             public GridPos Player;
             public (GridPos Pos, int Hp, bool Removed, bool Restored)[] Objects;
-            public Dictionary<string, int> Keys;
-            public HashSet<string> KeysGivenByNpc;
         }
 
         private Snapshot Capture() => new Snapshot
         {
             Player = PlayerPos,
             Objects = _objects.Select(o => (o.Pos, o.Hp, o.IsRemoved, o.IsRestored)).ToArray(),
-            Keys = new Dictionary<string, int>(_keys),
-            KeysGivenByNpc = new HashSet<string>(_keysGivenByNpc)
         };
 
         private void Restore(Snapshot s)
@@ -618,17 +626,18 @@ namespace Executor.Game
             PlayerPos = s.Player;
             for (int i = 0; i < _objects.Count; i++)
             {
-                // 데이터 파편의 수집·드러남은 워프해도 유지한다
-                if (_objects[i].Type == MapObjectTypes.Hidden) continue;
+                // 데이터 파편의 수집·드러남, 주운 열쇠, 열쇠로 연 문은 워프해도 유지한다
+                if (KeepsOnWarp(_objects[i])) continue;
                 _objects[i].Pos = s.Objects[i].Pos;
                 _objects[i].Hp = s.Objects[i].Hp;
                 _objects[i].IsRemoved = s.Objects[i].Removed;
                 _objects[i].IsRestored = s.Objects[i].Restored;
             }
-            _keys.Clear();
-            foreach (var kv in s.Keys) _keys[kv.Key] = kv.Value;
-            _keysGivenByNpc.Clear();
-            _keysGivenByNpc.UnionWith(s.KeysGivenByNpc);
         }
+
+        private bool KeepsOnWarp(BoardObject o) =>
+            o.Type == MapObjectTypes.Hidden
+            || (o.Type == MapObjectTypes.Key && _pickedKeys.Contains(o.Id))
+            || (o.Type == MapObjectTypes.Door && _openedDoors.Contains(o.Id));
     }
 }

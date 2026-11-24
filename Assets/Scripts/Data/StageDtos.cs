@@ -69,6 +69,9 @@ namespace Executor.Data
         /// <summary>클리어한 최소 턴. 미클리어면 null</summary>
         public int? BestMoves { get; set; }
         public int PlayCount { get; set; }
+        /// <summary>스테이지 선택 기판 위 노드 가운데 (0~1, 왼쪽 위 기준). 관리자 웹에서 정하고, null이면 자동 배치</summary>
+        public double? BoardX { get; set; }
+        public double? BoardY { get; set; }
     }
 
     /// <summary>

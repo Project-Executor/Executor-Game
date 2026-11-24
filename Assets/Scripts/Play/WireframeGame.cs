@@ -820,6 +820,7 @@ namespace Executor.Play
                     Stars = stars == null ? null : $"{stars.Count} / {stars.Max}",
                     StarLines = StarLines(stage),
                     Preview = () => stage.Map == null ? null : Minimap.Render(new Board(stage.Map, stage.Par), null, true),
+                    BoardPos = s.BoardPos,
                 });
             }
             _menu.ShowStageSelect(screen);

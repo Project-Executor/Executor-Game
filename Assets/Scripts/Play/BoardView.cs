@@ -76,6 +76,7 @@ namespace Executor.Play
             }
 
             ArtCatalog.MapTheme = board.Data.Theme; // 챕터별 맵 세트 (helloworld, undercity ...)
+            ArtCatalog.TileArt = board.Data.TileArt; // 관리자가 칸마다 고른 바닥·벽 무늬
             _mapSet = ArtCatalog.HasMapSet;
             if (_mapSet) BuildMapSetTiles(board);
             else

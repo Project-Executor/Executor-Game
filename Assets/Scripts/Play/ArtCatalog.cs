@@ -61,6 +61,16 @@ namespace Executor.Play
         /// <summary>지금 그리는 맵의 테마 (BoardView.Build가 map_data.theme으로 정한다)</summary>
         public static string MapTheme { get; set; }
 
+        /// <summary>지금 그리는 맵의 칸별 그림 (map_data.tileArt, 키 "x,y"). 없거나 비면 전부 자동</summary>
+        public static Dictionary<string, string> TileArt { get; set; }
+
+        /// <summary>칸에 정해 둔 그림 이름 (prefix로 시작할 때만, 예: 바닥 칸은 floor_). 없으면 null</summary>
+        private static string ChosenArt(int x, int y, string prefix)
+        {
+            if (TileArt == null || TileArt.Count == 0) return null;
+            return TileArt.TryGetValue($"{x},{y}", out string name) && name != null && name.StartsWith(prefix) ? name : null;
+        }
+
         private static readonly HashSet<string> Missing = new HashSet<string>();
 
         private static bool IsTileArt(string name) =>
@@ -107,6 +117,8 @@ namespace Executor.Play
         {
             if (ThemeHasTiles)
             {
+                string chosen = ChosenArt(x, y, "wall_");
+                if (chosen != null && MapArt(chosen) is Sprite picked) return picked; // 관리자가 고른 무늬 (세트에 없으면 자동)
                 if (s) return MapArt("wall_top");
                 string folder = ThemeFolder;
                 if (!WallFrontCount.TryGetValue(folder, out int count))
@@ -123,6 +135,8 @@ namespace Executor.Play
         /// <summary>바닥: 대부분 floor_plain, 8칸에 1칸꼴로 회로 무늬 (칸마다 정해져 판이 바뀌어도 같다)</summary>
         public static Sprite FloorTile(int x, int y)
         {
+            string chosen = ChosenArt(x, y, "floor_");
+            if (chosen != null && MapArt(chosen) is Sprite picked) return picked; // 관리자가 고른 무늬 (세트에 없으면 자동)
             int h = CellHash(x, y);
             if (h % 8 != 0) return MapArt("floor_plain") ?? Floor;
             string[] variants = { "floor_trace_l", "floor_trace_h", "floor_vias" };

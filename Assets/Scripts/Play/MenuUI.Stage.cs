@@ -37,6 +37,8 @@ namespace Executor.Play
             public List<string> StarLines = new List<string>();
             /// <summary>맵 미리 보기 (맵이 아직 없으면 null을 돌려준다)</summary>
             public Func<Texture2D> Preview;
+            /// <summary>기판 위 자리 (0~1 비율, 왼쪽 위 기준). 관리자 웹에서 정한 값이고 null이면 지그재그 자동 배치</summary>
+            public Vector2? BoardPos;
         }
 
         /// <summary>Operation 트리의 한 줄</summary>
@@ -365,8 +367,23 @@ namespace Executor.Play
             return _gridTexture;
         }
 
-        /// <summary>노드 자리 (시안의 6개 위치를 되풀이). 많으면 간격을 줄여 기판 안에 넣는다</summary>
-        private static List<Vector2> NodeCenters(int count)
+        /// <summary>노드 자리. 관리자가 정한 자리(BoardPos)가 있으면 그곳, 없으면 지그재그 자동 배치</summary>
+        private static List<Vector2> NodeCenters(List<StageNode> nodes)
+        {
+            List<Vector2> auto = AutoCenters(nodes.Count);
+            var list = new List<Vector2>();
+            for (int i = 0; i < nodes.Count; i++)
+            {
+                Vector2? p = nodes[i].BoardPos;
+                list.Add(p.HasValue
+                    ? new Vector2(Mathf.Clamp01(p.Value.x) * BoardW, Mathf.Clamp01(p.Value.y) * ExpBodyH)
+                    : auto[i]);
+            }
+            return list;
+        }
+
+        /// <summary>자동 배치 (시안의 6개 위치를 되풀이). 많으면 간격을 줄여 기판 안에 넣는다. 관리자 웹 stageBoard.ts defaultCenter와 같다</summary>
+        private static List<Vector2> AutoCenters(int count)
         {
             // 시안: 노드 칸(가로 100) 왼쪽 6 + i*101.6, 위 30 + [268,138,298,118,278,158] + 노드 반(32)
             float[] tops = { 268, 138, 298, 118, 278, 158 };
@@ -390,18 +407,41 @@ namespace Executor.Play
                 Inset(empty, 0, 0, 0, 0);
                 return;
             }
-            List<Vector2> centers = NodeCenters(nodes.Count);
-            const float half = 32 * S;
+            List<Vector2> centers = NodeCenters(nodes);
             for (int i = 0; i + 1 < nodes.Count; i++)
-                Wire(_expMap, centers[i] + new Vector2(half, 0), centers[i + 1] - new Vector2(half, 0), nodes[i + 1].Unlocked);
+            {
+                bool placed = nodes[i].BoardPos.HasValue || nodes[i + 1].BoardPos.HasValue;
+                Wire(_expMap, WirePoints(centers[i], centers[i + 1], placed), nodes[i + 1].Unlocked);
+            }
             for (int i = 0; i < nodes.Count; i++) StageButton(nodes[i], centers[i]);
         }
 
-        /// <summary>회로 선: 가로 - 세로 - 가로. 열린 길은 하늘색(검은 테두리), 잠긴 길은 회색 점선</summary>
-        private static void Wire(RectTransform map, Vector2 from, Vector2 to, bool active)
+        /// <summary>
+        /// 두 노드를 잇는 꺾은선 (점 4개). 보통은 가로 - 세로 - 가로로 옆면끼리 잇고,
+        /// 관리자가 놓은 노드가 위아래로 겹쳐 있으면 세로 - 가로 - 세로로 아랫면·윗면을 잇는다. 관리자 웹 stageBoard.ts wirePoints와 같다
+        /// </summary>
+        private static Vector2[] WirePoints(Vector2 a, Vector2 b, bool placed)
         {
-            float midX = (from.x + to.x) / 2;
-            var points = new[] { from, new Vector2(midX, from.y), new Vector2(midX, to.y), to };
+            const float half = 32 * S;
+            float dx = b.x - a.x, dy = b.y - a.y;
+            if (placed && Mathf.Abs(dx) < half * 2 + 8 * S)
+            {
+                float sy = dy >= 0 ? 1 : -1;
+                var from = new Vector2(a.x, a.y + sy * half);
+                var to = new Vector2(b.x, b.y - sy * half);
+                float midY = (from.y + to.y) / 2;
+                return new[] { from, new Vector2(from.x, midY), new Vector2(to.x, midY), to };
+            }
+            float sx = dx >= 0 ? 1 : -1;
+            var start = new Vector2(a.x + sx * half, a.y);
+            var end = new Vector2(b.x - sx * half, b.y);
+            float midX = (start.x + end.x) / 2;
+            return new[] { start, new Vector2(midX, start.y), new Vector2(midX, end.y), end };
+        }
+
+        /// <summary>회로 선. 열린 길은 하늘색(검은 테두리), 잠긴 길은 회색 점선</summary>
+        private static void Wire(RectTransform map, Vector2[] points, bool active)
+        {
             for (int i = 0; i + 1 < points.Length; i++)
             {
                 if (active)

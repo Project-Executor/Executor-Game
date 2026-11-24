@@ -48,6 +48,9 @@ namespace Executor.Play
                         Par = s.ParMoves,
                         Tutorial = s.StageType == StageType.Tutorial,
                         RewardCoin = s.RewardCoin,
+                        BoardPos = s.BoardX.HasValue && s.BoardY.HasValue
+                            ? new Vector2((float)s.BoardX.Value, (float)s.BoardY.Value)
+                            : (Vector2?)null,
                     };
                     chapter.Stages.Add(stage);
                     if (guest)

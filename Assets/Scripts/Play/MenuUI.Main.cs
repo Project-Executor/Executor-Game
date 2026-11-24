@@ -18,7 +18,7 @@ namespace Executor.Play
         public class MainInfo
         {
             public string Nickname;
-            /// <summary>코인 칸 글자 ("180", 오프라인이면 "오프라인")</summary>
+            /// <summary>코인 칸 글자 ("180", 게스트면 "게스트")</summary>
             public string Coin;
             /// <summary>지금 구역(레이어) 이름. 예: INTERFACE</summary>
             public string Zone;

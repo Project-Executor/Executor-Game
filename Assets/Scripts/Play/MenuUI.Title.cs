@@ -10,14 +10,14 @@ namespace Executor.Play
 {
     /// <summary>
     /// 시작(잠금) 화면과 로그인·회원가입 창 (시안 TitleBefore / TitleAfter / Login / LoginError / LoginOffline / Signup / SignupError).
-    /// 시작 화면: 일러스트(로고 포함 한 장) + 오른쪽 위 설정·종료, 로그인 전에는 로그인 버튼·서버 상태·오프라인 테스트,
+    /// 시작 화면: 일러스트(로고 포함 한 장) + 오른쪽 위 설정·종료, 로그인 전에는 로그인 버튼·서버 상태·게스트로 플레이,
     /// 로그인 뒤에는 "> 화면을 클릭해 게임을 시작하세요"와 계정·로그아웃.
     /// 로그인 창(login.exe)·회원가입 창(signup.exe)은 입력칸 테두리 색으로 상태(포커스 하늘·맞음 초록·틀림 빨강)를 보이고,
     /// 아래 상태 줄에 서버 연결($ ping api)과 요청 결과를 터미널처럼 보여 준다
     /// </summary>
     public partial class MenuUI
     {
-        public Action OnTitleStart, OnTitleLogin, OnTitleLogout, OnTitleOffline, OnSettings, OnTitleQuit;
+        public Action OnTitleStart, OnTitleLogin, OnTitleLogout, OnTitleGuest, OnSettings, OnTitleQuit;
 
         private GameObject _titleBefore, _titleAfter;
         private Text _titleServer, _titleAccount, _titleLogoutLabel;
@@ -25,10 +25,10 @@ namespace Executor.Play
         private Button _titleTouch;
 
         /// <summary>
-        /// ready=false: 로그인 버튼 + 서버 상태 + 왼쪽 아래 오프라인 테스트.
-        /// ready=true (로그인 또는 오프라인): "화면을 클릭해 게임을 시작하세요" + 왼쪽 아래 계정·로그아웃
+        /// ready=false: 로그인 버튼 + 서버 상태 + 왼쪽 아래 게스트로 플레이.
+        /// ready=true (로그인 또는 게스트): "화면을 클릭해 게임을 시작하세요" + 왼쪽 아래 계정·로그아웃
         /// </summary>
-        /// <param name="accountName">로그인 뒤 왼쪽 아래 이름 (오프라인이면 null)</param>
+        /// <param name="accountName">로그인 뒤 왼쪽 아래 이름 (게스트면 null)</param>
         public void ShowTitle(bool ready, string accountName, string logoutLabel)
         {
             HideAll();
@@ -36,7 +36,7 @@ namespace Executor.Play
             _titleBefore.SetActive(!ready);
             _titleAfter.SetActive(ready);
             _titleTouch.enabled = ready;
-            _titleAccount.text = accountName == null ? "오프라인 테스트 중" : $"<b>{accountName}</b> 님으로 로그인";
+            _titleAccount.text = accountName == null ? "게스트로 플레이 중" : $"<b>{accountName}</b> 님으로 로그인";
             _titleLogoutLabel.text = logoutLabel;
             if (!ready) SetTitleServer(null, 0);
         }
@@ -92,8 +92,8 @@ namespace Executor.Play
             _titleServer = Label(chip.transform, "", 12 * S, Muted, TextAnchor.MiddleLeft, UiKit.Mono);
             Inset(_titleServer, 10 * S + 8 * S + 8 * S, 0, 0, 0);
             SetTitleServer(null, 0);
-            // 왼쪽 아래: 오프라인 테스트 (두 줄)
-            RectTransform offline = TitleGhost(before, "오프라인 테스트", "서버 없이 체험", () => OnTitleOffline?.Invoke());
+            // 왼쪽 아래: 게스트로 플레이 (두 줄)
+            RectTransform offline = TitleGhost(before, "게스트로 플레이", "로그인 없이 체험 · 기록은 이 PC에만", () => OnTitleGuest?.Invoke());
             At(offline, 24 * S, 634 * S, 214 * S, 56 * S);
 
             // ---- 로그인 뒤 ----

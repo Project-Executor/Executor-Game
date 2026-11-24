@@ -1,6 +1,6 @@
 # 챕터 맵 시트(1536x1024 한 장) -> 게임 맵 세트 Resources/Pixel/map/{theme}/. docs/art-guide.md "챕터별 맵 세트"
 """사용: python install_sheet.py <세트 이름> <시트.png> <Resources/Pixel/map/{theme} 폴더> [미리보기.png]
-세트 이름: holo (helloworld, 하늘색 홀로그램) / undercity (언더시티, 보라·네온) / corporation (3챕터 코퍼레이션, 라벤더·분홍 네온)
+세트 이름: holo (helloworld, 하늘색 홀로그램) / undercity (언더시티, 보라·네온) / corporation (3챕터 코퍼레이션, 라벤더·분홍 네온) / hologram (튜토리얼, 남색·청록)
 
 1. 배경
    - 시트가 투명(RGBA, 투명한 칸이 20% 넘음)이면 그 알파를 그대로 쓴다.
@@ -116,6 +116,38 @@ SETS = {
         'tight': 0.2,
         'mid': (200, 500),
     },
+    'hologram': {
+        'tiles': {
+            'wall_front_0': (24, 27, 182, 168),
+            'wall_front_1': (202, 27, 385, 168),
+            'wall_front_2': (405, 27, 557, 168),
+            'wall_front_3': (577, 27, 730, 168),
+            'wall_front_4': (749, 27, 867, 168),
+            'floor_plain': (102, 320, 181, 401),
+            'floor_trace_l': (302, 320, 386, 401),
+            'floor_trace_h': (405, 320, 486, 401),
+            'floor_vias': (26, 320, 98, 401),
+        },
+        'objects': {
+            'exit_gate_64x96': (1064, 23, 1214, 240),
+            'shutter_locked': (895, 22, 1044, 239),
+            'computer_infected_64x72': (30, 428, 206, 595),
+            'computer_fixed_64x72': (234, 428, 408, 594),
+            'firewall': (1162, 437, 1337, 592),
+            'firewall_damaged': (1358, 437, 1520, 592),
+            'drive': (46, 621, 180, 742),
+            'keycard': (737, 620, 816, 739),
+            'data_shard': (1150, 623, 1272, 743),
+            'checkpoint_on': (1146, 762, 1281, 969),
+            'null_entity': (23, 770, 209, 965),
+        },
+        'small': {'keycard': 28, 'data_shard': 44, 'drive': 54, 'null_entity': 58},
+        'soft': {},
+        'tile_back': (16, 20, 34),
+        'wall_top_dim': 0.55,
+        'tight': 0.3,  # 배경의 옅은 색 찌꺼기가 들어가지 않게
+        'mid': (150, 450),
+    },
 }
 
 
@@ -125,7 +157,9 @@ def load(path, soft, objects):
     if img.mode == 'RGBA':
         rgba = np.array(img).astype(np.float64)
         alpha = rgba[..., 3] / 255.0
-        if (alpha == 0).mean() > 0.2:
+        # 거의 투명한 칸(알파 10 이하, 색 찌꺼기가 섞인 배경 포함)이 20% 넘으면 투명 시트로 본다
+        if (alpha <= 10 / 255).mean() > 0.2:
+            alpha[alpha <= 10 / 255] = 0
             return rgba[..., :3], alpha
     a = np.array(img.convert('RGB')).astype(np.float64)
     mx, mn = a.max(2), a.min(2)

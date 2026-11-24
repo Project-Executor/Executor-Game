@@ -9,7 +9,7 @@ namespace Executor.Play
     /// <summary>스테이지 하나 (맵 JSON = 관리자 등록 형식에서 operationId만 빠진 것)</summary>
     public class StageInfo
     {
-        /// <summary>서버 스테이지 ID. 로그인해서 서버에서 받은 스테이지만 있다 (오프라인 Resources 맵은 null)</summary>
+        /// <summary>서버 스테이지 ID. 로그인해서 서버에서 받은 스테이지만 있다 (PC의 Resources 맵은 null). 게스트도 서버에서 받으면 있다</summary>
         public long? StageId;
         public int No;
         public string Title;
@@ -113,7 +113,7 @@ namespace Executor.Play
 
     /// <summary>
     /// 스테이지 진행 기록. 로그인해서 서버에서 받은 스테이지는 서버 기록(GET /operations, SetRemote)을,
-    /// 오프라인(Resources 맵)은 PC 저장 기록을 쓴다.
+    /// 게스트(서버에서 받은 스테이지 포함)와 PC의 Resources 맵은 PC 저장 기록을 쓴다.
     /// PC 저장 키: executor.{계정}.{챕터ID}.best.{스테이지 번호} (튜토리얼은 이전 버전과 같은 키)
     /// </summary>
     public static class StageProgress
@@ -172,14 +172,16 @@ namespace Executor.Play
         public static bool IsChapterCleared(ChapterInfo chapter) =>
             chapter.IsAvailable && ClearedCount(chapter) == chapter.Stages.Count;
 
-        /// <summary>첫 챕터는 처음부터, 나머지는 앞 챕터를 모두 클리어하면 열린다</summary>
+        /// <summary>첫 챕터는 처음부터, 나머지는 앞 챕터를 모두 클리어하면 열린다 (스테이지가 없는 앞 챕터는 건너뛴다)</summary>
         public static bool IsChapterUnlocked(IReadOnlyList<ChapterInfo> chapters, ChapterInfo chapter)
         {
             // 서버 스테이지: 첫 스테이지가 열렸으면 챕터도 열린 것 (서버가 앞 작전 클리어로 판단)
             RemoteRecord first = chapter.Stages.Count > 0 ? RemoteOf(chapter.Id, chapter.Stages[0].No) : null;
             if (first != null) return first.Unlocked;
             int index = chapters.ToList().IndexOf(chapter);
-            return index <= 0 || IsChapterCleared(chapters[index - 1]);
+            for (int i = index - 1; i >= 0; i--)
+                if (chapters[i].IsAvailable) return IsChapterCleared(chapters[i]);
+            return true;
         }
 
         /// <summary>챕터 안에서: 첫 스테이지는 챕터가 열리면, 나머지는 앞 스테이지를 클리어하면 열린다</summary>

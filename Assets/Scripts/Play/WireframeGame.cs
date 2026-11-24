@@ -16,7 +16,7 @@ namespace Executor.Play
     /// 화면은 MenuUI(메뉴)·GameUI(플레이)·BoardView(판)가 그리고, 이 클래스는 모드 전환과 입력, 서버 호출을 맡는다.
     /// <list type="bullet">
     ///   <item>로그인: 서버 계정 (자동 로그인 포함). 스테이지는 서버의 레이어 → Operation → 스테이지 (ServerCatalog)</item>
-    ///   <item>오프라인 테스트: Resources/Maps/chapters.json과 Resources/Maps/{챕터ID}/stage-N.json (ChapterCatalog), 기록은 PC에만</item>
+    ///   <item>게스트: 서버에 닿으면 공식 스테이지(GET /guest/...), 아니면 Resources/Maps/chapters.json과 Resources/Maps/{챕터ID}/stage-N.json (ChapterCatalog), 기록은 PC에만</item>
     ///   <item>턴: 구간마다 "남은 턴 = 기준 턴 - 쓴 턴". 0 밑으로 내려가도 실패가 아니라, 그대로 도착하면 불안정 (별 2 판정)</item>
     ///   <item>규칙은 Game/Board.cs, 맵 형식과 규칙 문서는 Executor-Server docs/map-data.md</item>
     /// </list>
@@ -122,6 +122,21 @@ namespace Executor.Play
                         : "서버 스테이지를 불러오지 못했습니다.\n" + e.Message);
                 }
             }
+            else if (PlayerSession.IsGuest)
+            {
+                // 게스트: 서버에 닿으면 관리자가 등록한 공식 스테이지를 받는다 (기록은 PC에만). 안 닿으면 PC에 있는 맵
+                try
+                {
+                    _chapters = await ServerCatalog.LoadAsync(guest: true);
+                    _chapter = _chapters.FirstOrDefault(c => c.Id == current)
+                               ?? _chapters.FirstOrDefault(c => c.IsAvailable) ?? _chapters.FirstOrDefault();
+                    return;
+                }
+                catch (ApiException e)
+                {
+                    Debug.LogWarning("[WireframeGame] 게스트: 서버 스테이지를 받지 못해 PC의 맵을 씁니다: " + e);
+                }
+            }
             StageProgress.ClearRemote();
             _chapters = ChapterCatalog.Load();
             _chapter = _chapters.FirstOrDefault(c => c.Id == current)
@@ -141,7 +156,7 @@ namespace Executor.Play
         // ================= 메뉴 =================
         private void WireMenu()
         {
-            // 로그인(또는 오프라인)한 뒤에만 화면 클릭으로 메인에 들어간다
+            // 로그인(또는 게스트)한 뒤에만 화면 클릭으로 메인에 들어간다
             _menu.OnTitleStart = () =>
             {
                 if (_menu.HasPopup || !PlayerSession.CanPlay) return;
@@ -150,7 +165,7 @@ namespace Executor.Play
             };
             _menu.OnTitleLogin = OpenLogin;
             _menu.OnTitleLogout = Logout;
-            _menu.OnTitleOffline = () => { PlayerSession.StartOffline(); ReloadChapters(); ShowTitle(); };
+            _menu.OnTitleGuest = () => { PlayerSession.StartGuest(); ReloadChapters(); ShowTitle(); };
             _menu.OnTitleQuit = () => _menu.ShowQuitConfirm(QuitGame);
             _menu.OnSettings = () => _menu.ShowSettings(SettingsActions(_menu.PopupRoot, null));
 
@@ -197,7 +212,7 @@ namespace Executor.Play
             Block();
             HideGame();
             _menu.ShowTitle(PlayerSession.CanPlay, PlayerSession.IsOnline ? PlayerSession.DisplayName : null,
-                PlayerSession.IsOnline ? "로그아웃" : "오프라인 종료");
+                PlayerSession.IsOnline ? "로그아웃" : "게스트 종료");
             if (!PlayerSession.CanPlay) PingForTitle();
         }
 
@@ -566,7 +581,7 @@ namespace Executor.Play
         {
             if (!PlayerSession.IsOnline)
             {
-                _menu.ShowList("프로필", new[] { "오프라인 테스트 중입니다.", $"닉네임: {NameOrDash(PlayerSession.Nickname)}" });
+                _menu.ShowList("프로필", new[] { "게스트로 플레이 중입니다. 로그인하면 프로필을 꾸밀 수 있어요.", $"닉네임: {NameOrDash(PlayerSession.Nickname)}" });
                 return;
             }
             try
@@ -813,7 +828,7 @@ namespace Executor.Play
         /// <summary>주소칸의 폴더 이름: 띄어쓰기를 _로</summary>
         private static string Folder(string name) => (name ?? "").Trim().Replace(' ', '_');
 
-        private static string CoinText() => PlayerSession.IsOnline && PlayerSession.Profile != null ? PlayerSession.Profile.Coin.ToString() : "오프라인";
+        private static string CoinText() => PlayerSession.IsOnline && PlayerSession.Profile != null ? PlayerSession.Profile.Coin.ToString() : "게스트";
 
         /// <summary>스테이지 정보의 별 조건 줄. 맵이 아직 없으면(서버 맵은 시작할 때 받는다) ★1만</summary>
         private static List<string> StarLines(StageInfo stage)
@@ -928,7 +943,7 @@ namespace Executor.Play
         {
             Account = PlayerSession.IsOnline
                 ? $"{PlayerSession.DisplayName} <color=#8b98b8>· {PlayerSession.Profile?.Email}</color>"
-                : PlayerSession.IsOffline ? "오프라인 테스트 중" : "로그인하지 않음",
+                : PlayerSession.IsGuest ? "게스트로 플레이 중" : "로그인하지 않음",
             LoggedIn = PlayerSession.IsOnline,
             Logout = Logout,
             BugReport = stageReport ?? (() => ReportPanel.Open(popupRoot, new ReportPanel.Target { PreferCategory = "버그 제보" })),
@@ -1253,7 +1268,7 @@ namespace Executor.Play
         {
             string input = _game.NameInput;
             if (input.Length < 2 || input.Length > 20) { _game.SetNicknameStatus("닉네임은 2~20자여야 합니다.", false); return; }
-            if (!PlayerSession.IsOnline) { _game.SetNicknameStatus("오프라인 테스트에서는 확인 없이 저장됩니다.", true); return; }
+            if (!PlayerSession.IsOnline) { _game.SetNicknameStatus("게스트는 확인 없이 저장됩니다.", true); return; }
             try
             {
                 bool available = await PlayerSession.IsNicknameAvailableAsync(input);

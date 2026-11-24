@@ -18,10 +18,11 @@ namespace Executor.Play
     {
         public static string ChapterId(long operationId) => "op" + operationId;
 
+        /// <param name="guest">게스트로 플레이: 로그인 없이 받고(GET /guest/operations), 진행·해금은 PC 기록(StageProgress)으로 정한다</param>
         /// <exception cref="ApiException">네트워크 오류 등</exception>
-        public static async Task<List<ChapterInfo>> LoadAsync()
+        public static async Task<List<ChapterInfo>> LoadAsync(bool guest = false)
         {
-            List<OperationResponse> operations = await StageApi.GetOperationsAsync();
+            List<OperationResponse> operations = guest ? await StageApi.GetGuestOperationsAsync() : await StageApi.GetOperationsAsync();
             StageProgress.ClearRemote();
             var chapters = new List<ChapterInfo>();
             var loads = new List<Task>();
@@ -49,6 +50,11 @@ namespace Executor.Play
                         RewardCoin = s.RewardCoin,
                     };
                     chapter.Stages.Add(stage);
+                    if (guest)
+                    {
+                        loads.Add(TryLoadMapAsync(stage));  // 게스트는 해금을 PC에서 정하므로 맵을 모두 미리 받는다
+                        continue;
+                    }
                     StageProgress.SetRemote(chapter.Id, stage.No, new StageProgress.RemoteRecord
                     {
                         Unlocked = s.Unlocked,
@@ -86,7 +92,9 @@ namespace Executor.Play
         public static async Task LoadMapAsync(StageInfo stage)
         {
             if (stage.Map != null || stage.StageId == null) return;
-            StageDetail detail = await StageApi.GetStageAsync(stage.StageId.Value);
+            StageDetail detail = PlayerSession.IsOnline
+                ? await StageApi.GetStageAsync(stage.StageId.Value)
+                : await StageApi.GetGuestStageAsync(stage.StageId.Value);
             stage.Map = MapData.From(detail.MapData);
             stage.Par = detail.ParMoves;
         }

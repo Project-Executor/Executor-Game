@@ -13,6 +13,14 @@ namespace Executor.Network
         public static Task<List<OperationResponse>> GetOperationsAsync() =>
             ApiClient.GetAsync<List<OperationResponse>>("/operations");
 
+        /// <summary>게스트용 작전·스테이지 목록 (로그인 없이). 기록 없이 모든 스테이지가 열린 것으로 온다</summary>
+        public static Task<List<OperationResponse>> GetGuestOperationsAsync() =>
+            ApiClient.GetAsync<List<OperationResponse>>("/guest/operations", auth: false);
+
+        /// <summary>게스트용 스테이지 상세 (공식 스테이지만, 로그인 없이)</summary>
+        public static Task<StageDetail> GetGuestStageAsync(long stageId) =>
+            ApiClient.GetAsync<StageDetail>($"/guest/stages/{stageId}", auth: false);
+
         /// <summary>스테이지 상세와 맵 데이터</summary>
         /// <exception cref="ApiException">403 STAGE_LOCKED, 403 FORBIDDEN(남의 비공개 맵), 404 NOT_FOUND</exception>
         public static Task<StageDetail> GetStageAsync(long stageId) =>

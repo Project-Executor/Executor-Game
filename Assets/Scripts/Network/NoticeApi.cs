@@ -3,7 +3,7 @@ using Executor.Data;
 
 namespace Executor.Network
 {
-    /// <summary>공지사항 (/api/notices). 로그인 없이 볼 수 있어서 오프라인 테스트 중에도 서버에 닿으면 불러온다</summary>
+    /// <summary>공지사항 (/api/notices). 로그인 없이 볼 수 있어서 게스트로 플레이할 때도 서버에 닿으면 불러온다</summary>
     public static class NoticeApi
     {
         /// <summary>지금 게시 중인 공지 (상단 고정 먼저, 최신순)</summary>

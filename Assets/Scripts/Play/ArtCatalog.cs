@@ -54,7 +54,7 @@ namespace Executor.Play
         // 있으면 아래 그림이 위의 예전 타일·오브젝트 그림보다 먼저 쓰인다. 파일을 지우면 예전 그림으로 돌아간다
 
         // 챕터별 테마 (map_data.theme): Pixel/map/{theme}/ 에 같은 이름의 그림이 있으면 그것을 먼저 쓴다.
-        //   helloworld (1챕터), undercity (언더시티). hologram·빈 값은 기본 세트.
+        //   hologram (튜토리얼), helloworld (1챕터), undercity (언더시티), corporation (코퍼레이션, 3챕터). 빈 값이나 폴더가 없는 값은 기본 세트.
         //   테마에 자기 바닥(floor_plain)이 있으면 벽·바닥·장식·기판 두께는 기본 세트와 섞지 않는다 (없는 건 안 그림).
         //   오브젝트는 테마에 없으면 기본 세트 그림. 단 테마에 잠긴 문만 있고 열린 문이 없으면 열린 문은 그리지 않는다(사라짐)
 
@@ -67,7 +67,7 @@ namespace Executor.Play
             name.StartsWith("wall_") || name.StartsWith("floor_") || name.StartsWith("deco_") || name == "board_edge";
 
         private static string ThemeFolder =>
-            string.IsNullOrEmpty(MapTheme) || MapTheme == "hologram" ? null : "Pixel/map/" + MapTheme.Trim().ToLowerInvariant() + "/";
+            string.IsNullOrEmpty(MapTheme) ? null : "Pixel/map/" + MapTheme.Trim().ToLowerInvariant() + "/";
 
         /// <summary>없는 그림은 기억해 두고 다시 찾지 않는다 (칸마다 부르므로)</summary>
         private static Sprite TryCell(string path)

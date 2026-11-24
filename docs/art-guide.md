@@ -64,7 +64,7 @@
 
 ### 챕터별 맵 세트 (map_data.theme)
 
-맵의 `theme`이 `helloworld`(1챕터)·`undercity`(언더시티)면 `Resources/Pixel/map/{theme}/`의 그림을 먼저 쓴다 (`ArtCatalog.MapTheme`).
+맵의 `theme`이 `hologram`(튜토리얼)·`helloworld`(1챕터)·`undercity`(언더시티)·`corporation`(코퍼레이션, 3챕터)면 `Resources/Pixel/map/{theme}/`의 그림을 먼저 쓴다 (`ArtCatalog.MapTheme`).
 `hologram`이나 모르는 값은 위의 기본 세트. 관리자 웹 맵 편집의 '맵 그림 세트'에서 고른다.
 
 | 파일 | 규칙 |
@@ -77,12 +77,23 @@
 
 - 테마에 `floor_plain`이 있으면 벽·바닥·장식·기판 두께는 기본 세트와 섞지 않는다 (벽 장식 없음, 그림에 그려져 있음).
 - 잠긴 문(`shutter_locked`)만 있고 열린 문이 없으면, 문을 열었을 때 사라진다.
-- **`helloworld`(1챕터)는 하늘색 홀로그램 시트** (`Tools/SpriteCut/sheets/helloworld_holo.png`, 배경에 체크 무늬가 그려진 1536 × 1024).
-  `python Tools/SpriteCut/install_sheet_holo.py Tools/SpriteCut/sheets/helloworld_holo.png Assets/Resources/Pixel/map/helloworld`로 넣는다.
-  체크 무늬 배경을 지우고(빛 효과는 채도로 반투명), 가로 64px로 줄인다. 어느 그림을 어디에 쓰는지는 스크립트의 `TILES`, `OBJECTS`(시트 좌표), 작은 물건 너비는 `SMALL`.
-  벽 윗면은 벽 패널의 청회색을 어둡게 한 단색, 체크포인트(도착 전)는 화살표 기둥을 어둡게 한 그림이다.
-- **`undercity`는 타일셋 v7** (`Executor/Executor_tileset_v7`: 1px 격자·41색 팔레트로 다시 찍은 세트, 오브젝트는 `objects`(시트 B)).
-  `python Tools/SpriteCut/install_tileset_v7.py <Executor_tileset_v7> Assets/Resources/Pixel/map`은 **helloworld도 v7로 덮어쓰므로**, 다시 돌린 뒤에는 위의 홀로그램 시트 설치도 다시 한다.
+- 네 세트 모두 **같은 배치의 시트 한 장**(1536 × 1024)에서 `Tools/SpriteCut/install_sheet.py`로 넣는다.
+
+  | 세트 | 시트 | 명령 |
+  | --- | --- | --- |
+  | `helloworld`(1챕터, 하늘색 홀로그램) | `Tools/SpriteCut/sheets/helloworld_holo.png` (배경에 체크 무늬가 그려진 RGB) | `python Tools/SpriteCut/install_sheet.py holo Tools/SpriteCut/sheets/helloworld_holo.png Assets/Resources/Pixel/map/helloworld` |
+  | `undercity`(언더시티, 보라·네온) | `Tools/SpriteCut/sheets/undercity_neon.png` (투명 배경 RGBA) | `python Tools/SpriteCut/install_sheet.py undercity Tools/SpriteCut/sheets/undercity_neon.png Assets/Resources/Pixel/map/undercity` |
+  | `hologram`(튜토리얼, 남색·청록) | `Tools/SpriteCut/sheets/tutorial_hologram.png` (투명 배경 RGBA, 배경에 알파 1~3의 색 찌꺼기) | `python Tools/SpriteCut/install_sheet.py hologram Tools/SpriteCut/sheets/tutorial_hologram.png Assets/Resources/Pixel/map/hologram` |
+  | `corporation`(코퍼레이션 3챕터, 라벤더·분홍 네온) | `Tools/SpriteCut/sheets/corporation_lavender.png` (투명 배경 RGBA) | `python Tools/SpriteCut/install_sheet.py corporation Tools/SpriteCut/sheets/corporation_lavender.png Assets/Resources/Pixel/map/corporation` |
+
+  투명 시트는 알파를 그대로 쓰고, 체크 무늬 시트는 배경을 지운다(빛 효과는 채도로 반투명). 가로 64px로 줄인다.
+  어느 그림을 어디에 쓰는지는 스크립트 `SETS`의 `tiles`·`objects`(시트 좌표), 작은 물건 너비는 `small`.
+  벽 윗면은 벽 패널 색을 어둡게 한 단색(`wall_top_dim`), 체크포인트(도착 전)는 화살표 기둥을 어둡게 한 그림이다.
+  끝에 미리보기 파일 경로를 붙이면 세트 전체를 한 장으로 볼 수 있다.
+- 타일 그림의 투명한 곳(벽 패널의 빈 창)은 세트의 `tile_back` 색으로 채운다 (코퍼레이션·튜토리얼).
+- 시트 배경은 알파 10 이하를 투명으로 본다 (색 찌꺼기가 섞인 배경도 지운다).
+- `Pixel/map/hologram/`을 지우면 튜토리얼은 위의 기본 세트(`Pixel/map/*.png`)로 돌아간다.
+- 타일셋 v7(`Executor/Executor_tileset_v7`, `install_tileset_v7.py`)은 이전 세트다. 다시 돌리면 helloworld·undercity를 v7로 덮어쓰므로 쓰지 않는다.
 - 예전 방식: 큰 시트(`1챕터.png`, `언더시티.png`)를 `Tools/SpriteCut/cut_tiles.py`로 직접 자르기 (배경 제거·축소). v7이 생겨 지금은 쓰지 않는다.
 
 ### 타일 (배경 있음, 칸을 꽉 채움) — 맵 세트가 없을 때

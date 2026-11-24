@@ -209,66 +209,6 @@ namespace Executor.Play
             SystemDialog("시스템", title, text, null, false, ("확인", null, "primary"));
         }
 
-        // ================= README.txt (공지) =================
-        /// <summary>
-        /// 공지 메모장 (시안 PopNotice): 공지들을 한 문서로 이어 줄 번호와 함께. "## [분류] 제목"은 노란색, 고정 공지가 먼저
-        /// </summary>
-        public void ShowNoticeBoard(IReadOnlyList<Data.NoticeDetail> notices)
-        {
-            ClosePopups();
-            DesktopWindow("README.txt — 메모장", "notice", "README.txt", 236, 72, 720, 500, false, out RectTransform body);
-            float w = 720 * S - WinBorder * 2, h = 500 * S - WinBorder * 2 - WinTitleH;
-
-            Image menu = Fill(body, "Menu", Night);
-            At(menu, 0, 0, w, 28 * S);
-            Image menuLine = Fill(body, "MenuLine", TrackLine);
-            At(menuLine, 0, 28 * S, w, 2 * S);
-            Text menuText = Label(menu.transform, "파일    편집    서식    보기    도움말", 12 * S, Muted, TextAnchor.MiddleLeft);
-            Inset(menuText, 12 * S, 0, 0, 0);
-
-            // 문서 줄
-            var lines = new List<(string text, Color color, bool bold)> { ("# Executor 공지", Cyan, true), ("", Fg, false) };
-            if (notices.Count == 0) lines.Add(("지금 게시 중인 공지가 없습니다.", Muted, false));
-            foreach (var n in notices)
-            {
-                string pin = n.IsPinned ? "[고정] " : "";
-                lines.Add(($"## {pin}[{n.CategoryLabel}] {n.Title}  <color=#4b5675>{n.PublishedAt.ToLocalTime():MM.dd}</color>", Yellow, false));
-                foreach (string l in (n.Content ?? "").Replace("\r", "").Split('\n')) lines.Add((l, Fg, false));
-                lines.Add(("", Fg, false));
-            }
-            if (lines.Count > 2 && lines[lines.Count - 1].text == "") lines.RemoveAt(lines.Count - 1);
-
-            RectTransform area = Node(body, "Text");
-            At(area, 0, 30 * S, w, h - 30 * S - 30 * S);
-            RectTransform content = ScrollList(area, out _);
-            Inset(content.parent, 12 * S, 16 * S, 12 * S, 8 * S);
-            float textW = w - 24 * S - 48 * S;
-            float y = 0;
-            for (int i = 0; i < lines.Count; i++)
-            {
-                var (text, color, bold) = lines[i];
-                Text num = Label(content, (i + 1).ToString(), 12 * S, Dim, TextAnchor.UpperRight, UiKit.Mono);
-                At(num, 0, y, 36 * S, 24 * S);
-                Text line = Label(content, text.Length == 0 ? " " : text, 12 * S, color, TextAnchor.UpperLeft, UiKit.Mono, bold);
-                line.horizontalOverflow = HorizontalWrapMode.Wrap;
-                line.lineSpacing = 1.5f;
-                At(line, 48 * S, y + 3 * S, textW, 24 * S);
-                float lh = Mathf.Max(24 * S, line.preferredHeight + 6 * S);
-                line.rectTransform.sizeDelta = new Vector2(textW, lh);
-                y += lh;
-            }
-            content.sizeDelta = new Vector2(0, y);
-
-            Image foot = Fill(body, "Status", Night);
-            At(foot, 0, h - 28 * S, w, 28 * S);
-            Image footLine = Fill(body, "StatusLine", TrackLine);
-            At(footLine, 0, h - 30 * S, w, 2 * S);
-            Text left = Label(foot.transform, "읽기 전용", 12 * S, Muted, TextAnchor.MiddleLeft);
-            Inset(left, 12 * S, 0, 12 * S, 0);
-            Text right = Label(foot.transform, $"{lines.Count}줄 · UTF-8", 12 * S, Muted, TextAnchor.MiddleRight);
-            Inset(right, 12 * S, 0, 12 * S, 0);
-        }
-
         // ================= mail.exe =================
         private IReadOnlyList<Data.MailResponse> _mails;
         private long _selectedMail;

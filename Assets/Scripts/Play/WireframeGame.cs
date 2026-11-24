@@ -479,7 +479,7 @@ namespace Executor.Play
         {
             try
             {
-                var page = await NoticeApi.GetNoticesAsync(size: 10);
+                var page = await NoticeApi.GetNoticesAsync(size: 20);
                 NoticeDetail[] details = await Task.WhenAll(page.Content.Select(n => NoticeApi.GetNoticeAsync(n.NoticeId)));
                 if (_mode != Mode.Main) return;
                 _menu.ShowNoticeBoard(details);

@@ -56,7 +56,8 @@ namespace Executor.Play
             var scaler = go.GetComponent<CanvasScaler>();
             scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
             scaler.referenceResolution = new Vector2(1920, 1080);
-            scaler.matchWidthOrHeight = 0.5f;
+            // 16:9가 아닌 화면(노트북 16:10 등)에서도 1920x1080이 전부 들어오도록: 남는 쪽으로 넓어지고 잘리지 않는다
+            scaler.screenMatchMode = CanvasScaler.ScreenMatchMode.Expand;
             return (RectTransform)go.transform;
         }
 

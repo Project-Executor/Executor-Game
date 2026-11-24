@@ -54,6 +54,29 @@ namespace Executor.Network
         public static Task DeleteAsync(string path, object body = null, bool auth = true) =>
             SendAsync<object>("DELETE", path, body, auth);
 
+        /// <summary>
+        /// 파일(그림 등)을 그대로 받는다. 로그인·재발급 처리는 SendAsync와 같다. 404면 null
+        /// </summary>
+        /// <exception cref="ApiException">404가 아닌 서버 오류, 네트워크 오류, 로그인 만료</exception>
+        public static async Task<byte[]> GetBytesAsync(string path)
+        {
+            string token = TokenStore.AccessToken;
+            if (string.IsNullOrEmpty(token))
+            {
+                if (!await RefreshOnceAsync(null)) throw ApiException.SessionExpired();
+                token = TokenStore.AccessToken;
+            }
+            ApiResult result = await RawSendAsync("GET", path, null, token, "*/*");
+            if (result.Status == 401 && result.ErrorCode == "TOKEN_EXPIRED")
+            {
+                if (!await RefreshOnceAsync(token)) throw ApiException.SessionExpired();
+                result = await RawSendAsync("GET", path, null, TokenStore.AccessToken, "*/*");
+            }
+            if (result.Status == 404) return null;
+            if (!result.IsSuccess) throw result.ToException();
+            return result.Data;
+        }
+
         /// <summary>지금 바로 토큰을 재발급한다. 성공하면 true, 다시 로그인해야 하면 false</summary>
         public static Task<bool> ForceRefreshAsync() => RefreshOnceAsync(null);
 
@@ -153,7 +176,8 @@ namespace Executor.Network
             SessionExpired?.Invoke();
         }
 
-        private static async Task<ApiResult> RawSendAsync(string method, string path, string json, string token)
+        private static async Task<ApiResult> RawSendAsync(string method, string path, string json, string token,
+            string accept = "application/json")
         {
             using var request = new UnityWebRequest(ApiConfig.BaseUrl + path, method);
             request.downloadHandler = new DownloadHandlerBuffer();
@@ -163,7 +187,7 @@ namespace Executor.Network
                 request.uploadHandler = new UploadHandlerRaw(Encoding.UTF8.GetBytes(json));
                 request.SetRequestHeader("Content-Type", "application/json; charset=utf-8");
             }
-            request.SetRequestHeader("Accept", "application/json");
+            request.SetRequestHeader("Accept", accept);
             if (!string.IsNullOrEmpty(token))
             {
                 request.SetRequestHeader("Authorization", "Bearer " + token);
@@ -187,16 +211,19 @@ namespace Executor.Network
         {
             public long Status { get; }
             public string Body { get; }
+            /// <summary>본문 바이트 (그림 파일 등)</summary>
+            public byte[] Data { get; }
             public string NetworkError { get; }
             public string ErrorCode { get; }
             public string ErrorMessage { get; }
 
             public bool IsSuccess => NetworkError == null && Status >= 200 && Status < 300;
 
-            private ApiResult(long status, string body, string networkError, string errorCode, string errorMessage)
+            private ApiResult(long status, string body, string networkError, string errorCode, string errorMessage, byte[] data = null)
             {
                 Status = status;
                 Body = body;
+                Data = data;
                 NetworkError = networkError;
                 ErrorCode = errorCode;
                 ErrorMessage = errorMessage;
@@ -230,7 +257,7 @@ namespace Executor.Network
 
                 return new ApiResult(request.responseCode, body, null,
                     code ?? (request.responseCode >= 400 ? "HTTP_" + request.responseCode : null),
-                    message ?? request.error);
+                    message ?? request.error, request.downloadHandler?.data);
             }
 
             public ApiException ToException() => new ApiException(Status, ErrorCode, ErrorMessage);

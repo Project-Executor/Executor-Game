@@ -429,16 +429,9 @@ namespace Executor.Play
             // 프로필: 아바타 + 이름
             float profileW = 220 * S;
             RectTransform profile = TaskItem(bar.transform, x, profileW, item, hover, () => OnProfile?.Invoke());
-            RectTransform avatar = Node(profile, "Avatar");
-            At(avatar, 12 * S, (item - 24 * S) / 2, 24 * S, 24 * S);
-            Image head = Fill(avatar, "Fill", Hex(0x2f2a2c));
-            Inset(head, 0, 0, 0, 0);
-            Image body = Fill(avatar, "Body", Hex(0xaeaaa8));
-            body.rectTransform.anchorMin = new Vector2(0, 0);
-            body.rectTransform.anchorMax = new Vector2(1, 0);
-            body.rectTransform.offsetMin = Vector2.zero;
-            body.rectTransform.offsetMax = new Vector2(0, 8 * S);
-            Border(avatar, Dim, 2 * S);
+            // 프로필 사진 (없으면 기본 실루엣). SetAvatar로 바꾼다
+            RawImage avatar = Photo(profile, 12 * S, (item - 24 * S) / 2, 24 * S, null, 0);
+            _taskAvatars.Add(avatar);
             Text taskName = Label(profile, "", 12 * S, Fg, TextAnchor.MiddleLeft);
             Inset(taskName, 12 * S + 24 * S + 8 * S, 0, 8 * S, 0);
             _taskNames.Add(taskName);

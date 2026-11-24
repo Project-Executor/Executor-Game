@@ -263,6 +263,7 @@ namespace Executor.Play
                     RefreshMailCount();
                     Social.RefreshBadge();
                     LoadCosmetics();
+                    LoadAvatar();
                 }
                 catch (ApiException e)
                 {
@@ -576,20 +577,108 @@ namespace Executor.Play
                 List<MyItem> items = await itemsTask;
                 ProfileDetailResponse stats = null;
                 try { stats = await statsTask; } catch (ApiException) { /* 기록 줄만 빠진다 */ }
+                Texture2D avatar = await AvatarStore.GetAsync(p.UserId, p.AvatarVersion);
                 if (_mode != Mode.Main) return;
-                _menu.ClosePopups();
-                _menu.ShowProfileEditor(PlayerSession.Profile, stats, items, new MenuUI.ProfileActions
+                _menu.ShowProfileEditor(PlayerSession.Profile, stats, items, avatar, new MenuUI.ProfileActions
                 {
                     CheckNickname = CheckNicknameForProfile,
                     SaveNickname = SaveNicknameForProfile,
                     SaveComment = SaveCommentForProfile,
                     Equip = Equip,
+                    ChangePhoto = PickPhoto,
+                    ResetPhoto = ResetPhoto,
+                    OpenShop = type => { _menu.ClosePopups(); OpenShop(type); },
                 });
             }
             catch (ApiException e)
             {
                 _menu.ShowMessage("프로필", e.IsNetworkError ? "서버에 연결할 수 없어 프로필을 불러오지 못했습니다." : e.Message);
             }
+        }
+
+        // ---------------- 프로필 사진 ----------------
+        /// <summary>[사진 바꾸기]: Windows 열기 창으로 그림을 고르고 자르기 창을 연다</summary>
+        private void PickPhoto()
+        {
+            if (!FilePicker.Supported)
+            {
+                _menu.ShowMessage("사진 바꾸기", "이 PC에서는 파일을 고를 수 없습니다.");
+                return;
+            }
+            string path = FilePicker.PickImage();
+            if (string.IsNullOrEmpty(path)) return;
+            byte[] bytes;
+            try
+            {
+                if (new System.IO.FileInfo(path).Length > 30L * 1024 * 1024)
+                {
+                    _menu.ShowMessage("사진 바꾸기", "30MB보다 큰 그림은 열 수 없습니다.");
+                    return;
+                }
+                bytes = System.IO.File.ReadAllBytes(path);
+            }
+            catch (System.Exception e)
+            {
+                _menu.ShowMessage("사진 바꾸기", "파일을 읽지 못했습니다. " + e.Message);
+                return;
+            }
+            Texture2D source = AvatarStore.Decode(bytes);
+            if (source == null)
+            {
+                _menu.ShowMessage("사진 바꾸기", "PNG 또는 JPG 그림만 쓸 수 있습니다.");
+                return;
+            }
+            _menu.ShowAvatarCrop(source, System.IO.Path.GetFileName(path), area => UploadPhoto(source, area), PickPhoto);
+        }
+
+        /// <summary>고른 부분을 256x256 PNG로 잘라 올리고, 작업 표시줄·프로필 창을 새로 그린다</summary>
+        private async void UploadPhoto(Texture2D source, RectInt area)
+        {
+            byte[] png = AvatarStore.CropToPng(source, area);
+            Destroy(source);
+            try
+            {
+                long version = await ProfileApi.UploadAvatarAsync(png);
+                long userId = PlayerSession.Profile.UserId;
+                PlayerSession.Profile.AvatarVersion = version;
+                Texture2D mine = AvatarStore.Decode(png);
+                AvatarStore.Put(userId, version, mine);
+                _menu.SetAvatar(mine);
+                ShowProfile();
+            }
+            catch (ApiException e)
+            {
+                _menu.ShowMessage("사진 바꾸기", e.IsNetworkError ? "서버에 연결할 수 없습니다." : e.Message);
+            }
+        }
+
+        /// <summary>[기본으로]: 사진을 지운다</summary>
+        private async void ResetPhoto()
+        {
+            try
+            {
+                await ProfileApi.DeleteAvatarAsync();
+                PlayerSession.Profile.AvatarVersion = null;
+                AvatarStore.Forget(PlayerSession.Profile.UserId);
+                _menu.SetAvatar(null);
+                ShowProfile();
+            }
+            catch (ApiException e)
+            {
+                _menu.ShowMessage("사진", e.IsNetworkError ? "서버에 연결할 수 없습니다." : e.Message);
+            }
+        }
+
+        /// <summary>작업 표시줄의 내 사진 (오프라인이거나 사진이 없으면 기본 실루엣)</summary>
+        private async void LoadAvatar()
+        {
+            MyProfileResponse p = PlayerSession.Profile;
+            if (!PlayerSession.IsOnline || p?.AvatarVersion == null)
+            {
+                _menu.SetAvatar(null);
+                return;
+            }
+            _menu.SetAvatar(await AvatarStore.GetAsync(p.UserId, p.AvatarVersion));
         }
 
         private static string NicknameRule(string name) =>

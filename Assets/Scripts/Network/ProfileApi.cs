@@ -25,6 +25,21 @@ namespace Executor.Network
             ApiClient.PutAsync<EquipmentResponse>("/profiles/me/equipment",
                 new EquipmentRequest { SkinItemId = skinItemId, ThemeItemId = themeItemId, CursorItemId = cursorItemId, DeltaItemId = deltaItemId });
 
+        /// <summary>프로필 사진 올리기 (PNG·JPEG 바이트, 512KB 이하). 새 버전을 돌려준다</summary>
+        /// <exception cref="ApiException">400 INVALID_INPUT</exception>
+        public static async Task<long> UploadAvatarAsync(byte[] image)
+        {
+            var res = await ApiClient.PutAsync<AvatarVersionResponse>("/profiles/me/avatar",
+                new { image = System.Convert.ToBase64String(image) });
+            return res.AvatarVersion;
+        }
+
+        /// <summary>프로필 사진 지우기 (기본 사진으로)</summary>
+        public static Task DeleteAvatarAsync() => ApiClient.DeleteAsync("/profiles/me/avatar");
+
+        /// <summary>프로필 사진 그림 파일. 사진이 없으면 null</summary>
+        public static Task<byte[]> GetAvatarAsync(long userId) => ApiClient.GetBytesAsync($"/profiles/{userId}/avatar");
+
         /// <summary>공개 프로필 (공식 스테이지 클리어 수·별 합계)</summary>
         public static Task<ProfileDetailResponse> GetProfileAsync(long userId) =>
             ApiClient.GetAsync<ProfileDetailResponse>($"/profiles/{userId}");

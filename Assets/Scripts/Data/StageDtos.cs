@@ -10,7 +10,11 @@ namespace Executor.Data
     {
         [EnumMember(Value = "TUTORIAL")] Tutorial,
         [EnumMember(Value = "NORMAL")] Normal,
-        [EnumMember(Value = "BOSS")] Boss
+        [EnumMember(Value = "BOSS")] Boss,
+        /// <summary>전시용 턴수 이벤트: 맵을 깨면 이름을 적어 이벤트 순위에 (턴이 적을수록 위)</summary>
+        [EnumMember(Value = "EVENT_TURNS")] EventTurns,
+        /// <summary>전시용 타자 이벤트: 제한 시간 안에 친 단어 수로 순위 (설정은 map_data.event)</summary>
+        [EnumMember(Value = "EVENT_TYPING")] EventTyping
     }
 
     public enum GuidebookCategory

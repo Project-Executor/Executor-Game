@@ -112,6 +112,12 @@ namespace Executor.Play
             _hackInput.ActivateInputField();
         }
 
+        /// <summary>오른쪽 위 목표 문구를 바꾼다 (타자 이벤트는 지금까지 친 단어 수)</summary>
+        public void SetHackGoal(string text)
+        {
+            if (_hackGoal != null) _hackGoal.text = text ?? "";
+        }
+
         /// <summary>틀린 입력: 잠깐 입력칸 테두리를 빨갛게</summary>
         public void FlashHackWrong() => _hackWrongUntil = Time.unscaledTime + 0.5f;
 

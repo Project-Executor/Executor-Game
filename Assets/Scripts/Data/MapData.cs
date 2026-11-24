@@ -31,9 +31,19 @@ namespace Executor.Data
         /// 없는 칸은 자동(칸 좌표로 정해지는 무늬)
         /// </summary>
         public Dictionary<string, string> TileArt { get; set; }
+        /// <summary>타자 이벤트(EVENT_TYPING) 설정. 다른 스테이지는 null</summary>
+        public EventSettings Event { get; set; }
 
         /// <summary>스테이지 상세의 mapData(JObject)를 읽는다</summary>
         public static MapData From(JObject mapData) => Json.Convert<MapData>(mapData);
+    }
+
+    /// <summary>타자 이벤트 설정 (map_data.event): 이 단어 목록에서 끝없이 뽑아 제한 시간 안에 친 단어 수를 센다</summary>
+    public class EventSettings
+    {
+        public long? WordListId { get; set; }
+        /// <summary>초 (10~600)</summary>
+        public int TimeLimit { get; set; } = 60;
     }
 
     /// <summary>칸 좌표. x는 왼쪽에서 오른쪽, y는 위에서 아래 (0부터)</summary>

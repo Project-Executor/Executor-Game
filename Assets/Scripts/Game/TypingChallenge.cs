@@ -45,13 +45,23 @@ namespace Executor.Game
         /// <param name="count">칠 단어 수 (1~20로 맞춘다)</param>
         /// <param name="timeLimit">제한 시간 초 (5~300으로 맞춘다)</param>
         public TypingChallenge(IEnumerable<string> pool, int count, int timeLimit, Random random = null)
+            : this(pool, Math.Max(MinWordCount, Math.Min(MaxWordCount, count)), Math.Max(MinTimeLimit, Math.Min(MaxTimeLimit, timeLimit)), random, true)
+        {
+        }
+
+        /// <summary>타자 이벤트용: 단어가 사실상 끝없이 나오고(1000개) 제한 시간 안에 친 단어 수(Index)를 겨룬다. 시간은 10~600초</summary>
+        public static TypingChallenge Endless(IEnumerable<string> pool, int timeLimit, Random random = null) =>
+            new TypingChallenge(pool, EndlessWordCount, Math.Max(10, Math.Min(600, timeLimit)), random, true);
+
+        public const int EndlessWordCount = 1000;
+
+        private TypingChallenge(IEnumerable<string> pool, int count, int timeLimit, Random random, bool _)
         {
             random ??= new Random();
             List<string> words = (pool ?? Enumerable.Empty<string>())
                 .Where(w => !string.IsNullOrWhiteSpace(w)).Select(w => w.Trim()).Distinct().ToList();
             if (words.Count == 0) words = DefaultWords.ToList();
 
-            count = Math.Max(MinWordCount, Math.Min(MaxWordCount, count));
             var picked = new List<string>();
             while (picked.Count < count)
             {
@@ -63,7 +73,7 @@ namespace Executor.Game
                 }
             }
             Words = picked;
-            TimeLimit = Math.Max(MinTimeLimit, Math.Min(MaxTimeLimit, timeLimit));
+            TimeLimit = timeLimit;
             TimeLeft = TimeLimit;
         }
 

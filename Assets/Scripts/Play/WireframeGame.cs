@@ -26,12 +26,18 @@ namespace Executor.Play
         private const float EndDelay = 0.35f;
         private const string DefaultQuest = "목표: 출구(문 아이콘)에 도착하기";
 
-        private enum Mode { Title, Main, StageSelect, Story, Playing, Dialogue, Hacking, Result }
+        private enum Mode { Title, Main, StageSelect, Story, Playing, Dialogue, Hacking, Result, EventName }
 
         // 타자 해킹 (감염된 컴퓨터)
         private TypingChallenge _hacking;
         private BoardObject _hackTarget;
         private int _hackStartFrame;
+
+        // 이벤트 스테이지 (전시용): 타자 이벤트는 해킹 창을 끝없는 단어로 쓰고, 끝나면 이름을 받아 이벤트 순위에 올린다
+        private bool _eventTyping;
+        private int _eventScore;
+        private bool _eventSubmitting;
+        private const int EventNameMax = 12;
 
         private List<ChapterInfo> _chapters = new List<ChapterInfo>();
         private ChapterInfo _chapter;
@@ -532,7 +538,7 @@ namespace Executor.Play
                 bool online = PlayerSession.IsOnline;
                 if (online) info.Stars = 0;
                 foreach (ChapterInfo c in _chapters.Where(c => c.LayerId == frontier.LayerId))
-                foreach (StageInfo s in c.Stages)
+                foreach (StageInfo s in c.Stages.Where(s => !s.IsEvent)) // 이벤트는 진행 수에 넣지 않는다
                 {
                     info.Total++;
                     if (StageProgress.IsCleared(c.Id, s.No)) info.Cleared++;
@@ -566,7 +572,7 @@ namespace Executor.Play
                 if (!c.IsAvailable || !StageProgress.IsChapterUnlocked(_chapters, c)) continue;
                 foreach (StageInfo s in c.Stages)
                 {
-                    if (!StageProgress.IsStageUnlocked(c, s) || StageProgress.IsCleared(c.Id, s.No)) continue;
+                    if (s.IsEvent || !StageProgress.IsStageUnlocked(c, s) || StageProgress.IsCleared(c.Id, s.No)) continue;
                     _chapter = c;
                     StartStage(s, true);
                     return;
@@ -800,7 +806,7 @@ namespace Executor.Play
             {
                 bool unlocked = StageProgress.IsStageUnlocked(_chapter, s);
                 bool cleared = StageProgress.IsCleared(_chapter.Id, s.No);
-                bool next = !nextMarked && unlocked && !cleared;
+                bool next = !nextMarked && unlocked && !cleared && !s.IsEvent; // 이벤트는 NEXT로 이끌지 않는다
                 nextMarked |= next;
                 int best = StageProgress.BestMoves(_chapter.Id, s.No);
                 var stars = PlayerSession.IsOnline ? StageProgress.RemoteOf(_chapter.Id, s.No)?.Stars : null;
@@ -812,7 +818,9 @@ namespace Executor.Play
                     Unlocked = unlocked,
                     Cleared = cleared,
                     Next = next,
-                    Detail = !unlocked ? "잠김" : cleared && best > 0 ? $"최고 {best}턴" : $"기준 {s.Par}턴",
+                    Detail = s.Kind == StageType.EventTurns ? "이벤트 · 턴수"
+                        : s.Kind == StageType.EventTyping ? "이벤트 · 타자"
+                        : !unlocked ? "잠김" : cleared && best > 0 ? $"최고 {best}턴" : $"기준 {s.Par}턴",
                     Code = $"{_chapter.LayerOrder}-{s.No}",
                     Description = s.Map?.Guides?.FirstOrDefault(g => !string.IsNullOrEmpty(g.Text))?.Text,
                     Par = s.Par,
@@ -896,7 +904,7 @@ namespace Executor.Play
             _game.OnSettings = () => { if (_board != null) _game.ShowSettings(SettingsActions(_game.PopupRoot, ReportThisStage)); };
             GameSettings.Changed += () => { if (_board != null) UpdateHud(); };
             _game.OnCheckNickname = CheckNickname;
-            _game.OnSubmitNickname = () => { if (AskingName) SubmitName(); };
+            _game.OnSubmitNickname = () => { if (AskingName) SubmitName(); else if (_mode == Mode.EventName) SubmitEventName(); };
             _game.OnNarrationSkip = SkipStory;
             _game.OnDialogueNext = NextLine;
             _game.OnDialogueSkip = () =>
@@ -974,6 +982,11 @@ namespace Executor.Play
                 LoadAndStart(stage, withIntro);
                 return;
             }
+            if (stage.Kind == StageType.EventTyping)
+            {
+                StartTypingEvent(stage);
+                return;
+            }
             _stage = stage;
             _board = new Board(stage.Map, stage.Par);
             _runSubmitted = false;
@@ -1029,7 +1042,7 @@ namespace Executor.Play
         /// </summary>
         private void SubmitAbandon()
         {
-            if (_board == null || _runSubmitted || _board.IsCleared || _stage?.StageId == null || !PlayerSession.IsOnline) return;
+            if (_board == null || _runSubmitted || _board.IsCleared || _stage?.StageId == null || !PlayerSession.IsOnline || _stage.IsEvent) return;
             if (_board.Turns == 0 && _board.EncounteredGuidebookIds.Count == 0) return;
             _runSubmitted = true;
             SubmitInBackground(_stage.StageId.Value, _board.ToResultRequest());
@@ -1427,10 +1440,19 @@ namespace Executor.Play
                     UpdateHacking(k);
                     break;
 
+                case Mode.EventName:
+                    // Enter는 입력칸이 처리한다 (OnSubmitNickname). Esc는 기록하지 않고 스테이지 선택으로
+                    if (k.escapeKey.wasPressedThisFrame) ShowStageSelect();
+                    break;
+
                 case Mode.Result:
                     if (_game.HasPopup)
                     {
-                        if (k.escapeKey.wasPressedThisFrame) _game.ClosePopups();
+                        if (k.escapeKey.wasPressedThisFrame)
+                        {
+                            if (_game.IsRankingOpen) _game.CloseRanking(); // 이벤트 순위는 닫으면 스테이지 선택으로
+                            else _game.ClosePopups();
+                        }
                         else if (_game.IsRankingOpen && k.rKey.wasPressedThisFrame) _game.RetryFromRanking();   // 순위 창의 [다시 도전 R]
                         return;
                     }
@@ -1582,6 +1604,11 @@ namespace Executor.Play
 
         private void UpdateHacking(Keyboard k)
         {
+            if (_eventTyping || (_hacking == null && !_hackResultShown)) // 타자 이벤트, 또는 이벤트 단어를 받는 중
+            {
+                UpdateTypingEvent(k);
+                return;
+            }
             if (_hackResultShown)
             {
                 // 결과 창: 성공은 Enter·E·Esc로 계속, 실패는 E 다시 도전 / Esc 닫기
@@ -1792,6 +1819,17 @@ namespace Executor.Play
         {
             _endAt = -1;
 
+            // 턴수 이벤트: 일반 기록·별·코인 대신 이름을 받아 이벤트 순위에 (기록 = 구간 최고 기록의 합)
+            if (_stage.Kind == StageType.EventTurns)
+            {
+                int score = _board.RecordMoves;
+                _runSubmitted = true;
+                void Ask() => AskEventName(score);
+                if (_stage.Map.Story?.Outro?.Count > 0) PlayStory(_stage.Map.Story.Outro, Ask, _stage.Map.Dialogues);
+                else Ask();
+                return;
+            }
+
             // 기록 = 구간 최고 기록의 합 (워프로 다시 통과한 구간은 좋은 쪽만). 체크포인트가 없으면 쓴 턴과 같다
             int record = _board.RecordMoves;
             int best = StageProgress.BestMoves(_chapter.Id, _stage.No);
@@ -1866,6 +1904,167 @@ namespace Executor.Play
 
             if (_stage.Map.Story?.Outro?.Count > 0) PlayStory(_stage.Map.Story.Outro, ShowResult, _stage.Map.Dialogues);
             else ShowResult();
+        }
+
+        // ---------------- 이벤트 스테이지 (전시용) ----------------
+        /// <summary>타자 이벤트: 단어 목록에서 끝없이 나오는 단어를 제한 시간 동안 친다. 맞게 친 단어 수가 기록</summary>
+        private async void StartTypingEvent(StageInfo stage)
+        {
+            _stage = stage;
+            _board = null;
+            _runSubmitted = true;
+            _endAt = -1;
+            _hacking = null;
+            _hackResultShown = false;
+            _menu.HideAll();
+            _game.HideAll();
+            _view.gameObject.SetActive(false);
+            EventSettings settings = stage.Map.Event ?? new EventSettings();
+            _mode = Mode.Hacking; // 단어를 받는 동안 다른 입력을 막는다 (_hacking이 null이면 기다린다)
+            await WordBank.EnsureAsync(settings.WordListId);
+            if (_stage != stage || _mode != Mode.Hacking) return;
+            _hacking = TypingChallenge.Endless(WordBank.Get(settings.WordListId), settings.TimeLimit);
+            _eventTyping = true;
+            _hackTarget = null;
+            _hackStartFrame = Time.frameCount;
+            _hackResultShown = false;
+            Block();
+            _game.ShowHack(stage.Title, $"타자 이벤트 · {_hacking.TimeLimit:0}초 동안 최대한 많이 입력하세요 · Esc 그만두기", "0개");
+            UpdateTypingEventView();
+        }
+
+        private void UpdateTypingEvent(Keyboard k)
+        {
+            if (_hacking == null) return; // 단어를 받는 중
+            if (Time.frameCount <= _hackStartFrame + 1 && _game.HackInput.Length > 0) _game.ClearHackInput();
+            _hacking.Tick(Time.deltaTime);
+            if (k.escapeKey.wasPressedThisFrame) { EndTypingEvent(false); return; }
+            if (_hacking.IsOver) { EndTypingEvent(true); return; }
+            if (k.enterKey.wasPressedThisFrame || k.numpadEnterKey.wasPressedThisFrame)
+            {
+                string input = _game.HackInput;
+                if (!_hacking.Submit(input) && input.Trim().Length > 0) _game.FlashHackWrong();
+                _game.ClearHackInput();
+                if (_hacking.IsOver) { EndTypingEvent(true); return; }
+            }
+            UpdateTypingEventView();
+            if (!_game.HackInputFocused) _game.FocusHackInput();
+        }
+
+        /// <summary>단어 칩은 지금 단어 앞뒤 몇 개만 (단어가 1000개라 다 그리지 않는다)</summary>
+        private void UpdateTypingEventView()
+        {
+            int index = _hacking.Index;
+            int from = Mathf.Max(0, index - 3);
+            var window = _hacking.Words.Skip(from).Take(10).ToList();
+            _game.UpdateHack(window, index - from, _hacking.TimeLeft, _hacking.TimeLimit);
+            _game.SetHackGoal($"{index}개");
+        }
+
+        /// <param name="finished">시간이 다 됐으면 true, Esc로 그만두면 false (기록 없이 스테이지 선택)</param>
+        private void EndTypingEvent(bool finished)
+        {
+            int score = _hacking?.Index ?? 0;
+            _game.HideHack();
+            _hacking = null;
+            _eventTyping = false;
+            if (!finished)
+            {
+                ShowStageSelect();
+                return;
+            }
+            AskEventName(score);
+        }
+
+        /// <summary>이벤트가 끝났을 때: 이름 입력 화면 (로그인과 상관없음)</summary>
+        private void AskEventName(int score)
+        {
+            if (_stage?.StageId == null)
+            {
+                ShowStageSelect();
+                _menu.ShowMessage("이벤트", "서버 스테이지가 아니어서 이벤트 기록을 올릴 수 없습니다.");
+                return;
+            }
+            _eventScore = score;
+            _mode = Mode.EventName;
+            Block();
+            string record = _stage.Kind == StageType.EventTyping ? $"> 입력한 단어 {score}개" : $"> 기록 {score}턴";
+            _game.ShowEventNameInput(record, EventNameMax);
+        }
+
+        private async void SubmitEventName()
+        {
+            if (_eventSubmitting || _mode != Mode.EventName) return;
+            string name = _game.NameInput;
+            if (name.Length < 1 || name.Length > EventNameMax) { _game.SetNicknameStatus($"이름은 1~{EventNameMax}자여야 합니다.", false); return; }
+            StageInfo stage = _stage;
+            _eventSubmitting = true;
+            _game.SetNicknameStatus("순위에 올리는 중...", true);
+            try
+            {
+                EventRecordResponse mine = await EventApi.SubmitAsync(stage.StageId.Value, name, _eventScore);
+                if (_mode != Mode.EventName || _stage != stage) return;
+                _game.HideNarration();
+                ShowEventRanking(stage, mine);
+            }
+            catch (ApiException e)
+            {
+                _game.SetNicknameStatus(e.Code == "DUPLICATE_VALUE" ? "이미 사용 중인 이름입니다."
+                    : e.IsNetworkError ? "서버에 연결할 수 없습니다. 잠시 후 다시 눌러 주세요." : e.Message, false);
+            }
+            finally
+            {
+                _eventSubmitting = false;
+            }
+        }
+
+        /// <summary>이벤트 순위 창 (위 50명 + 이번 기록). 닫으면 스테이지 선택, R은 다시 도전</summary>
+        private async void ShowEventRanking(StageInfo stage, EventRecordResponse mine)
+        {
+            _mode = Mode.Result;
+            Block();
+            EventRankingResponse res;
+            try
+            {
+                res = await EventApi.GetRankingAsync(stage.StageId.Value, 50);
+            }
+            catch (ApiException e)
+            {
+                ShowStageSelect();
+                _menu.ShowMessage("이벤트 순위", e.IsNetworkError ? "기록은 올렸지만 순위를 불러오지 못했습니다." : e.Message);
+                return;
+            }
+            if (_mode != Mode.Result || _stage != stage) return;
+            bool typing = stage.Kind == StageType.EventTyping;
+            var view = new RankingResponse
+            {
+                Total = res.Total,
+                Me = mine == null ? null : new MyRank { Rank = mine.Rank, BestMoves = mine.Score },
+                Rankings = res.Rankings.Select(e => new RankingEntry
+                {
+                    Rank = e.Rank,
+                    User = new UserSummary { UserId = e.RecordId, Nickname = e.Name },
+                    BestMoves = e.Score,
+                    ClearedAt = e.CreatedAt,
+                }).ToList(),
+            };
+            _game.ShowRanking(new GameUI.RankingView
+            {
+                Title = $"ranking.exe — 이벤트 · {stage.Title}",
+                Subtitle = _chapter == null ? "" : $"{_chapter.LayerLabel} · {_chapter.Title}",
+                Response = view,
+                MyUserId = mine?.RecordId ?? -1,
+                ShowTabs = false,
+                Heading = typing ? "타자 이벤트 순위" : "턴수 이벤트 순위",
+                Unit = typing ? "개" : "턴",
+                NameHeader = "이름",
+                TimeHeader = "올린 시각",
+                Rule = typing ? "같은 개수면 먼저 올린 기록이 앞에 와요" : "같은 턴이면 먼저 올린 기록이 앞에 와요",
+                NoRecord = "이번 기록은 올리지 않았어요",
+                EmptyText = "아직 올라온 기록이 없어요.",
+                OnRetry = () => StartStage(stage, false),
+                OnClose = ShowStageSelect,
+            });
         }
 
         // ---------------- 순위 ----------------

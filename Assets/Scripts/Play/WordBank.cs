@@ -30,6 +30,19 @@ namespace Executor.Play
             await Task.WhenAll(tasks);
         }
 
+        /// <summary>그 목록을 받을 때까지 기다린다 (이미 있거나 ID가 없으면 바로). 실패하면 기본 단어로 넘어간다</summary>
+        public static async Task EnsureAsync(long? wordListId)
+        {
+            if (wordListId == null || Cache.ContainsKey(wordListId.Value)) return;
+            long id = wordListId.Value;
+            if (!Loading.Add(id))
+            {
+                while (Loading.Contains(id)) await Task.Yield(); // 다른 곳에서 받는 중
+                return;
+            }
+            await Load(id);
+        }
+
         private static async Task Load(long id)
         {
             try

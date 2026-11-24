@@ -42,6 +42,12 @@ namespace Executor.Play
             if (_windowTab != null) SetWindowTab(null);
         }
 
+        /// <summary>맨 위 팝업 하나만 닫는다 (확인 상자를 닫고 뒤의 창은 남길 때)</summary>
+        public void CloseTopPopup()
+        {
+            if (_popupRoot.childCount > 0) Destroy(_popupRoot.GetChild(_popupRoot.childCount - 1).gameObject);
+        }
+
         /// <summary>세로 스크롤 목록 (content에 위에서부터 At으로 넣고, 끝에 content.sizeDelta.y를 높이로)</summary>
         private static RectTransform ScrollList(Transform parent, out ScrollRect scroll)
         {
@@ -104,7 +110,11 @@ namespace Executor.Play
             float heightPx = WinBorder * 2 + WinTitleH + 24 * S + Mathf.Max(warning ? 48 * S : 0, contentH) + 24 * S + 40 * S + 20 * S;
             float height = Mathf.Max(230, heightPx / S);
 
-            DesktopWindow(windowTitle, null, null, (1280 - width) / 2, (720 - height) / 2 - 10, width, height, true, out RectTransform body);
+            // 닫기(빨간 네모)와 onClick이 null인 버튼은 이 상자만 닫는다 (뒤의 상점·메일함 창은 그대로)
+            GameObject dialog = null;
+            Action close = () => { if (dialog != null) Destroy(dialog); };
+            WindowFrame(_popupRoot, windowTitle, null, (1280 - width) / 2, (720 - height) / 2 - 10, width, height, true, close,
+                out RectTransform body, out dialog);
             float x = 24 * S;
             if (warning)
             {
@@ -136,7 +146,8 @@ namespace Executor.Play
             float right = 24 * S;
             for (int i = buttons.Length - 1; i >= 0; i--)
             {
-                var (label, onClick, style) = buttons[i];
+                var (label, given, style) = buttons[i];
+                Action onClick = given ?? close;
                 Text measure = Label(body, label, 12 * S, Fg, TextAnchor.MiddleCenter, bold: true);
                 float bw = Mathf.Max(120 * S, measure.preferredWidth + 32 * S);
                 Destroy(measure.gameObject);
@@ -186,16 +197,16 @@ namespace Executor.Play
                 ("예", () => quit(), "danger"));
         }
 
-        /// <summary>확인 상자 (예 / 아니요)</summary>
+        /// <summary>확인 상자 (예 / 아니요). 아니요·닫기는 이 상자만 닫는다</summary>
         public void ShowConfirm(string title, string text, Action onYes)
         {
-            SystemDialog("시스템", title, text, null, false, ("아니요", ClosePopups, "ghost"), ("예", () => onYes(), "primary"));
+            SystemDialog("시스템", title, text, null, false, ("아니요", null, "ghost"), ("예", () => onYes(), "primary"));
         }
 
-        /// <summary>안내 상자 (확인)</summary>
+        /// <summary>안내 상자 (확인). 확인·닫기는 이 상자만 닫는다</summary>
         public void ShowMessage(string title, string text)
         {
-            SystemDialog("시스템", title, text, null, false, ("확인", ClosePopups, "primary"));
+            SystemDialog("시스템", title, text, null, false, ("확인", null, "primary"));
         }
 
         // ================= README.txt (공지) =================

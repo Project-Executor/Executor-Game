@@ -263,6 +263,7 @@ namespace Executor.Play
                     RefreshMailCount();
                     Social.RefreshBadge();
                     LoadCosmetics();
+                    LoadAvatar();
                 }
                 catch (ApiException e)
                 {
@@ -412,7 +413,7 @@ namespace Executor.Play
             }
             catch (ApiException e)
             {
-                _menu.ClosePopups();
+                _menu.CloseTopPopup(); // 구매 확인 상자만 닫고 상점은 남긴다
                 _menu.ShowMessage("구매", e.IsNetworkError ? "서버에 연결할 수 없습니다." : e.Message);
             }
         }
@@ -507,6 +508,7 @@ namespace Executor.Play
             {
                 Nickname = PlayerSession.DisplayName,
                 Coin = CoinText(),
+                DeltaMet = DeltaGreeting.HasMet(_chapters),
             };
             ChapterInfo frontier = FrontierChapter();
             if (frontier != null)
@@ -575,20 +577,108 @@ namespace Executor.Play
                 List<MyItem> items = await itemsTask;
                 ProfileDetailResponse stats = null;
                 try { stats = await statsTask; } catch (ApiException) { /* 기록 줄만 빠진다 */ }
+                Texture2D avatar = await AvatarStore.GetAsync(p.UserId, p.AvatarVersion);
                 if (_mode != Mode.Main) return;
-                _menu.ClosePopups();
-                _menu.ShowProfileEditor(PlayerSession.Profile, stats, items, new MenuUI.ProfileActions
+                _menu.ShowProfileEditor(PlayerSession.Profile, stats, items, avatar, new MenuUI.ProfileActions
                 {
                     CheckNickname = CheckNicknameForProfile,
                     SaveNickname = SaveNicknameForProfile,
                     SaveComment = SaveCommentForProfile,
                     Equip = Equip,
+                    ChangePhoto = PickPhoto,
+                    ResetPhoto = ResetPhoto,
+                    OpenShop = type => { _menu.ClosePopups(); OpenShop(type); },
                 });
             }
             catch (ApiException e)
             {
                 _menu.ShowMessage("프로필", e.IsNetworkError ? "서버에 연결할 수 없어 프로필을 불러오지 못했습니다." : e.Message);
             }
+        }
+
+        // ---------------- 프로필 사진 ----------------
+        /// <summary>[사진 바꾸기]: Windows 열기 창으로 그림을 고르고 자르기 창을 연다</summary>
+        private void PickPhoto()
+        {
+            if (!FilePicker.Supported)
+            {
+                _menu.ShowMessage("사진 바꾸기", "이 PC에서는 파일을 고를 수 없습니다.");
+                return;
+            }
+            string path = FilePicker.PickImage();
+            if (string.IsNullOrEmpty(path)) return;
+            byte[] bytes;
+            try
+            {
+                if (new System.IO.FileInfo(path).Length > 30L * 1024 * 1024)
+                {
+                    _menu.ShowMessage("사진 바꾸기", "30MB보다 큰 그림은 열 수 없습니다.");
+                    return;
+                }
+                bytes = System.IO.File.ReadAllBytes(path);
+            }
+            catch (System.Exception e)
+            {
+                _menu.ShowMessage("사진 바꾸기", "파일을 읽지 못했습니다. " + e.Message);
+                return;
+            }
+            Texture2D source = AvatarStore.Decode(bytes);
+            if (source == null)
+            {
+                _menu.ShowMessage("사진 바꾸기", "PNG 또는 JPG 그림만 쓸 수 있습니다.");
+                return;
+            }
+            _menu.ShowAvatarCrop(source, System.IO.Path.GetFileName(path), area => UploadPhoto(source, area), PickPhoto);
+        }
+
+        /// <summary>고른 부분을 256x256 PNG로 잘라 올리고, 작업 표시줄·프로필 창을 새로 그린다</summary>
+        private async void UploadPhoto(Texture2D source, RectInt area)
+        {
+            byte[] png = AvatarStore.CropToPng(source, area);
+            Destroy(source);
+            try
+            {
+                long version = await ProfileApi.UploadAvatarAsync(png);
+                long userId = PlayerSession.Profile.UserId;
+                PlayerSession.Profile.AvatarVersion = version;
+                Texture2D mine = AvatarStore.Decode(png);
+                AvatarStore.Put(userId, version, mine);
+                _menu.SetAvatar(mine);
+                ShowProfile();
+            }
+            catch (ApiException e)
+            {
+                _menu.ShowMessage("사진 바꾸기", e.IsNetworkError ? "서버에 연결할 수 없습니다." : e.Message);
+            }
+        }
+
+        /// <summary>[기본으로]: 사진을 지운다</summary>
+        private async void ResetPhoto()
+        {
+            try
+            {
+                await ProfileApi.DeleteAvatarAsync();
+                PlayerSession.Profile.AvatarVersion = null;
+                AvatarStore.Forget(PlayerSession.Profile.UserId);
+                _menu.SetAvatar(null);
+                ShowProfile();
+            }
+            catch (ApiException e)
+            {
+                _menu.ShowMessage("사진", e.IsNetworkError ? "서버에 연결할 수 없습니다." : e.Message);
+            }
+        }
+
+        /// <summary>작업 표시줄의 내 사진 (오프라인이거나 사진이 없으면 기본 실루엣)</summary>
+        private async void LoadAvatar()
+        {
+            MyProfileResponse p = PlayerSession.Profile;
+            if (!PlayerSession.IsOnline || p?.AvatarVersion == null)
+            {
+                _menu.SetAvatar(null);
+                return;
+            }
+            _menu.SetAvatar(await AvatarStore.GetAsync(p.UserId, p.AvatarVersion));
         }
 
         private static string NicknameRule(string name) =>
@@ -1325,6 +1415,7 @@ namespace Executor.Play
                     if (_game.HasPopup)
                     {
                         if (k.escapeKey.wasPressedThisFrame) _game.ClosePopups();
+                        else if (_game.IsRankingOpen && k.rKey.wasPressedThisFrame) _game.RetryFromRanking();   // 순위 창의 [다시 도전 R]
                         return;
                     }
                     if (k.rKey.wasPressedThisFrame) StartStage(_stage, false);
@@ -1670,6 +1761,9 @@ namespace Executor.Play
         private void ShowSpeech(string rawSpeaker, string portraitKey, string text)
         {
             var who = Speaker(rawSpeaker, portraitKey);
+            // 델타가 처음 말하면 메인 화면의 델타가 "마스터"라고 부르며 인사하기 시작한다
+            string deltaName = CharacterCatalog.ByKey("delta")?.Name ?? "델타";
+            if (who.speaker == deltaName || who.portraitKey?.Split('/')[0] == "delta") DeltaGreeting.MarkMet();
             Sprite portrait = ArtCatalog.Portrait(who.portraitKey, who.speaker, out _);
             _game.ShowLine(who.speaker, text, portrait, !who.protagonist, who.tag);
         }
@@ -1779,10 +1873,22 @@ namespace Executor.Play
         {
             try
             {
-                RankingResponse res = await StageApi.GetRankingsAsync(stage.StageId.Value, friends ? RankingScope.Friends : RankingScope.All, 10);
+                // 4위부터는 목록을 스크롤해서 본다 (서버 최대 50명)
+                RankingResponse res = await StageApi.GetRankingsAsync(stage.StageId.Value, friends ? RankingScope.Friends : RankingScope.All, 50);
                 if (_mode != Mode.Result || _stage != stage) return;
-                _game.ShowRanking($"{stage.No}. {stage.Title} · 최소 턴 순위", res, friends, PlayerSession.Profile?.UserId ?? 0,
-                    f => OpenRanking(stage, f));
+                ChapterInfo chapter = _chapter;
+                string code = chapter == null ? $"{stage.No}" : $"{chapter.LayerOrder}-{stage.No}";
+                _game.ShowRanking(new GameUI.RankingView
+                {
+                    Title = $"ranking.exe — {code} · {stage.Title}",
+                    Subtitle = chapter == null ? "" : $"{chapter.LayerLabel} · {chapter.Title}",
+                    Response = res,
+                    Friends = friends,
+                    MyUserId = PlayerSession.Profile?.UserId ?? 0,
+                    OnScope = f => OpenRanking(stage, f),
+                    OnRetry = () => StartStage(_stage, false),
+                    OnAddFriends = () => { _game.CloseRanking(); Social.Open(SocialPanel.TabSearch); },
+                });
             }
             catch (ApiException e)
             {

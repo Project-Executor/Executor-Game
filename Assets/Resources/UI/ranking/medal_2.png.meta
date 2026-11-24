@@ -1,15 +1,15 @@
 fileFormatVersion: 2
-guid: 64ed24dcfef023a4e956461babf0e114
+guid: 393687bc5be9eba45902ca7eece737e6
 TextureImporter:
   internalIDToNameTable:
   - first:
-      213: 4705660991511336434
-    second: wall_front_5_0
+      213: -4560369507542642423
+    second: medal_2_0
   externalObjects: {}
   serializedVersion: 13
   mipmaps:
     mipMapMode: 0
-    enableMipMap: 0
+    enableMipMap: 1
     sRGBTexture: 1
     linearTexture: 0
     fadeOut: 0
@@ -37,7 +37,7 @@ TextureImporter:
   maxTextureSize: 2048
   textureSettings:
     serializedVersion: 2
-    filterMode: 0
+    filterMode: 2
     aniso: 1
     mipBias: 0
     wrapU: 1
@@ -113,13 +113,13 @@ TextureImporter:
     serializedVersion: 2
     sprites:
     - serializedVersion: 2
-      name: wall_front_5_0
+      name: medal_2_0
       rect:
         serializedVersion: 2
-        x: 0
+        x: 23
         y: 0
-        width: 64
-        height: 64
+        width: 82
+        height: 128
       alignment: 0
       pivot: {x: 0, y: 0}
       border: {x: 0, y: 0, z: 0, w: 0}
@@ -128,8 +128,8 @@ TextureImporter:
       physicsShape: []
       tessellationDetail: -1
       bones: []
-      spriteID: 2f512787dbddd4140800000000000000
-      internalID: 4705660991511336434
+      spriteID: 901d562481056b0c0800000000000000
+      internalID: -4560369507542642423
       vertices: []
       indices: 
       edges: []

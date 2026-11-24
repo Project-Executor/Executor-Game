@@ -19,6 +19,14 @@ namespace Executor.Data
         public long? EquippedDeltaId { get; set; }
         /// <summary>USER / ADMIN</summary>
         public string Role { get; set; }
+        /// <summary>프로필 사진을 바꾼 시각(초). null이면 사진 없음 (기본 실루엣)</summary>
+        public long? AvatarVersion { get; set; }
+    }
+
+    /// <summary>PUT /profiles/me/avatar 응답</summary>
+    public class AvatarVersionResponse
+    {
+        public long AvatarVersion { get; set; }
     }
 
     /// <summary>GET /profiles/{userId}: 공개 프로필 (클리어 수·별은 공식 스테이지만)</summary>

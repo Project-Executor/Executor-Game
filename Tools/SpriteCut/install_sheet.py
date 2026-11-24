@@ -41,11 +41,13 @@ SETS = {
             'keycard': (729, 626, 791, 728),
             'data_shard': (1152, 618, 1254, 732),
             'checkpoint_on': (1162, 765, 1269, 932),
+            'checkpoint_off': (835, 588, 995, 736),  # 도착 전: 받침대
+            'checkpoint_unstable': (1342, 762, 1478, 940),  # 불안정 도착: 빨간 그림
             'null_entity': (53, 756, 196, 946),
         },
         'small': {'keycard': 28, 'data_shard': 44, 'drive': 54, 'null_entity': 54},
         # 빛 효과 영역: 이름 -> 시트 y가 이 값보다 위인 부분만 (None = 전체). 체크 무늬 시트에서만 쓴다
-        'soft': {'null_entity': None, 'checkpoint_on': 890},
+        'soft': {'null_entity': None},  # 체크포인트 3종은 빛 처리 없이 (흰 화살표·줄무늬가 배경으로 지워지지 않게)
         # 벽 윗면 = 벽 패널의 중간 밝기 색 x 이 값 (바닥과 구분되게)
         'wall_top_dim': 0.55,
         # 그림 영역을 좁힐 때 알파 기준, 벽 윗면 색을 고를 밝기 범위(R+G+B 합)
@@ -75,6 +77,8 @@ SETS = {
             'keycard': (731, 634, 801, 742),
             'data_shard': (1152, 633, 1262, 751),
             'checkpoint_on': (1155, 774, 1277, 962),
+            'checkpoint_off': (815, 602, 1000, 760),  # 도착 전: 받침대
+            'checkpoint_unstable': (1350, 770, 1495, 970),  # 불안정 도착: 빨간 그림
             'null_entity': (39, 780, 176, 962),
         },
         'small': {'keycard': 28, 'data_shard': 44, 'drive': 54, 'null_entity': 54},
@@ -106,6 +110,8 @@ SETS = {
             'keycard': (740, 605, 811, 708),
             'data_shard': (1172, 603, 1280, 705),
             'checkpoint_on': (1167, 730, 1273, 885),
+            'checkpoint_off': (850, 590, 1010, 722),  # 도착 전: 받침대
+            'checkpoint_unstable': (1345, 725, 1480, 890),  # 불안정 도착: 빨간 그림
             'null_entity': (32, 737, 213, 882),
         },
         'small': {'keycard': 28, 'data_shard': 44, 'drive': 54, 'null_entity': 60},
@@ -139,6 +145,8 @@ SETS = {
             'keycard': (737, 620, 816, 739),
             'data_shard': (1150, 623, 1272, 743),
             'checkpoint_on': (1146, 762, 1281, 969),
+            'checkpoint_off': (830, 595, 1010, 748),  # 도착 전: 받침대
+            'checkpoint_unstable': (1335, 760, 1490, 985),  # 불안정 도착: 빨간 그림
             'null_entity': (23, 770, 209, 965),
         },
         'small': {'keycard': 28, 'data_shard': 44, 'drive': 54, 'null_entity': 58},
@@ -205,7 +213,7 @@ def main():
             return (c - h // 2, y0, c - h // 2 + h, y1)
         return box
 
-    keep = set(cfg['tiles']) | set(cfg['objects']) | {'wall_top', 'board_edge', 'checkpoint_off'}
+    keep = set(cfg['tiles']) | set(cfg['objects']) | {'wall_top', 'board_edge'}
     os.makedirs(dst, exist_ok=True)
     for f in os.listdir(dst):
         if f.endswith('.png'):
@@ -235,9 +243,6 @@ def main():
             pad.alpha_composite(img, ((T - w) // 2, 0))
             img = pad
         out[n] = img
-
-    # 도착 전 체크포인트: 어둡고 채도 낮게
-    out['checkpoint_off'] = ImageEnhance.Brightness(ImageEnhance.Color(out['checkpoint_on']).enhance(0.2)).enhance(0.55)
 
     # 벽 덩어리 윗면: 벽 패널의 중간 밝기 색을 어둡게 한 단색 (이음선 없는 면)
     panel = np.array(out['wall_front_2'].convert('RGB')).reshape(-1, 3).astype(int)

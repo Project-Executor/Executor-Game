@@ -181,6 +181,8 @@ namespace Executor.Play
         public static Sprite DoorOpen => MapArt("shutter_open");
         /// <summary>도착한 체크포인트 (맵 세트). 없으면 null</summary>
         public static Sprite CheckpointOn => MapArt("checkpoint_on");
+        /// <summary>턴을 넘겨(불안정) 도착한 체크포인트 (맵 세트, 빨간 그림). 없으면 null (그때는 도착 그림 CheckpointOn)</summary>
+        public static Sprite CheckpointUnstable => MapArt("checkpoint_unstable");
 
         private static int CellHash(int x, int y)
         {

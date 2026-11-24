@@ -26,6 +26,11 @@ namespace Executor.Data
         public CameraSettings Camera { get; set; }
         /// <summary>미니맵 설정. 없으면 기본값 (docs/map-data.md 3.8)</summary>
         public MinimapSettings Minimap { get; set; }
+        /// <summary>
+        /// 칸별 그림 (docs/map-data.md 3.10). 키 "x,y", 값은 맵 세트 그림 이름 (floor_plain·floor_trace_l·floor_trace_h·floor_vias, wall_top·wall_front_0~4).
+        /// 없는 칸은 자동(칸 좌표로 정해지는 무늬)
+        /// </summary>
+        public Dictionary<string, string> TileArt { get; set; }
 
         /// <summary>스테이지 상세의 mapData(JObject)를 읽는다</summary>
         public static MapData From(JObject mapData) => Json.Convert<MapData>(mapData);

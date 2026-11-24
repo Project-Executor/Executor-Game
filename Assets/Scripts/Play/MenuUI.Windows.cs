@@ -457,13 +457,13 @@ namespace Executor.Play
                 }
                 else if (item.ItemType == Data.ItemTypes.Delta)
                 {
-                    // 델타 꾸미기: 꾸민 얼굴
+                    // 델타 꾸미기: 그 아이템을 단 델타 (미리 보기 칸 높이에 맞춤)
                     RectTransform face = Node(preview.transform, "Delta");
                     face.anchorMin = face.anchorMax = new Vector2(0.5f, 0.5f);
                     face.pivot = new Vector2(0.5f, 0.5f);
-                    face.sizeDelta = new Vector2(40 * S, 40 * S);
-                    face.anchoredPosition = new Vector2(0, -4 * S);
-                    DrawDelta(face, 40 * S, item.Image);
+                    face.sizeDelta = new Vector2(64 * S, 64 * S);
+                    face.anchoredPosition = Vector2.zero;
+                    DrawDelta(face, 64 * S, item.Image);
                 }
                 else if (art != null)
                 {

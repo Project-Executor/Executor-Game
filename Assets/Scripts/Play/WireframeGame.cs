@@ -117,7 +117,7 @@ namespace Executor.Play
                     var chapters = await ServerCatalog.LoadAsync();
                     _chapters = chapters;
                     _chapter = _chapters.FirstOrDefault(c => c.Id == current)
-                               ?? _chapters.FirstOrDefault(c => c.IsAvailable) ?? _chapters.FirstOrDefault();
+                               ?? _chapters.FirstOrDefault(c => c.IsAvailable && !c.IsEventOnly) ?? _chapters.FirstOrDefault(c => c.IsAvailable) ?? _chapters.FirstOrDefault();
                     return;
                 }
                 catch (ApiException e)
@@ -135,7 +135,7 @@ namespace Executor.Play
                 {
                     _chapters = await ServerCatalog.LoadAsync(guest: true);
                     _chapter = _chapters.FirstOrDefault(c => c.Id == current)
-                               ?? _chapters.FirstOrDefault(c => c.IsAvailable) ?? _chapters.FirstOrDefault();
+                               ?? _chapters.FirstOrDefault(c => c.IsAvailable && !c.IsEventOnly) ?? _chapters.FirstOrDefault(c => c.IsAvailable) ?? _chapters.FirstOrDefault();
                     return;
                 }
                 catch (ApiException e)
@@ -146,7 +146,7 @@ namespace Executor.Play
             StageProgress.ClearRemote();
             _chapters = ChapterCatalog.Load();
             _chapter = _chapters.FirstOrDefault(c => c.Id == current)
-                       ?? _chapters.FirstOrDefault(c => c.IsAvailable) ?? _chapters.FirstOrDefault();
+                       ?? _chapters.FirstOrDefault(c => c.IsAvailable && !c.IsEventOnly) ?? _chapters.FirstOrDefault(c => c.IsAvailable) ?? _chapters.FirstOrDefault();
         }
 
         private async void ReloadChapters() => await ReloadChaptersAsync();
@@ -154,7 +154,7 @@ namespace Executor.Play
         private void LoadStages()
         {
             _chapters = ChapterCatalog.Load();
-            _chapter = _chapters.FirstOrDefault(c => c.IsAvailable) ?? _chapters.FirstOrDefault();
+            _chapter = _chapters.FirstOrDefault(c => c.IsAvailable && !c.IsEventOnly) ?? _chapters.FirstOrDefault(c => c.IsAvailable) ?? _chapters.FirstOrDefault();
         }
 
         private void Block() => _blockInputFrame = Time.frameCount;

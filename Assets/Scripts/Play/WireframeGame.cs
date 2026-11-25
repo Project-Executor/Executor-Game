@@ -2135,7 +2135,7 @@ namespace Executor.Play
                 Unit = typing ? "개" : "턴",
                 NameHeader = "이름",
                 TimeHeader = "올린 시각",
-                Rule = typing ? "같은 개수면 먼저 올린 기록이 앞에 와요" : "같은 턴이면 먼저 올린 기록이 앞에 와요",
+                Rule = typing ? "같은 개수면 같은 순위, 이름순으로 보여요" : "같은 턴이면 같은 순위, 이름순으로 보여요",
                 NoRecord = "이번 기록은 올리지 않았어요",
                 EmptyText = "아직 올라온 기록이 없어요.",
                 OnRetry = () => StartStage(stage, false),

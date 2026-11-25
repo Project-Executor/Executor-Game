@@ -14,7 +14,7 @@ namespace Executor.Network
         public static Task<GuestbookLatest> GetLatestAsync(int limit = 30) =>
             ApiClient.GetAsync<GuestbookLatest>($"/guestbook/latest?limit={limit}", auth: false);
 
-        /// <exception cref="ApiException">400 INVALID_INPUT(길이), 429 MESSAGE_SPAM(같은 PC 30초 안에 다시)</exception>
+        /// <exception cref="ApiException">400 INVALID_INPUT(길이), 429 MESSAGE_SPAM(같은 PC 5초 안에 다시)</exception>
         public static Task<GuestbookPostResult> PostAsync(string name, string message) =>
             ApiClient.PostAsync<GuestbookPostResult>("/guestbook",
                 new GuestbookRequest { Name = name, Message = message, DeviceId = DeviceId }, auth: PlayerSession.IsOnline);

@@ -36,6 +36,7 @@ namespace Executor.Play
 
         private Text[] _mainLog;
         private Text _mainZone, _mainZoneCount, _deltaText, _deltaHeader, _deltaMeter;
+        private RectTransform _deltaBox;
         private RectTransform _mainZoneBar, _mainZoneFill, _mainCursor, _deltaFace;
         private string _cursorKey, _deltaKey;
         // 바탕화면·작업 표시줄은 메인과 스테이지 선택 화면에 하나씩 있다
@@ -68,6 +69,7 @@ namespace Executor.Play
             _deltaHeader.text = header;
             _deltaMeter.text = info.DeltaMet ? "▮▮▮▮" : "▮▮▮▯";
             _deltaText.text = deltaText;
+            FitDeltaNotice();
             string last = info.LastStage == null
                 ? "<color=#22d3ee>[INFO]</color> 아직 클리어한 스테이지가 없습니다"
                 : $"<color=#22d3ee>[INFO]</color> 마지막 기록 · {info.LastStage} {StarText(info.LastStars, info.LastMaxStars)}";
@@ -255,6 +257,7 @@ namespace Executor.Play
             float height = border + header + pad + icon + pad + border;
             RectTransform box = Frame(screen, "DeltaNotice", Hex(0x0c0a18, 0.94f), Orange, border, 4 * S);
             AtRight(box, 24 * S, 24 * S, width, height);
+            _deltaBox = box;
 
             Image bar = Fill(box, "Header", Orange);
             At(bar, border, border, width - border * 2, header);
@@ -268,8 +271,21 @@ namespace Executor.Play
             DrawDelta(_deltaFace, icon, _deltaKey);
             _deltaText = Label(box, "", 12 * S, Fg, TextAnchor.UpperLeft);
             _deltaText.lineSpacing = 1.2f;
+            _deltaText.horizontalOverflow = HorizontalWrapMode.Wrap; // 긴 말은 아래로 줄바꿈 (상자는 FitDeltaNotice가 늘린다)
+            _deltaText.verticalOverflow = VerticalWrapMode.Overflow;
             At(_deltaText, border + pad + icon + pad, border + header + pad, width - (border + pad) * 2 - icon - pad, icon);
             BorderOnTop(box);
+        }
+
+        /// <summary>델타 말이 아이콘 높이보다 길면 글 상자와 바깥 상자를 아래로 늘린다 (위·오른쪽은 고정)</summary>
+        private void FitDeltaNotice()
+        {
+            if (_deltaBox == null || _deltaText == null) return;
+            const float border = 2 * S, header = 28 * S, pad = 12 * S, icon = 52 * S;
+            float textH = Mathf.Max(icon, Mathf.Ceil(_deltaText.preferredHeight));
+            RectTransform t = _deltaText.rectTransform;
+            t.sizeDelta = new Vector2(t.sizeDelta.x, textH);
+            _deltaBox.sizeDelta = new Vector2(_deltaBox.sizeDelta.x, border + header + pad + textH + pad + border);
         }
 
         // ---------------- 로고 ----------------

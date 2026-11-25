@@ -31,7 +31,7 @@ namespace Executor.Play
         private string _gbError;
         private string _gbSignature;
 
-        private RectTransform _gbWidgetList;
+        private RectTransform _gbWidget, _gbWidgetList;
         private Text _gbWidgetLive;
 
         private GameObject _gbWindow;
@@ -64,7 +64,11 @@ namespace Executor.Play
         public void SetGuestbook(GuestbookLatest data)
         {
             _gbError = null;
-            string signature = data == null ? "" : $"{data.Total}:{data.Today}:{string.Join(",", data.Entries.Select(e => e.Id))}";
+            // 관리자가 꺼 두었으면 위젯을 숨기고, 열려 있던 창도 닫는다
+            bool on = data != null && data.Enabled;
+            if (_gbWidget != null) _gbWidget.gameObject.SetActive(on);
+            if (!on && IsGuestbookOpen) ClosePopups();
+            string signature = data == null ? "" : $"{data.Enabled}:{data.Total}:{data.Today}:{string.Join(",", data.Entries.Select(e => e.Id))}";
             bool changed = signature != _gbSignature;
             _gbData = data;
             _gbSignature = signature;
@@ -115,6 +119,8 @@ namespace Executor.Play
             float height = border + header + listH + btnH + 8 * S + 16 * S + pad + border;
             RectTransform box = Frame(screen, "Guestbook", Hex(0x0c0a18, 0.94f), GuestPink, border, 4 * S);
             At(box, 156 * S, 300 * S, width, height);
+            _gbWidget = box;
+            box.gameObject.SetActive(_gbData != null && _gbData.Enabled); // 서버가 켜져 있다고 알려 주기 전까지는 숨김
 
             Image bar = Fill(box, "Header", GuestPink);
             At(bar, border, border, width - border * 2, header);

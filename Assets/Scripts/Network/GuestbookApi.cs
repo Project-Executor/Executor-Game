@@ -54,6 +54,8 @@ namespace Executor.Network
 
     public class GuestbookLatest
     {
+        /// <summary>관리자가 방명록을 켜 두었는지 (전시할 때만). 꺼져 있으면 위젯·창을 숨긴다</summary>
+        public bool Enabled { get; set; }
         /// <summary>최신 글을 오래된 것부터</summary>
         public List<GuestbookEntry> Entries { get; set; } = new List<GuestbookEntry>();
         /// <summary>오늘(한국 시간) 남긴 글 수</summary>

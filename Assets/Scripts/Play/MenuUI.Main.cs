@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using UnityEngine;
+using UnityEngine.EventSystems;
 using UnityEngine.UI;
 using static Executor.Play.Theme;
 
@@ -70,6 +72,10 @@ namespace Executor.Play
             _deltaMeter.text = info.DeltaMet ? "▮▮▮▮" : "▮▮▮▯";
             _deltaText.text = deltaText;
             FitDeltaNotice();
+            // 메인 화면에 올 때마다 executor.exe 창을 다시 띄운다 (최소화·닫기를 풀고)
+            _termMinimized = _termClosed = false;
+            if (_terminal != null) _terminal.gameObject.SetActive(true);
+            RefreshTaskbars();
             string last = info.LastStage == null
                 ? "<color=#22d3ee>[INFO]</color> 아직 클리어한 스테이지가 없습니다"
                 : $"<color=#22d3ee>[INFO]</color> 마지막 기록 · {info.LastStage} {StarText(info.LastStars, info.LastMaxStars)}";
@@ -185,6 +191,7 @@ namespace Executor.Play
                 ("mail", "메일함", () => OnMail?.Invoke()),
                 ("shop", "store.exe", () => OnShop?.Invoke()),
                 ("friends", "친구", () => OnFriends?.Invoke()),
+                ("start", "executor.exe", OpenTerminalFromDesktop),
             };
             const float width = 96 * S, height = 86 * S, gap = 12 * S;
             for (int i = 0; i < items.Length; i++)
@@ -315,7 +322,8 @@ namespace Executor.Play
             float height = buttonTop + buttonH + padBottom + TermBorder;
             RectTransform win = Frame(screen, "Terminal", Window, WindowLine, TermBorder, 6 * S);
             At(win, 560 * S, 186 * S, TermWidth, height);
-            WindowTitle(win, "executor.exe — bash", TermWidth, TermBorder);
+            _terminal = win;
+            WindowTitle(win, "executor.exe — bash", TermWidth, TermBorder, MinimizeTerminal, CloseTerminal);
 
             // 로그 (고정폭 글자, 줄마다 22 간격)
             _mainLog = new Text[5];
@@ -382,8 +390,8 @@ namespace Executor.Play
             UiAnimator.Blink(_mainCursor.GetComponent<Image>(), style.Period);
         }
 
-        /// <summary>창 제목 줄: 제목(굵게) + 최소화·최대화·닫기 모양(장식) + 아래 하늘색 줄</summary>
-        private static void WindowTitle(RectTransform win, string title, float width, float border)
+        /// <summary>창 제목 줄: 제목(굵게) + 최소화·최대화(모양)·닫기 + 아래 하늘색 줄. 최소화·닫기는 넘겨 준 동작을 한다</summary>
+        private static void WindowTitle(RectTransform win, string title, float width, float border, Action onMinimize = null, Action onClose = null)
         {
             const float height = 32 * S;
             Image bar = Fill(win, "TitleBar", TitleBar);
@@ -403,6 +411,16 @@ namespace Executor.Play
                 rt.sizeDelta = new Vector2(box, box);
                 Image face = Fill(b, "Face", i == 2 ? Hex(0xa3203a) : TrackLine);
                 Inset(face, 0, 0, 0, 0);
+                if (i == 2 && onClose != null)
+                {
+                    face.color = Color.white;
+                    Clickable(face, onClose, Hex(0xa3203a), Red);
+                }
+                else if (i == 0 && onMinimize != null)
+                {
+                    face.color = Color.white;
+                    Clickable(face, onMinimize, TrackLine, Hex(0x4a4290));
+                }
                 if (i == 0)
                 {
                     Image underline = Fill(b, "Min", Muted);
@@ -510,7 +528,64 @@ namespace Executor.Play
         public void SetWindowTab(string name)
         {
             _windowTab = name;
-            foreach (var (row, windows) in _taskbars) DrawTaskbarTabs(row, windows, name);
+            RefreshTaskbars();
+        }
+
+        /// <summary>작업 표시줄 탭을 지금 상태(열린 창, 줄인 창)로 다시 그린다</summary>
+        private void RefreshTaskbars()
+        {
+            foreach (var (row, windows) in _taskbars) DrawTaskbarTabs(row, windows, _windowTab);
+        }
+
+        // ---------------- executor.exe 최소화·닫기, explorer.exe 최소화 ----------------
+        private RectTransform _terminal;
+        /// <summary>executor.exe: 줄임(작업 표시줄 탭은 남음) / 닫힘(탭도 없음, 바탕화면 아이콘으로 다시 연다)</summary>
+        private bool _termMinimized, _termClosed;
+        /// <summary>스테이지 선택(explorer.exe)을 줄여 둠: 메인 작업 표시줄에 탭이 남고, 누르면 다시 연다</summary>
+        private bool _explorerParked;
+        /// <summary>줄여 둔 스테이지 선택을 다시 열기 (보던 Operation 그대로)</summary>
+        public Action OnExplorerRestore;
+
+        private void MinimizeTerminal()
+        {
+            _termMinimized = true;
+            if (_terminal != null) _terminal.gameObject.SetActive(false);
+            RefreshTaskbars();
+        }
+
+        private void CloseTerminal()
+        {
+            _termClosed = true;
+            _termMinimized = false;
+            if (_terminal != null) _terminal.gameObject.SetActive(false);
+            RefreshTaskbars();
+        }
+
+        private void RestoreTerminal()
+        {
+            ClosePopups();
+            _termMinimized = _termClosed = false;
+            if (_terminal != null) _terminal.gameObject.SetActive(true);
+            RefreshTaskbars();
+        }
+
+        /// <summary>바탕화면 executor.exe 아이콘: 메인이면 터미널 창을 다시 띄우고, 스테이지 선택이면 메인으로</summary>
+        private void OpenTerminalFromDesktop()
+        {
+            if (_main != null && _main.activeSelf) RestoreTerminal();
+            else OnStageBack?.Invoke();
+        }
+
+        private void MinimizeExplorer()
+        {
+            _explorerParked = true;
+            OnStageBack?.Invoke();
+        }
+
+        private void RestoreExplorer()
+        {
+            _explorerParked = false;
+            OnExplorerRestore?.Invoke();
         }
 
         /// <summary>
@@ -520,19 +595,41 @@ namespace Executor.Play
         private void DrawTaskbarTabs(RectTransform row, (string name, Action open)[] windows, string extra)
         {
             UiKit.Clear(row);
-            var list = new List<(string name, Action open)>();
-            foreach (var w in windows) list.Add(extra != null && w.open == null ? (w.name, (Action)ClosePopups) : w);
-            if (extra != null) list.Add((extra, null));
-            const float item = 40 * S;
+            _parked.RemoveAll(p => p.go == null);
+            // 메인 화면의 작업 표시줄인지 (executor.exe가 지금 창)
+            bool mainBar = windows.Any(w => w.name == "executor.exe" && w.open == null);
+            var list = new List<(string name, Action open, Action close)>();
+            foreach (var w in windows)
+            {
+                if (mainBar && w.name == "executor.exe")
+                {
+                    if (_termClosed) continue;
+                    if (_termMinimized)
+                    {
+                        list.Add((w.name, RestoreTerminal, null));
+                        continue;
+                    }
+                }
+                list.Add(extra != null && w.open == null ? (w.name, (Action)ClosePopups, null) : (w.name, w.open, null));
+            }
+            if (mainBar && _explorerParked) list.Add(("explorer.exe", RestoreExplorer, () => { _explorerParked = false; RefreshTaskbars(); }));
+            // 줄여 둔 창: 누르면 다시 열고, 마우스를 올리면 닫기 버튼
+            foreach (var p in _parked)
+            {
+                string tabName = p.tab;
+                list.Add((tabName, () => RestoreWindow(tabName), () => CloseParked(tabName)));
+            }
+            if (extra != null) list.Add((extra, null, null));
+            const float item = 40 * S, closeW = 20 * S;
             Color hover = Hex(0xeaf2ff, 0.08f);
             float x = 0;
-            foreach (var (name, open) in list)
+            foreach (var (name, open, close) in list)
             {
                 bool current = open == null;
                 Image tab = Fill(row, "Tab:" + name, current ? Hex(0x22d3ee, 0.10f) : hover);
                 Text tabText = Label(tab.transform, name, 12 * S, current ? Fg : Muted, TextAnchor.MiddleCenter);
-                float w = tabText.preferredWidth + 32 * S;
-                Inset(tabText, 0, 0, 0, 0);
+                float w = tabText.preferredWidth + 32 * S + (close != null ? closeW : 0);
+                Inset(tabText, 0, 0, close != null ? closeW : 0, 0);
                 if (current)
                 {
                     Image line = Fill(tab.transform, "Line", Cyan);
@@ -541,11 +638,36 @@ namespace Executor.Play
                     line.rectTransform.offsetMin = Vector2.zero;
                     line.rectTransform.offsetMax = new Vector2(0, 2 * S);
                 }
-                else Clickable(tab, open, new Color(1, 1, 1, 0), Color.white, new Color(1, 1, 1, 0.7f));
+                else
+                {
+                    Clickable(tab, open, new Color(1, 1, 1, 0), Color.white, new Color(1, 1, 1, 0.7f));
+                    if (close != null) TabCloseButton(tab, close, closeW);
+                }
                 At(tab, x, 0, w, item);
                 x += w + 4 * S;
             }
             row.sizeDelta = new Vector2(Mathf.Max(0, x - 4 * S), item);
+        }
+
+        /// <summary>줄여 둔 창 탭의 닫기(×): 탭에 마우스를 올렸을 때만 보인다</summary>
+        private static void TabCloseButton(Image tab, Action close, float size)
+        {
+            Image x = Fill(tab.transform, "Close", Color.white, raycast: true);
+            x.rectTransform.anchorMin = x.rectTransform.anchorMax = new Vector2(1, 0.5f);
+            x.rectTransform.pivot = new Vector2(1, 0.5f);
+            x.rectTransform.anchoredPosition = new Vector2(-6 * S, 0);
+            x.rectTransform.sizeDelta = new Vector2(size - 4 * S, size - 4 * S);
+            Clickable(x, close, Hex(0xa3203a), Red);
+            Text mark = Label(x.transform, "×", 12 * S, Fg, TextAnchor.MiddleCenter, bold: true);
+            Inset(mark, 0, 0, 0, 0);
+            x.gameObject.SetActive(false);
+            var trigger = tab.gameObject.AddComponent<EventTrigger>();
+            var enter = new EventTrigger.Entry { eventID = EventTriggerType.PointerEnter };
+            enter.callback.AddListener(_ => { if (x != null) x.gameObject.SetActive(true); });
+            var exit = new EventTrigger.Entry { eventID = EventTriggerType.PointerExit };
+            exit.callback.AddListener(_ => { if (x != null) x.gameObject.SetActive(false); });
+            trigger.triggers.Add(enter);
+            trigger.triggers.Add(exit);
         }
 
         private static RectTransform TaskItem(Transform bar, float x, float width, float height, Color hover, Action onClick)

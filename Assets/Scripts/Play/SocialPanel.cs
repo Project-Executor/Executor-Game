@@ -68,6 +68,11 @@ namespace Executor.Play
 
         public bool IsOpen => _popup != null;
 
+        /// <summary>최소화할 수 있는지 (메인 화면에서만. 작업 표시줄이 있어야 한다)</summary>
+        public Func<bool> CanPark;
+        /// <summary>최소화: 창을 작업 표시줄로 줄인다</summary>
+        public Action<GameObject> Park;
+
         /// <summary>창을 연다 (이미 열려 있으면 메뉴만 바꾼다)</summary>
         public void Open(string tab = TabMessages)
         {
@@ -135,7 +140,9 @@ namespace Executor.Play
         private void Build()
         {
             if (_popup != null) UnityEngine.Object.Destroy(_popup);
-            WindowFrame(_root(), "친구 — messenger.exe", "friends", 236, 60, 820, 520, false, Close, out RectTransform body, out _popup);
+            bool canPark = CanPark != null && CanPark();
+            WindowFrame(_root(), "친구 — messenger.exe", "friends", 236, 60, 820, 520, false, Close, out RectTransform body, out _popup,
+                canPark ? (Action)(() => Park?.Invoke(_popup)) : null);
             OnWindow?.Invoke("messenger.exe");
 
             Image nav = Fill(body, "Nav", Night);

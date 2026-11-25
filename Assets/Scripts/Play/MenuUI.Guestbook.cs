@@ -67,7 +67,8 @@ namespace Executor.Play
             // 관리자가 꺼 두었으면 위젯을 숨기고, 열려 있던 창도 닫는다
             bool on = data != null && data.Enabled;
             if (_gbWidget != null) _gbWidget.gameObject.SetActive(on);
-            if (!on && IsGuestbookOpen) ClosePopups();
+            if (!on && IsParked("guestbook.exe")) CloseParked("guestbook.exe");
+            else if (!on && IsGuestbookOpen) ClosePopups();
             string signature = data == null ? "" : $"{data.Enabled}:{data.Total}:{data.Today}:{string.Join(",", data.Entries.Select(e => e.Id))}";
             bool changed = signature != _gbSignature;
             _gbData = data;

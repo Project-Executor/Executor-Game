@@ -181,7 +181,11 @@ namespace Executor.Play
             _menu.OnGuestbook = OpenGuestbook;
             _menu.OnGuestbookPost = PostGuestbook;
             _menu.OnGuidebook = () => OpenGuidebook(null);
-            _menu.OnFriends = () => Social.Open(SocialPanel.TabMessages);
+            _menu.OnFriends = () =>
+            {
+                _menu.DiscardParked("messenger.exe"); // 줄여 둔 친구 창이 있으면 새로 연다
+                Social.Open(SocialPanel.TabMessages);
+            };
             _menu.OnShop = () => OpenShop(_shopFilter);
             // 메인의 스테이지 버튼: 가장 멀리 진행한 Operation의 스테이지 화면으로
             _menu.OnStages = () =>
@@ -194,6 +198,7 @@ namespace Executor.Play
             _menu.OnContinue = ContinueGame;
 
             _menu.OnStageBack = ShowMain;
+            _menu.OnExplorerRestore = ShowStageSelect;
             _menu.OnStageSelected = no =>
             {
                 StageInfo s = _chapter?.Stages.FirstOrDefault(x => x.No == no);
@@ -909,6 +914,14 @@ namespace Executor.Play
             _game.OnCheckNickname = CheckNickname;
             _game.OnSubmitNickname = () => { if (AskingName) SubmitName(); else if (_mode == Mode.EventName) SubmitEventName(); };
             _game.OnNarrationSkip = SkipStory;
+            // hack.exe의 빨간 닫기: Esc와 같다 (타자 이벤트는 그만두기, 결과 창은 닫기, 해킹 중이면 포기)
+            _game.OnHackClose = () =>
+            {
+                if (_mode != Mode.Hacking) return;
+                if (_eventTyping && _hacking != null) EndTypingEvent(false);
+                else if (_hackResultShown) CloseHackResult();
+                else if (_hacking != null) EndHack(false, true);
+            };
             _game.OnDialogueNext = NextLine;
             _game.OnDialogueSkip = () =>
             {
@@ -1307,6 +1320,8 @@ namespace Executor.Play
             count => { _menu.SetFriendCount(count); _game.SetChatCount(count); })
         {
             OnWindow = name => { if (_mode == Mode.Main || name == null) _menu.SetWindowTab(name); },
+            CanPark = () => _mode == Mode.Main,
+            Park = go => _menu.ParkWindow(go, "messenger.exe", () => _social?.Close()),
             CompareRecords = CompareRecordsAsync,
         };
 

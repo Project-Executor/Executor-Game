@@ -48,6 +48,7 @@ namespace Executor.Play
             _main.SetActive(false);
             _stage.SetActive(false);
             ClosePopups();
+            CloseAllParked();
         }
 
 

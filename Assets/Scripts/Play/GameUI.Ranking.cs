@@ -96,15 +96,16 @@ namespace Executor.Play
             }
             y += 48 * S + 14 * S;
 
-            // 시상대: 2위 · 1위 · 3위 (아래쪽을 맞춘다)
+            // 시상대: 두 번째 · 첫 번째 · 세 번째 줄 (아래쪽을 맞춘다).
+            // 순위 번호가 아니라 목록 순서로 채운다: 공동 순위(예: 1위가 둘)여도 아무도 빠지지 않고, 메달은 실제 순위를 따른다
             const float podiumH = 132 * S, cardGap = 10 * S;
             float cardW = (w - cardGap * 2) / 3;
-            var slots = new[] { (rank: 2, h: 112 * S), (rank: 1, h: 132 * S), (rank: 3, h: 100 * S) };
+            var slots = new[] { (place: 2, h: 112 * S), (place: 1, h: 132 * S), (place: 3, h: 100 * S) };
             for (int i = 0; i < 3; i++)
             {
-                var (rank, h) = slots[i];
-                Data.RankingEntry e = list.FirstOrDefault(r => r.Rank == rank);
-                PodiumCard(body, pad + i * (cardW + cardGap), y + podiumH - h, cardW, h, rank, e, e != null && IsMe(e, view), view.Unit);
+                var (place, h) = slots[i];
+                Data.RankingEntry e = place <= list.Count ? list[place - 1] : null;
+                PodiumCard(body, pad + i * (cardW + cardGap), y + podiumH - h, cardW, h, place, e, e != null && IsMe(e, view), view.Unit);
             }
             y += podiumH + 14 * S;
 
@@ -118,7 +119,7 @@ namespace Executor.Play
             Image listBg = Fill(body, "List", Night);
             At(listBg, pad, y, w, listH);
             RankRow(listBg.transform, 0, w, 28 * S, "순위", view.NameHeader, view.Unit, view.TimeHeader, Dim, false, header: true);
-            List<Data.RankingEntry> rest = list.Where(r => r.Rank > 3).OrderBy(r => r.Rank).ToList();
+            List<Data.RankingEntry> rest = list.Skip(3).ToList(); // 서버가 보낸 순서 그대로 (공동 순위는 이름순)
             bool alone = list.Count <= 1;
             if (rest.Count == 0 && alone)
             {
@@ -189,8 +190,10 @@ namespace Executor.Play
             return width;
         }
 
-        private static void PodiumCard(Transform parent, float x, float y, float w, float h, int rank, Data.RankingEntry e, bool me, string unit)
+        /// <param name="place">시상대 자리 (1 가운데·가장 높음, 2 왼쪽, 3 오른쪽). 메달 색은 실제 순위(공동 순위면 같은 메달)</param>
+        private static void PodiumCard(Transform parent, float x, float y, float w, float h, int place, Data.RankingEntry e, bool me, string unit)
         {
+            int rank = e == null ? place : Mathf.Clamp(e.Rank, 1, 3);
             Color medal = rank == 1 ? Cyan : rank == 2 ? MedalSilver : MedalBronze;
             Color moves = rank == 1 ? Yellow : medal;
             RectTransform card = Node(parent, "Podium" + rank);

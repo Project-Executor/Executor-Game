@@ -117,7 +117,7 @@ namespace Executor.Play
                     var chapters = await ServerCatalog.LoadAsync();
                     _chapters = chapters;
                     _chapter = _chapters.FirstOrDefault(c => c.Id == current)
-                               ?? _chapters.FirstOrDefault(c => c.IsAvailable) ?? _chapters.FirstOrDefault();
+                               ?? _chapters.FirstOrDefault(c => c.IsAvailable && !c.IsEventOnly) ?? _chapters.FirstOrDefault(c => c.IsAvailable) ?? _chapters.FirstOrDefault();
                     return;
                 }
                 catch (ApiException e)
@@ -135,7 +135,7 @@ namespace Executor.Play
                 {
                     _chapters = await ServerCatalog.LoadAsync(guest: true);
                     _chapter = _chapters.FirstOrDefault(c => c.Id == current)
-                               ?? _chapters.FirstOrDefault(c => c.IsAvailable) ?? _chapters.FirstOrDefault();
+                               ?? _chapters.FirstOrDefault(c => c.IsAvailable && !c.IsEventOnly) ?? _chapters.FirstOrDefault(c => c.IsAvailable) ?? _chapters.FirstOrDefault();
                     return;
                 }
                 catch (ApiException e)
@@ -146,7 +146,7 @@ namespace Executor.Play
             StageProgress.ClearRemote();
             _chapters = ChapterCatalog.Load();
             _chapter = _chapters.FirstOrDefault(c => c.Id == current)
-                       ?? _chapters.FirstOrDefault(c => c.IsAvailable) ?? _chapters.FirstOrDefault();
+                       ?? _chapters.FirstOrDefault(c => c.IsAvailable && !c.IsEventOnly) ?? _chapters.FirstOrDefault(c => c.IsAvailable) ?? _chapters.FirstOrDefault();
         }
 
         private async void ReloadChapters() => await ReloadChaptersAsync();
@@ -154,7 +154,7 @@ namespace Executor.Play
         private void LoadStages()
         {
             _chapters = ChapterCatalog.Load();
-            _chapter = _chapters.FirstOrDefault(c => c.IsAvailable) ?? _chapters.FirstOrDefault();
+            _chapter = _chapters.FirstOrDefault(c => c.IsAvailable && !c.IsEventOnly) ?? _chapters.FirstOrDefault(c => c.IsAvailable) ?? _chapters.FirstOrDefault();
         }
 
         private void Block() => _blockInputFrame = Time.frameCount;
@@ -178,8 +178,14 @@ namespace Executor.Play
             _menu.OnProfile = ShowProfile;
             _menu.OnMail = () => OpenMailbox(null);
             _menu.OnNotice = OpenNotices;
+            _menu.OnGuestbook = OpenGuestbook;
+            _menu.OnGuestbookPost = PostGuestbook;
             _menu.OnGuidebook = () => OpenGuidebook(null);
-            _menu.OnFriends = () => Social.Open(SocialPanel.TabMessages);
+            _menu.OnFriends = () =>
+            {
+                _menu.DiscardParked("messenger.exe"); // 줄여 둔 친구 창이 있으면 새로 연다
+                Social.Open(SocialPanel.TabMessages);
+            };
             _menu.OnShop = () => OpenShop(_shopFilter);
             // 메인의 스테이지 버튼: 가장 멀리 진행한 Operation의 스테이지 화면으로
             _menu.OnStages = () =>
@@ -192,6 +198,7 @@ namespace Executor.Play
             _menu.OnContinue = ContinueGame;
 
             _menu.OnStageBack = ShowMain;
+            _menu.OnExplorerRestore = ShowStageSelect;
             _menu.OnStageSelected = no =>
             {
                 StageInfo s = _chapter?.Stages.FirstOrDefault(x => x.No == no);
@@ -275,6 +282,7 @@ namespace Executor.Play
             Block();
             HideGame();
             ShowMainProfile();
+            _guestbookPollAt = 0; // 메인 화면 방명록 위젯을 바로 채운다
             if (PlayerSession.IsOnline)
             {
                 try
@@ -906,6 +914,14 @@ namespace Executor.Play
             _game.OnCheckNickname = CheckNickname;
             _game.OnSubmitNickname = () => { if (AskingName) SubmitName(); else if (_mode == Mode.EventName) SubmitEventName(); };
             _game.OnNarrationSkip = SkipStory;
+            // hack.exe의 빨간 닫기: Esc와 같다 (타자 이벤트는 그만두기, 결과 창은 닫기, 해킹 중이면 포기)
+            _game.OnHackClose = () =>
+            {
+                if (_mode != Mode.Hacking) return;
+                if (_eventTyping && _hacking != null) EndTypingEvent(false);
+                else if (_hackResultShown) CloseHackResult();
+                else if (_hacking != null) EndHack(false, true);
+            };
             _game.OnDialogueNext = NextLine;
             _game.OnDialogueSkip = () =>
             {
@@ -1304,6 +1320,8 @@ namespace Executor.Play
             count => { _menu.SetFriendCount(count); _game.SetChatCount(count); })
         {
             OnWindow = name => { if (_mode == Mode.Main || name == null) _menu.SetWindowTab(name); },
+            CanPark = () => _mode == Mode.Main,
+            Park = go => _menu.ParkWindow(go, "messenger.exe", () => _social?.Close()),
             CompareRecords = CompareRecordsAsync,
         };
 
@@ -1333,6 +1351,8 @@ namespace Executor.Play
         private void Update()
         {
             _social?.Tick(Time.deltaTime);
+            if (_mode == Mode.Main) PollGuestbook();
+            _menu.TickGuestbook();
             Keyboard k = Keyboard.current;
             if (k == null || Time.frameCount == _blockInputFrame) return;
             bool enter = k.enterKey.wasPressedThisFrame || k.numpadEnterKey.wasPressedThisFrame;
@@ -1906,6 +1926,77 @@ namespace Executor.Play
             else ShowResult();
         }
 
+        // ---------------- 방명록 (전시용) ----------------
+        private float _guestbookPollAt;
+        private bool _guestbookLoading, _guestbookPosting;
+        private const string GuestbookNameKey = "guestbook_name";
+
+        /// <summary>메인 화면에 있는 동안 방명록을 다시 받는다 (창이 열려 있으면 5초, 위젯만 있으면 10초마다)</summary>
+        private void PollGuestbook()
+        {
+            if (_guestbookLoading || Time.unscaledTime < _guestbookPollAt) return;
+            _guestbookPollAt = Time.unscaledTime + (_menu.IsGuestbookOpen ? 5f : 10f);
+            RefreshGuestbook();
+        }
+
+        private async void RefreshGuestbook()
+        {
+            _guestbookLoading = true;
+            try
+            {
+                _menu.SetGuestbook(await GuestbookApi.GetLatestAsync(30));
+            }
+            catch (ApiException e)
+            {
+                _menu.SetGuestbookError(e.IsNetworkError ? "서버에 연결할 수 없어 방명록을 불러오지 못했어요." : e.Message);
+            }
+            finally
+            {
+                _guestbookLoading = false;
+            }
+        }
+
+        private void OpenGuestbook()
+        {
+            string name = PlayerSession.IsOnline && !string.IsNullOrEmpty(PlayerSession.Nickname)
+                ? PlayerSession.Nickname
+                : PlayerPrefs.GetString(GuestbookNameKey, "");
+            if (name.Length > MenuUI.GuestNameMax) name = name.Substring(0, MenuUI.GuestNameMax);
+            _menu.ShowGuestbook(name, PlayerSession.IsOnline);
+            _guestbookPollAt = 0;
+        }
+
+        private async void PostGuestbook(string name, string message)
+        {
+            if (_guestbookPosting) return;
+            _guestbookPosting = true;
+            _menu.SetGuestbookStatus("남기는 중...", Theme.Muted, 10f);
+            try
+            {
+                GuestbookPostResult res = await GuestbookApi.PostAsync(name, message);
+                MenuUI.RememberMine(res.Entry.Id);
+                PlayerPrefs.SetString(GuestbookNameKey, name);
+                PlayerPrefs.Save();
+                if (res.RewardCoin > 0 && PlayerSession.Profile != null)
+                {
+                    if (res.TotalCoin != null) PlayerSession.Profile.Coin = res.TotalCoin.Value;
+                    _menu.SetPlayer(PlayerSession.DisplayName, CoinText());
+                    _menu.SetGuestbookStatus($"남겼어요! 코인 +{res.RewardCoin}", Theme.Yellow, 4f);
+                }
+                else _menu.SetGuestbookStatus("남겼어요!", Theme.Green);
+                _menu.GuestbookPosted();
+                _guestbookPollAt = 0; // 바로 다시 받아 내 글을 보여 준다
+            }
+            catch (ApiException e)
+            {
+                _menu.SetGuestbookStatus(e.IsNetworkError ? "서버에 연결할 수 없어요" : e.Message, Theme.Red, 5f);
+            }
+            finally
+            {
+                _guestbookPosting = false;
+            }
+        }
+
         // ---------------- 이벤트 스테이지 (전시용) ----------------
         /// <summary>타자 이벤트: 단어 목록에서 끝없이 나오는 단어를 제한 시간 동안 친다. 맞게 친 단어 수가 기록</summary>
         private async void StartTypingEvent(StageInfo stage)
@@ -2059,7 +2150,7 @@ namespace Executor.Play
                 Unit = typing ? "개" : "턴",
                 NameHeader = "이름",
                 TimeHeader = "올린 시각",
-                Rule = typing ? "같은 개수면 먼저 올린 기록이 앞에 와요" : "같은 턴이면 먼저 올린 기록이 앞에 와요",
+                Rule = typing ? "같은 개수면 같은 순위, 이름순으로 보여요" : "같은 턴이면 같은 순위, 이름순으로 보여요",
                 NoRecord = "이번 기록은 올리지 않았어요",
                 EmptyText = "아직 올라온 기록이 없어요.",
                 OnRetry = () => StartStage(stage, false),

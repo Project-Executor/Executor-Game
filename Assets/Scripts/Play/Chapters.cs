@@ -51,6 +51,9 @@ namespace Executor.Play
             : $"Layer {LayerOrder} · {LayerName}";
         public List<StageInfo> Stages = new List<StageInfo>();
 
+        /// <summary>이벤트 스테이지만 있는 작전 (전시용). 처음 열 때 고르는 작전에서 뺀다</summary>
+        public bool IsEventOnly => Stages.Count > 0 && Stages.All(s => s.IsEvent);
+
         /// <summary>스테이지가 하나라도 있는지 (없으면 "준비 중")</summary>
         public bool IsAvailable => Stages.Count > 0;
 

@@ -27,7 +27,7 @@ namespace Executor.Play
         {
             if (PlayerPrefs.GetInt(MetKey, 0) == 1) return true;
             // 델타는 Layer 1(Hello World!) 첫 스테이지에서 만난다
-            return chapters != null && chapters.Any(c => c.LayerOrder >= 1 && c.Stages.Any(s => StageProgress.IsCleared(c.Id, s.No)));
+            return chapters != null && chapters.Any(c => c.Stages.Any(s => !s.Tutorial && !s.IsEvent && StageProgress.IsCleared(c.Id, s.No)));
         }
 
         /// <summary>만나기 전: (제목줄, 본문)</summary>

@@ -237,6 +237,9 @@ namespace Executor.Play
         }
 
         /// <summary>hack.exe 창 (색 테두리·제목줄 아래 줄 색을 고를 수 있다). 시안 left 340, 너비 600</summary>
+        /// <summary>hack.exe 창의 빨간 닫기 (Esc와 같다: 해킹 중이면 포기, 결과 창이면 닫기)</summary>
+        public Action OnHackClose;
+
         private RectTransform HackWindow(string title, Color line, Color border, Color bar, float top, float height, out RectTransform win)
         {
             win = Frame(_hack.transform, "Window", Ink, border, WinBorder, 6 * S);
@@ -247,7 +250,8 @@ namespace Executor.Play
             At(titleLine, WinBorder, WinBorder + 32 * S, HackW * S - WinBorder * 2, 2 * S);
             Text t = Label(titleBar.transform, title, 12 * S, Fg, TextAnchor.MiddleLeft, bold: true);
             Inset(t, 12 * S, 0, 40 * S, 0);
-            Image close = Fill(titleBar.transform, "Close", Hex(0xa3203a));
+            Image close = Fill(titleBar.transform, "Close", Color.white);
+            Clickable(close, () => OnHackClose?.Invoke(), Hex(0xa3203a), Red);
             close.rectTransform.anchorMin = close.rectTransform.anchorMax = new Vector2(1, 0.5f);
             close.rectTransform.pivot = new Vector2(1, 0.5f);
             close.rectTransform.anchoredPosition = new Vector2(-8 * S, 0);

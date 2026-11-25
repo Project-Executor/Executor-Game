@@ -26,7 +26,8 @@ namespace Executor.Play
             StageProgress.ClearRemote();
             var chapters = new List<ChapterInfo>();
             var loads = new List<Task>();
-            foreach (OperationResponse op in operations.OrderBy(o => o.SortOrder))
+            // 플레이 순서: 레이어 순서 -> 레이어 안 작전 순서 (서버 응답 순서와 같다)
+            foreach (OperationResponse op in operations.OrderBy(o => o.Layer?.SortOrder ?? 0).ThenBy(o => o.SortOrder))
             {
                 var chapter = new ChapterInfo
                 {

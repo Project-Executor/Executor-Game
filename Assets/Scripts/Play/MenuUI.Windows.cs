@@ -22,9 +22,96 @@ namespace Executor.Play
         private RectTransform DesktopWindow(string title, string icon, string tab, float left, float top, float width, float height,
             bool dim, out RectTransform body)
         {
-            RectTransform win = WindowFrame(_popupRoot, title, icon, left, top, width, height, dim, ClosePopups, out body, out _);
+            if (tab != null) DiscardParked(tab); // 같은 창을 새로 열면 줄여 둔 것은 버린다
+            GameObject holder = null;
+            RectTransform win = WindowFrame(_popupRoot, title, icon, left, top, width, height, dim, ClosePopups, out body, out GameObject blocker,
+                tab == null ? null : (Action)(() => ParkWindow(holder, tab)));
+            holder = blocker;
             if (tab != null) SetWindowTab(tab);
             return win;
+        }
+
+        // ---------------- 줄여 둔 창 (작업 표시줄) ----------------
+        /// <summary>최소화한 창들 (탭 이름, 창, 닫을 때 할 일). 화면이 바뀌면(HideAll) 모두 닫는다</summary>
+        private readonly List<(string tab, GameObject go, Action onClose)> _parked = new List<(string, GameObject, Action)>();
+        private RectTransform _parkedRoot;
+
+        /// <summary>줄여 둔 창을 보관하는 곳 (꺼져 있어 보이지 않는다)</summary>
+        private RectTransform ParkedRoot
+        {
+            get
+            {
+                if (_parkedRoot != null) return _parkedRoot;
+                _parkedRoot = new GameObject("Parked", typeof(RectTransform)).GetComponent<RectTransform>();
+                _parkedRoot.SetParent(_root, false);
+                Inset(_parkedRoot, 0, 0, 0, 0);
+                _parkedRoot.gameObject.SetActive(false);
+                return _parkedRoot;
+            }
+        }
+
+        public bool IsParked(string tab) => _parked.Any(p => p.tab == tab && p.go != null);
+
+        /// <summary>창(뒤판 포함)을 작업 표시줄로 줄인다. onClose: 줄인 탭에서 닫을 때 할 일 (없으면 창을 지운다)</summary>
+        public void ParkWindow(GameObject window, string tab, Action onClose = null)
+        {
+            if (window == null) return;
+            _parked.RemoveAll(p => p.tab == tab);
+            window.transform.SetParent(ParkedRoot, false);
+            _parked.Add((tab, window, onClose));
+            if (_windowTab == tab) _windowTab = null;
+            RefreshTaskbars();
+        }
+
+        /// <summary>줄여 둔 창을 다시 연다 (지금 떠 있는 팝업은 닫는다)</summary>
+        private void RestoreWindow(string tab)
+        {
+            int i = _parked.FindIndex(p => p.tab == tab);
+            if (i < 0) return;
+            GameObject window = _parked[i].go;
+            _parked.RemoveAt(i);
+            if (window == null)
+            {
+                RefreshTaskbars();
+                return;
+            }
+            ClosePopups();
+            window.transform.SetParent(_popupRoot, false);
+            SetWindowTab(tab);
+        }
+
+        /// <summary>줄여 둔 창을 닫는다 (작업 표시줄 탭의 ×)</summary>
+        public void CloseParked(string tab)
+        {
+            int i = _parked.FindIndex(p => p.tab == tab);
+            if (i < 0) return;
+            var (_, window, onClose) = _parked[i];
+            _parked.RemoveAt(i);
+            string current = _windowTab;
+            if (onClose != null) onClose();
+            else if (window != null) Destroy(window);
+            if (current != null && HasPopup) SetWindowTab(current); else RefreshTaskbars();
+        }
+
+        /// <summary>줄여 둔 같은 이름의 창을 조용히 버린다 (같은 창을 새로 열 때)</summary>
+        public void DiscardParked(string tab)
+        {
+            foreach (var p in _parked.Where(p => p.tab == tab).ToList())
+            {
+                if (p.go != null) Destroy(p.go);
+                _parked.Remove(p);
+            }
+        }
+
+        /// <summary>줄여 둔 창을 모두 닫는다 (화면이 바뀔 때)</summary>
+        private void CloseAllParked()
+        {
+            foreach (var p in _parked.ToList())
+            {
+                if (p.onClose != null) p.onClose();
+                else if (p.go != null) Destroy(p.go);
+            }
+            _parked.Clear();
         }
 
         /// <summary>설정 창 (settings.exe, 시안 Settings)</summary>

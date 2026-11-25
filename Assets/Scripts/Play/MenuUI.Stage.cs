@@ -97,6 +97,7 @@ namespace Executor.Play
 
         public void ShowStageSelect(StageScreen screen)
         {
+            _explorerParked = false;
             HideAll();
             _stage.SetActive(true);
             SetBadgesAgain();
@@ -159,7 +160,7 @@ namespace Executor.Play
 
             RectTransform win = Frame(screen.transform, "Explorer", Ink, WindowLine, ExpBorder, 6 * S);
             At(win, ExpLeft, ExpTop, ExpWidth, ExpHeight);
-            WindowTitle(win, "explorer.exe — 스테이지 선택", ExpWidth, ExpBorder);
+            WindowTitle(win, "explorer.exe — 스테이지 선택", ExpWidth, ExpBorder, MinimizeExplorer, () => OnStageBack?.Invoke());
             BuildToolbar(win);
             BuildTreePanel(win);
             BuildBoard(win);

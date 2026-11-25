@@ -225,11 +225,12 @@ namespace Executor.Play
         public const float WinBorder = 2 * S, WinTitleH = 32 * S + 2 * S;
 
         /// <summary>
-        /// 바탕화면 창 (시안 Pop*): 뒤를 막는 판(dim이면 어둡게) + 창 틀 + 제목줄(아이콘, 제목, 창 버튼 3개 중 닫기만 동작).
-        /// body는 제목줄 아래 내용 자리. 위치·크기는 시안 px(1280x720)로 받아 1.5배한다
+        /// 바탕화면 창 (시안 Pop*): 뒤를 막는 판(dim이면 어둡게) + 창 틀 + 제목줄(아이콘, 제목, 창 버튼 3개: 최소화 · 최대화(모양) · 닫기).
+        /// body는 제목줄 아래 내용 자리. 위치·크기는 시안 px(1280x720)로 받아 1.5배한다.
+        /// onMinimize가 있으면 최소화 버튼이 동작한다 (작업 표시줄로 줄이기)
         /// </summary>
         public static RectTransform WindowFrame(Transform root, string title, string icon, float left, float top, float width, float height,
-            bool dim, Action onClose, out RectTransform body, out GameObject blocker)
+            bool dim, Action onClose, out RectTransform body, out GameObject blocker, Action onMinimize = null)
         {
             float w = width * S, h = height * S;
             Image back = Fill(root, "Window:" + title, dim ? Hex(0x0a0716, 0.55f) : new Color(0, 0, 0, 0), raycast: true);
@@ -262,6 +263,7 @@ namespace Executor.Play
                 Image face = Fill(b, "Face", Color.white);
                 Inset(face, 0, 0, 0, 0);
                 if (i == 2) Clickable(face, onClose, Hex(0xa3203a), Red);
+                else if (i == 0 && onMinimize != null) Clickable(face, onMinimize, TrackLine, Hex(0x4a4290));
                 else face.color = TrackLine;
                 if (i == 0)
                 {
